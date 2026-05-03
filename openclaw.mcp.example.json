@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "vortex-skyrimse": {
+      "command": "py",
+      "args": [
+        "-3",
+        "C:\\path\\to\\vortex-skyrimse-mcp\\server.py"
+      ]
+    }
+  }
+}

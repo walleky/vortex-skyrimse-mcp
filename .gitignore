@@ -1,0 +1,14 @@
+# Generated package artifacts
+*.zip
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Local editor/OS files
+.DS_Store
+Thumbs.db
+
+# Local runtime data, if someone runs the project from the repo
+.local/
+.cache/
