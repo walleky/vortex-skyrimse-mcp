@@ -1,5 +1,7 @@
 # Vortex Skyrim SE MCP
 
+[![CI](https://github.com/walleky/vortex-skyrimse-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/walleky/vortex-skyrimse-mcp/actions/workflows/ci.yml)
+
 Local MCP server for Windows Vortex + Skyrim Special Edition diagnostics.
 
 It is built for an MCP client such as OpenClaw, Claude Desktop, Cursor, or any
@@ -40,6 +42,8 @@ the wrong winner can break a save. Profile write tools require exact mod ids and
 are dry-run unless `apply=true`.
 
 ## Install
+
+Short version: see [START-HERE.md](START-HERE.md).
 
 1. Install Python 3 for Windows if you do not already have it.
 2. Download or clone this repo somewhere stable, for example:
