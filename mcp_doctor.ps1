@@ -1,6 +1,8 @@
 param(
   [string]$ClientName = "OpenClaw",
   [string]$ConfigOut = "",
+  [string]$PythonCommand = "",
+  [string[]]$PythonArgs = @(),
   [switch]$RegisterOpenClaw,
   [switch]$OpenConfigFolder
 )
@@ -14,6 +16,26 @@ function Write-Step {
 }
 
 function Find-Python {
+  if ($PythonCommand) {
+    $resolved = Resolve-TildePath $PythonCommand
+    if (Test-Path -LiteralPath $resolved) {
+      $resolved = (Resolve-Path -LiteralPath $resolved).Path
+    }
+    return @{
+      Command = $resolved
+      Args = @($PythonArgs)
+    }
+  }
+  if ($env:VORTEX_SKYRIMSE_MCP_PYTHON) {
+    $resolved = Resolve-TildePath $env:VORTEX_SKYRIMSE_MCP_PYTHON
+    if (Test-Path -LiteralPath $resolved) {
+      $resolved = (Resolve-Path -LiteralPath $resolved).Path
+    }
+    return @{
+      Command = $resolved
+      Args = @()
+    }
+  }
   if (Get-Command py -ErrorAction SilentlyContinue) {
     return @{
       Command = "py"

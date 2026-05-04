@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.19
+
+- Adds `tests/config_runtime_mcp.py`, a focused regression suite for config parsing, root restrictions, exact-text patch suggestions, repeated replacement safety, runtime log issue grouping, config candidate validation, and stale/fresh log handling.
+- Adds `tests/run_all.py` as the no-hassle local test runner for compile, self-test, MCP smoke, fixture integration, config/runtime regression, and PowerShell helper checks when PowerShell is available.
+- Updates CI to run the shared Python test runner so local and GitHub validation follow the same path.
+- Lets `mcp_doctor.ps1` use `-PythonCommand` or `VORTEX_SKYRIMSE_MCP_PYTHON` for environments where `py`/`python` is not on `PATH`.
+- Adds testing documentation for humans and OpenClaw agents.
+
 ## v0.2.18
 
 - Adds `config_file_report`, a read-only config validator for JSON, XML, INI, loose key/value configs, TOML, YAML/plain text summaries, parse errors, and likely unconfigured placeholder values.

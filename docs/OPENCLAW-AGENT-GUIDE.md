@@ -201,6 +201,17 @@ Then tell the user:
 
 Do not paste the whole bundle into chat unless the user asks. Summarize the key findings first.
 
+## Testing Flow
+
+When the user asks whether the repo still works after an update:
+
+```text
+tests/run_all.py
+```
+
+If that fails, report the first failing step and command. Do not keep running
+repair commands against Vortex or Skyrim just because tests failed.
+
 ## How To Interpret Common Issues
 
 `Vortex.exe was not found`

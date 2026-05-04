@@ -193,6 +193,11 @@ The bundle redacts normal user profile paths by default, but it may still includ
 ## Quick Test
 
 ```powershell
-py -3 .\server.py --self-test
-py -3 .\tests\smoke_mcp.py
+py -3 .\tests\run_all.py
+```
+
+On Linux/macOS:
+
+```bash
+python3 tests/run_all.py
 ```

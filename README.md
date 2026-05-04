@@ -163,6 +163,12 @@ open the OpenClaw config folder. To register through the OpenClaw CLI:
 .\mcp_doctor.ps1 -RegisterOpenClaw
 ```
 
+If Windows cannot find `py` or `python`, point Doctor at Python directly:
+
+```powershell
+.\mcp_doctor.ps1 -PythonCommand "C:\Path\To\python.exe"
+```
+
 ## MCP Client Config
 
 Generic stdio MCP config:
@@ -436,6 +442,24 @@ is not enabled in `%LOCALAPPDATA%\Skyrim Special Edition\plugins.txt`.
 For the broadest first pass, run `skyrim_modded_play_report`. It adds SKSE,
 missing audio archive, missing master, stale `plugins.txt`, and INI checks, then
 sorts the findings by severity.
+
+## Testing
+
+Run the full local test suite:
+
+```powershell
+py -3 .\tests\run_all.py
+```
+
+On Linux/macOS:
+
+```bash
+python3 tests/run_all.py
+```
+
+The runner compiles the server, runs self-test, MCP stdio smoke tests, fixture
+integration tests, config/runtime regression tests, and PowerShell helper checks
+when PowerShell is available. See [Testing](docs/TESTING.md) for details.
 
 ## Manual Smoke Test
 

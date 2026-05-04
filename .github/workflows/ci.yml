@@ -27,17 +27,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Compile server
-        run: python -m py_compile server.py tests/smoke_mcp.py tests/fixture_mcp.py
-
-      - name: Run self-test
-        run: python server.py --self-test
-
-      - name: Run MCP stdio smoke test
-        run: python tests/smoke_mcp.py
-
-      - name: Run fixture tests
-        run: python tests/fixture_mcp.py
+      - name: Run Python test suite
+        run: python tests/run_all.py --skip-powershell
 
       - name: Check PowerShell helpers
         shell: pwsh

@@ -38,11 +38,14 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - `Vortex-SkyrimSE-Menu.cmd`: double-click wrapper around `vortex_skyrimse_menu.ps1`.
 - `tests/smoke_mcp.py`: verifies JSON-RPC initialize, tools/list, and a basic tools/call.
 - `tests/fixture_mcp.py`: synthetic Skyrim/Vortex fixture for plugin, staging, conflict, logging, and bug-report behavior.
+- `tests/config_runtime_mcp.py`: focused config/runtime regression tests for parsing, patch suggestions, root restrictions, stale logs, and issue grouping.
+- `tests/run_all.py`: one-command local test runner used by humans and CI.
 - `tests/check_powershell.ps1`: parses PowerShell helpers and exercises the menu's noninteractive action list.
 - `openclaw.mcp.example.json`: static example config.
 - `docs/SAFE-SESSION.md`: explains the one-call safe-session report flow.
 - `docs/SKYRIM-DIAGNOSTICS.md`: explains the broad one-button diagnostics report.
 - `docs/SKYRIM-RUNTIME-LOGS.md`: explains runtime log scanning and safe config patching.
+- `docs/TESTING.md`: explains local and CI test commands.
 - `docs/MOD-KNOWLEDGE.md`: explains the collection knowledge report and safe removal-review flow.
 - `docs/NEXUS-API.md`: explains optional read-only Nexus Mods API metadata support.
 - `docs/ADR-0001-NEXUS-API-KEYS.md`: records why this MCP uses its own explicit Nexus API key.
