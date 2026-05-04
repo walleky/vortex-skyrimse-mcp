@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.2.3
+
+- Adds optional `zip_output` support to `bug_report_bundle` for one-file GitHub attachments.
+- Adds default user-path redaction for support bundles, with `redact_user_paths=false` available for private debugging.
+- Adds fixture-based tests for fake Skyrim/Vortex staging, plugin checks, conflicts, logs, redacted bundles, and zip output.
+- Adds a sanitized sample bug bundle document.
+- Updates quick-start, installer, Doctor, and agent docs to prefer zipped redacted bug reports.
+- `detect_environment` now accepts `local_appdata` for portable tests and custom setups.
+
 ## v0.2.2
 
 - Adds central MCP file logging for server lifecycle, tool calls, Vortex CLI calls, and support bundle creation.

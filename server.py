@@ -24,6 +24,7 @@ import sys
 import time
 import traceback
 import uuid
+import zipfile
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
@@ -34,7 +35,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.2"
+SERVER_VERSION = "0.2.3"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -180,6 +181,87 @@ def log_channel_from_name(name: str) -> str:
     stem = Path(name).stem
     match = re.match(r"(.+)-\d{8}(?:-\d{6})?$", stem)
     return match.group(1) if match else stem
+
+
+def redaction_replacements() -> List[Tuple[str, str]]:
+    raw_pairs = [
+        (os.environ.get("USERPROFILE"), "%USERPROFILE%"),
+        (os.environ.get("LOCALAPPDATA"), "%LOCALAPPDATA%"),
+        (os.environ.get("APPDATA"), "%APPDATA%"),
+        (str(Path.home()), "%USERPROFILE%"),
+    ]
+    seen: set[str] = set()
+    pairs: List[Tuple[str, str]] = []
+    for raw, replacement in raw_pairs:
+        if not raw:
+            continue
+        variants = {raw, raw.replace("/", "\\"), raw.replace("\\", "/"), raw.replace("\\", "\\\\")}
+        for variant in variants:
+            key = variant.lower()
+            if len(variant) < 4 or key in seen:
+                continue
+            seen.add(key)
+            pairs.append((variant, replacement))
+    pairs.sort(key=lambda item: len(item[0]), reverse=True)
+    return pairs
+
+
+def redact_text(text: str) -> str:
+    result = text
+    for raw, replacement in redaction_replacements():
+        result = re.sub(re.escape(raw), replacement, result, flags=re.IGNORECASE)
+    return result
+
+
+def redact_paths_in_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return redact_text(value)
+    if isinstance(value, Path):
+        return redact_text(str(value))
+    if isinstance(value, dict):
+        return {key: redact_paths_in_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [redact_paths_in_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [redact_paths_in_value(item) for item in value]
+    return value
+
+
+def bug_report_readme_text() -> str:
+    return (
+        "Vortex Skyrim SE MCP bug report\n"
+        "\n"
+        "Attach the JSON file in this zip to the GitHub issue, or ask OpenClaw to read it.\n"
+        "If logs are included, they are recent tails, not full historical logs.\n"
+        "The JSON may include local paths, mod names, plugin names, and MCP prompts.\n"
+        "Review before posting publicly.\n"
+    )
+
+
+def write_bug_report_zip(
+    zip_path: Path,
+    output_path: Path,
+    bundle: Dict[str, Any],
+    log_files: List[Path],
+    max_log_bytes: int,
+    include_log_tails: bool = True,
+    redact: bool = True,
+) -> Dict[str, Any]:
+    zip_path.parent.mkdir(parents=True, exist_ok=True)
+    entries = ["README-BUG-REPORT.txt", output_path.name]
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("README-BUG-REPORT.txt", bug_report_readme_text())
+        archive.writestr(output_path.name, json.dumps(bundle, indent=2, ensure_ascii=False, default=str))
+        if include_log_tails:
+            for path in log_files:
+                try:
+                    arcname = f"logs/{path.name}.tail.txt"
+                    tail = tail_file_text(path, max_log_bytes)
+                    archive.writestr(arcname, redact_text(tail) if redact else tail)
+                    entries.append(arcname)
+                except OSError:
+                    continue
+    return {"zip_path": str(zip_path), "entries": entries}
 
 
 def path_exists(path: Optional[Path]) -> bool:
@@ -737,7 +819,7 @@ def detect_environment(args: Dict[str, Any]) -> Dict[str, Any]:
     vortex_exe = find_vortex_exe(args.get("vortex_exe"))
     skyrim_dir = find_skyrim_dir(args.get("skyrim_dir"))
     staging_dir = choose_staging_dir(vortex_appdata, args.get("staging_dir"))
-    local_appdata = default_local_appdata()
+    local_appdata = expand_path(args.get("local_appdata")) or default_local_appdata()
     my_games = default_my_games_dir(args.get("my_games_dir"))
     steam_root = find_steam_root()
     issues: List[str] = []
@@ -2325,7 +2407,12 @@ def bug_report_bundle(args: Dict[str, Any]) -> Dict[str, Any]:
     include_deployment = bool(args.get("include_vortex_deployment", True))
     include_play_report = bool(args.get("include_play_report", True))
     include_conflicts = bool(args.get("include_conflicts", False))
+    redact_user_paths = bool(args.get("redact_user_paths", True))
+    zip_output = bool(args.get("zip_output", False))
+    zip_path = expand_path(args.get("zip_path"))
+    include_log_tails_in_zip = bool(args.get("include_log_tails_in_zip", True))
     log_dir = default_log_dir(args.get("log_dir"))
+    log_files: List[Path] = []
 
     bundle: Dict[str, Any] = {
         "generatedAt": iso_now(),
@@ -2334,6 +2421,8 @@ def bug_report_bundle(args: Dict[str, Any]) -> Dict[str, Any]:
         "output_path": str(output_path),
         "log_dir": str(log_dir),
         "privacyNote": "This bundle may include local Windows paths, mod names, plugin names, and recent MCP logs. Review before posting publicly.",
+        "redactedUserPaths": redact_user_paths,
+        "redactionNote": "User profile, AppData, and LocalAppData paths are replaced when redact_user_paths=true.",
         "bugReportTemplate": {
             "summary": "What did you expect OpenClaw/Vortex/Skyrim to do, and what happened instead?",
             "reproductionSteps": [
@@ -2392,21 +2481,42 @@ def bug_report_bundle(args: Dict[str, Any]) -> Dict[str, Any]:
         bundle["iniError"] = str(exc)
 
     if include_logs:
-        files = recent_log_files(log_dir, max_log_files)
+        log_files = recent_log_files(log_dir, max_log_files)
         bundle["logs"] = {
             "status": log_status({"log_dir": str(log_dir), "max_files": max_log_files}),
-            "recentFiles": [log_file_summary(path, include_tail=True, max_tail_bytes=max_log_bytes) for path in files],
+            "recentFiles": [log_file_summary(path, include_tail=True, max_tail_bytes=max_log_bytes) for path in log_files],
         }
 
-    write_text(output_path, json.dumps(bundle, indent=2, ensure_ascii=False, default=str))
+    bundle_to_write = redact_paths_in_value(bundle) if redact_user_paths else bundle
+    write_text(output_path, json.dumps(bundle_to_write, indent=2, ensure_ascii=False, default=str))
+    zip_info = None
+    if zip_output:
+        if not zip_path:
+            zip_path = output_path.with_suffix(".zip")
+        zip_info = write_bug_report_zip(
+            zip_path,
+            output_path,
+            bundle_to_write,
+            log_files if include_logs else [],
+            max_log_bytes,
+            include_log_tails=include_log_tails_in_zip,
+            redact=redact_user_paths,
+        )
     log_event(
         "support",
         "bug_report_bundle_written",
-        {"output_path": str(output_path), "sections": list(bundle.keys()), "include_logs": include_logs},
+        {
+            "output_path": str(output_path),
+            "zip_path": str(zip_path) if zip_info else None,
+            "sections": list(bundle.keys()),
+            "include_logs": include_logs,
+            "redact_user_paths": redact_user_paths,
+        },
     )
-    return {
+    result = {
         "output_path": str(output_path),
         "log_dir": str(log_dir),
+        "redactedUserPaths": redact_user_paths,
         "sections": list(bundle.keys()),
         "nextSteps": [
             "Send this JSON file to the maintainer or ask OpenClaw to read it.",
@@ -2414,6 +2524,10 @@ def bug_report_bundle(args: Dict[str, Any]) -> Dict[str, Any]:
             "Review the privacy note before posting publicly.",
         ],
     }
+    if zip_info:
+        result["zip_path"] = zip_info["zip_path"]
+        result["zipEntries"] = zip_info["entries"]
+    return result
 
 
 TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str, Any]]]] = {
@@ -2427,6 +2541,7 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "skyrim_dir": {"type": "string"},
                 "staging_dir": {"type": "string"},
                 "my_games_dir": {"type": "string"},
+                "local_appdata": {"type": "string"},
             },
             "additionalProperties": False,
         },
@@ -2733,6 +2848,10 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "include_vortex_deployment": {"type": "boolean", "default": True},
                 "include_play_report": {"type": "boolean", "default": True},
                 "include_conflicts": {"type": "boolean", "default": False},
+                "redact_user_paths": {"type": "boolean", "default": True},
+                "zip_output": {"type": "boolean", "default": False},
+                "zip_path": {"type": "string"},
+                "include_log_tails_in_zip": {"type": "boolean", "default": True},
                 "max_log_files": {"type": "integer", "default": 12},
                 "max_log_bytes": {"type": "integer", "default": LOG_TAIL_DEFAULT_BYTES},
                 "max_mods": {"type": "integer", "default": 500},

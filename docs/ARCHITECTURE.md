@@ -23,7 +23,9 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - `mcp_doctor.ps1`: runs self-tests, smoke tests, config generation, optional OpenClaw registration, and writes a doctor transcript log.
 - `MCP-Doctor.cmd`: double-click wrapper around `mcp_doctor.ps1`.
 - `tests/smoke_mcp.py`: verifies JSON-RPC initialize, tools/list, and a basic tools/call.
+- `tests/fixture_mcp.py`: synthetic Skyrim/Vortex fixture for plugin, staging, conflict, logging, and bug-report behavior.
 - `openclaw.mcp.example.json`: static example config.
+- `docs/SAMPLE-BUG-BUNDLE.md`: shortened sanitized support bundle example for agents and humans.
 
 ## server.py Code Map
 
@@ -86,7 +88,7 @@ For a bug, OpenClaw should call:
 
 ```text
 log_status
-bug_report_bundle
+bug_report_bundle with zip_output=true and redact_user_paths=true
 ```
 
-`bug_report_bundle` writes a JSON file with environment data, play/deployment/plugin/INI reports, and recent log tails. It is meant to be attached to a GitHub issue or read back into OpenClaw.
+`bug_report_bundle` writes a JSON file with environment data, play/deployment/plugin/INI reports, and recent log tails. With `zip_output=true`, it also writes one attachable zip containing the JSON, recent log tails, and a short README. With `redact_user_paths=true`, user profile, AppData, and LocalAppData paths are replaced before writing the bundle.

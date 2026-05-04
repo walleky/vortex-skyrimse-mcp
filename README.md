@@ -43,6 +43,7 @@ JSON-RPC over stdin/stdout.
 - [docs/OPENCLAW-AGENT-GUIDE.md](docs/OPENCLAW-AGENT-GUIDE.md): how an OpenClaw agent should use the tools safely.
 - [docs/LOGGING.md](docs/LOGGING.md): log folder, channels, and inspection commands.
 - [docs/BUG-REPORTING.md](docs/BUG-REPORTING.md): support bundle and issue-reporting guide.
+- [docs/SAMPLE-BUG-BUNDLE.md](docs/SAMPLE-BUG-BUNDLE.md): sanitized example support bundle shape.
 - [docs/ROADMAP.md](docs/ROADMAP.md): improvement notes and what not to automate yet.
 
 ## What It Will Not Do Automatically
@@ -221,7 +222,7 @@ Skyrim INIs:
 ```
 
 If detection misses your setup, pass `skyrim_dir`, `staging_dir`,
-`vortex_appdata`, or `my_games_dir` to the relevant tool.
+`vortex_appdata`, `local_appdata`, or `my_games_dir` to the relevant tool.
 
 ## Safety Model
 

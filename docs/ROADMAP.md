@@ -4,13 +4,11 @@ These are useful next steps, ordered by value and risk.
 
 ## Best Next Improvements
 
-1. Add sample sanitized `bug_report_bundle` output so OpenClaw agents can learn the shape without touching a user's machine.
-2. Add optional ZIP packaging for bug reports, including the JSON bundle and selected log files.
-3. Add richer Vortex collection detection if Vortex exposes collection state through stable CLI paths.
-4. Add more plugin metadata parsing for ESP/ESM headers beyond masters, such as plugin version and record counts.
-5. Add a safe "profile diff narrative" tool that explains profile differences in plain English.
-6. Add a "known risky mod categories" report for DLL plugins, animation frameworks, body/skeleton mods, UI replacers, and script-heavy mods.
-7. Add a synthetic test fixture folder with fake Vortex staging, fake plugins.txt, and fake profiles so more behavior can be tested in CI.
+1. Add richer Vortex collection detection if Vortex exposes collection state through stable CLI paths.
+2. Add more plugin metadata parsing for ESP/ESM headers beyond masters, such as plugin version and record counts.
+3. Add a safe "profile diff narrative" tool that explains profile differences in plain English.
+4. Add a "known risky mod categories" report for DLL plugins, animation frameworks, body/skeleton mods, UI replacers, and script-heavy mods.
+5. Add a synthetic Vortex profile fixture so profile/deployment behavior can be tested without a real Vortex install.
 
 ## What Not To Automate Yet
 

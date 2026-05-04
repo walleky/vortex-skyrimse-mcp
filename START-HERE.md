@@ -65,10 +65,10 @@ Use the vortex-skyrimse MCP to find missing masters, likely redundant mods, and 
 If OpenClaw gets stuck or a tool fails:
 
 ```text
-Use the vortex-skyrimse MCP to run log_status and bug_report_bundle. Then summarize the highest-risk findings and tell me where the bundle was written. Do not apply changes.
+Use the vortex-skyrimse MCP to run log_status and bug_report_bundle with zip_output=true and redact_user_paths=true. Then summarize the highest-risk findings and tell me where the zip was written. Do not apply changes.
 ```
 
-The bundle may include local paths and mod/plugin names, so review it before posting publicly.
+The bundle redacts normal user profile paths by default, but it may still include mod/plugin names and unusual custom paths. Review it before posting publicly.
 
 ## Safety Rules
 

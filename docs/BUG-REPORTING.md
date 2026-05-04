@@ -11,7 +11,7 @@ Good bug reports should let OpenClaw or a maintainer answer three questions:
 Ask OpenClaw:
 
 ```text
-Use the vortex-skyrimse MCP to run log_status and bug_report_bundle. Then summarize the highest-risk findings and tell me where the bundle was written. Do not apply changes.
+Use the vortex-skyrimse MCP to run log_status and bug_report_bundle with zip_output=true and redact_user_paths=true. Then summarize the highest-risk findings and tell me where the zip was written. Do not apply changes.
 ```
 
 Or run MCP Doctor:
@@ -24,7 +24,7 @@ Or run MCP Doctor:
 
 Attach:
 
-- the JSON file from `bug_report_bundle`
+- the zip file from `bug_report_bundle` with `zip_output=true`
 - the exact OpenClaw prompt that failed
 - a screenshot of the Vortex error, if there was one
 - whether Vortex was open or closed
@@ -43,6 +43,8 @@ Useful arguments:
 ```json
 {
   "include_logs": true,
+  "redact_user_paths": true,
+  "zip_output": true,
   "include_vortex_profiles": true,
   "include_vortex_deployment": true,
   "include_play_report": true,
@@ -51,6 +53,14 @@ Useful arguments:
 ```
 
 Use `include_conflicts=true` only when the bug is about conflicts or crashes. It can be slower on large collections.
+
+Use `zip_output=true` when you want one attachable file. The zip contains:
+
+- `README-BUG-REPORT.txt`
+- the JSON bundle
+- recent log tails under `logs/`
+
+`redact_user_paths=true` is the default. It replaces user profile, AppData, and LocalAppData paths before writing the bundle.
 
 ## What The Bundle Contains
 
@@ -67,7 +77,7 @@ Use `include_conflicts=true` only when the bug is about conflicts or crashes. It
 
 ## Privacy Warning
 
-The bundle may include local paths, mod names, plugin names, and recent logs. Review it before posting publicly.
+With `redact_user_paths=true`, normal user profile paths are replaced before the files are written. The bundle may still include mod names, plugin names, custom non-user paths, and recent logs. Review it before posting publicly.
 
 ## Good GitHub Issue Template
 

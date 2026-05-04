@@ -89,7 +89,16 @@ For a full support report:
 bug_report_bundle
 ```
 
-The bundle includes recent log tails by default.
+The bundle includes recent log tails by default. For one attachable file:
+
+```json
+{
+  "zip_output": true,
+  "redact_user_paths": true
+}
+```
+
+This writes a zip containing the JSON bundle, a short README, and recent log tails.
 
 ## Inspect Logs Manually
 

@@ -72,12 +72,14 @@ When a tool fails or the user says OpenClaw got confused:
 
 ```text
 log_status
-bug_report_bundle
+bug_report_bundle with zip_output=true and redact_user_paths=true
 ```
+
+Use plain JSON output only if the user cannot share zip attachments. Leave `redact_user_paths=true` unless the user explicitly needs raw local paths.
 
 Then tell the user:
 
-- where the bundle was written
+- where the zip was written
 - what privacy-sensitive data it may contain
 - which finding or error looks most important
 
