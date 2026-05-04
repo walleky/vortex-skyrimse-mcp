@@ -71,6 +71,7 @@ def main() -> int:
     assert "workflow_guide" in listed_names, listed_names
     assert "mod_knowledge_report" in listed_names, listed_names
     assert "in_game_issue_report" in listed_names, listed_names
+    assert "skyrim_runtime_log_report" in listed_names, listed_names
     assert "safe_session_report" in listed_names, listed_names
     assert "skyrim_diagnostics_report" in listed_names, listed_names
     assert "scan_cache_status" in listed_names, listed_names
@@ -81,8 +82,11 @@ def main() -> int:
     assert "nexus_update_report" in listed_names, listed_names
     assert "vortex_profile_backup" in listed_names, listed_names
     assert "vortex_profile_restore_plan" in listed_names, listed_names
+    assert "apply_config_text_patch" in listed_names, listed_names
     assert "performance_mode" in listed_by_name["in_game_issue_report"]["inputSchema"]["properties"], listed_by_name
     assert "response_mode" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
+    assert "include_runtime_logs" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
+    assert "max_log_bytes_per_file" in listed_by_name["skyrim_runtime_log_report"]["inputSchema"]["properties"], listed_by_name
     assert "include_nexus_metadata" in listed_by_name["skyrim_diagnostics_report"]["inputSchema"]["properties"], listed_by_name
     assert "scan_cache_dir" in listed_by_name["mod_knowledge_report"]["inputSchema"]["properties"], listed_by_name
     assert "include_xedit_report" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
@@ -153,6 +157,7 @@ def main() -> int:
             assert "workflow_guide" in names, names
             assert "analyze_conflicts" in names, names
             assert "in_game_issue_report" in names, names
+            assert "skyrim_runtime_log_report" in names, names
             assert "safe_session_report" in names, names
             assert "skyrim_diagnostics_report" in names, names
             assert "scan_cache_status" in names, names
@@ -163,6 +168,7 @@ def main() -> int:
             assert "nexus_mod_lookup" in names, names
             assert "nexus_update_report" in names, names
             assert "apply_ini_fixes" in names, names
+            assert "apply_config_text_patch" in names, names
             assert "vortex_profile_report" in names, names
             assert "vortex_profile_mods" in names, names
             assert "vortex_profile_deployment_report" in names, names

@@ -23,6 +23,9 @@ an MCP client.
   searching staged mods for location, object, plugin, readme, popup wording,
   important file paths, limited config/text evidence, UI/script/MCM evidence,
   and optional exact popup text.
+- Read recent Skyrim/Papyrus/SKSE/crash logs, detect config and popup-style
+  errors such as "file was not configured properly", and map referenced files
+  back to staged Vortex mods when possible.
 - Detect likely redundant mods:
   - duplicate plugin names
   - duplicate Nexus IDs when metadata is present
@@ -38,6 +41,9 @@ an MCP client.
   manifest-like collection JSON file to locally staged Nexus mod/file metadata.
 - Inspect Skyrim INI settings and apply a narrow safe set of INI fixes with
   backups. INI writes are dry-run by default.
+- Patch exact text in staged config/text files with `apply_config_text_patch`.
+  It is dry-run by default, restricted to detected Vortex/Skyrim roots, and
+  creates backups when writing.
 - Read Vortex profiles through Vortex's own CLI, show the active-profile guess,
   list enabled/disabled mods per profile, compare profiles, and clone a profile
   for safer testing.
@@ -74,6 +80,7 @@ an MCP client.
 - [docs/LOCAL-MENU.md](docs/LOCAL-MENU.md): local no-hassle menu for report generation.
 - [docs/SAFE-SESSION.md](docs/SAFE-SESSION.md): one safe first report for OpenClaw or local troubleshooting.
 - [docs/SKYRIM-DIAGNOSTICS.md](docs/SKYRIM-DIAGNOSTICS.md): broad one-button Skyrim SE diagnostics.
+- [docs/SKYRIM-RUNTIME-LOGS.md](docs/SKYRIM-RUNTIME-LOGS.md): Papyrus/SKSE/crash log scanning and safe config patch workflow.
 - [docs/PERFORMANCE.md](docs/PERFORMANCE.md): compact outputs and slow-model guidance.
 - [docs/NEXUS-API.md](docs/NEXUS-API.md): optional read-only Nexus Mods API setup and tools.
 - [docs/NEXUS-MODS-API-DESIGN.md](docs/NEXUS-MODS-API-DESIGN.md): Nexus API metadata design and roadmap.
@@ -181,6 +188,7 @@ py -3 .\server.py --workflow-guide --problem "mods downloaded but not working"
 py -3 .\server.py --tool scan_cache_status
 py -3 .\server.py --tool xedit_diagnostics_report --form-id 0100ABCD
 py -3 .\server.py --tool vortex_collection_report
+py -3 .\server.py --runtime-logs --description "popup says file was not configured properly"
 py -3 .\server.py --skyrim-diagnostics
 py -3 .\server.py --safe-session
 py -3 .\server.py --mod-knowledge

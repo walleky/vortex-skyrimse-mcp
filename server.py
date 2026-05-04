@@ -39,7 +39,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.16"
+SERVER_VERSION = "0.2.17"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -57,6 +57,33 @@ NEXUS_DEFAULT_CACHE_TTL_SECONDS = 24 * 60 * 60
 SCAN_CACHE_ENV_VAR = "VORTEX_SKYRIMSE_MCP_SCAN_CACHE_DIR"
 SCAN_DEFAULT_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
 XEDIT_EXE_NAMES = ("SSEEdit.exe", "xEdit.exe", "TES5Edit.exe")
+RUNTIME_LOG_SUFFIXES = {".log", ".txt"}
+CONFIG_PATCH_SUFFIXES = {".ini", ".json", ".toml", ".yaml", ".yml", ".xml", ".txt", ".cfg", ".conf", ".properties"}
+RUNTIME_LOG_ERROR_TERMS = {
+    "access violation",
+    "address library",
+    "cannot",
+    "could not",
+    "crash",
+    "dll",
+    "error",
+    "exception",
+    "failed",
+    "fatal",
+    "file was not configured",
+    "file was not configured properly",
+    "missing",
+    "not configured",
+    "not configured properly",
+    "not found",
+    "runtime",
+    "warning",
+}
+RUNTIME_REFERENCE_RE = re.compile(
+    r"(?<![A-Za-z0-9])([A-Za-z0-9_ @#()[\].+\\/-]{1,180}\."
+    r"(?:esp|esm|esl|dll|pex|psc|ini|json|toml|yaml|yml|xml|txt|swf|bsa))",
+    re.IGNORECASE,
+)
 SENSITIVE_FIELD_NAMES = {
     "apikey",
     "api_key",
@@ -171,14 +198,19 @@ def log_event(channel: str, event: str, data: Optional[Dict[str, Any]] = None) -
         with log_path.open("a", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
     except Exception as exc:  # pragma: no cover - logging must not break MCP stdio
-        eprint(f"{SERVER_NAME}: logging failed: {exc}")
+        if os.environ.get(LOG_ENV_VAR):
+            eprint(f"{SERVER_NAME}: logging failed: {exc}")
 
 
 def tail_file_text(path: Path, max_bytes: int = LOG_TAIL_DEFAULT_BYTES) -> str:
-    data = path.read_bytes()
-    if len(data) > max_bytes:
-        data = data[-max_bytes:]
-    return data.decode("utf-8", errors="replace")
+    try:
+        size = path.stat().st_size
+        with path.open("rb") as handle:
+            handle.seek(max(0, size - max_bytes))
+            data = handle.read(max_bytes)
+        return data.decode("utf-8", errors="replace")
+    except OSError:
+        return ""
 
 
 def recent_log_files(log_dir: Path, max_files: int = 12) -> List[Path]:
@@ -304,6 +336,19 @@ def read_text(path: Path, max_bytes: int = MAX_DEFAULT_TEXT_BYTES) -> str:
         except UnicodeDecodeError:
             continue
     return data.decode("utf-8", errors="replace")
+
+
+def read_text_with_encoding(path: Path, max_bytes: int = MAX_DEFAULT_TEXT_BYTES) -> Tuple[str, str, bool]:
+    size = path.stat().st_size
+    truncated = size > max_bytes
+    with path.open("rb") as handle:
+        sample = handle.read(max_bytes)
+    for enc in ("utf-8-sig", "utf-16", "cp1252", "latin-1"):
+        try:
+            return sample.decode(enc), enc, truncated
+        except UnicodeDecodeError:
+            continue
+    return sample.decode("utf-8", errors="replace"), "utf-8", truncated
 
 
 def write_text(path: Path, text: str) -> None:
@@ -1655,6 +1700,7 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "ini_report",
             "mod_knowledge_report",
             "in_game_issue_report",
+            "skyrim_runtime_log_report",
             "safe_session_report",
             "bug_report_bundle",
             "skyrim_diagnostics_report",
@@ -1686,6 +1732,7 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
         ],
         "writeCapableDryRunFirst": [
             "apply_ini_fixes",
+            "apply_config_text_patch",
             "vortex_clone_profile",
             "vortex_set_profile_mods",
             "vortex_profile_restore_plan",
@@ -1754,13 +1801,24 @@ def workflow_catalog() -> List[Dict[str, Any]]:
         {
             "key": "popup",
             "title": "Annoying Popup Or Notification",
-            "matchTerms": ["popup", "pop-up", "notification", "warning", "alert", "prompt", "dialog", "mcm", "message"],
-            "userPrompt": "Use in_game_issue_report with my plain popup description. Do not ask me for exact text unless the first scan is weak.",
-            "tools": ["in_game_issue_report"],
-            "whatToRead": ["issue.kind", "diagnosticQuality", "candidates", "nextBestInputs"],
-            "humanSteps": ["If weak, provide screenshot/OCR or exact popup text.", "Test candidate disables in a cloned profile."],
-            "directCli": ["py -3 .\\server.py --tool in_game_issue_report --description \"annoying popup after loading a save\""],
+            "matchTerms": ["popup", "pop-up", "notification", "warning", "alert", "prompt", "dialog", "mcm", "message", "not configured", "configured properly"],
+            "userPrompt": "Use skyrim_runtime_log_report and in_game_issue_report with my plain popup description. If a config candidate appears, read it first and propose apply_config_text_patch as a dry run.",
+            "tools": ["skyrim_runtime_log_report", "in_game_issue_report", "read_text_file", "apply_config_text_patch"],
+            "whatToRead": ["skyrim_runtime_log_report.findings", "skyrim_runtime_log_report.configCandidates", "in_game_issue_report.candidates", "nextBestInputs"],
+            "humanSteps": ["Reproduce the popup once, then run the runtime log report.", "If a config file is identified, patch exact text only with backup.", "Test candidate disables in a cloned profile if no config fix is obvious."],
+            "directCli": ["py -3 .\\server.py --runtime-logs --description \"annoying popup says file was not configured properly\"", "py -3 .\\server.py --tool in_game_issue_report --description \"annoying popup after loading a save\""],
             "menuAction": "10. In-game issue triage",
+        },
+        {
+            "key": "runtime_logs",
+            "title": "Skyrim Runtime Logs And Popups",
+            "matchTerms": ["runtime log", "papyrus", "skse log", "crash log", "trainwreck", "crashlogger", "configured properly", "file was not configured", "log says"],
+            "userPrompt": "Use skyrim_runtime_log_report with my description. Summarize critical/high/config findings, then use read_text_file on any configCandidates. Only propose apply_config_text_patch as dry_run=true unless I approve.",
+            "tools": ["skyrim_runtime_log_report", "read_text_file", "apply_config_text_patch", "safe_session_report"],
+            "whatToRead": ["findingCount", "severityCounts", "findings", "configCandidates", "recommendedActions"],
+            "humanSteps": ["Launch Skyrim once and reproduce the problem.", "Keep the generated backup if any config patch is applied.", "Deploy/test after changing a staged mod config."],
+            "directCli": ["py -3 .\\server.py --runtime-logs --description \"popup says file was not configured properly\""],
+            "menuAction": "18. Skyrim runtime logs",
         },
         {
             "key": "large_collection_review",
@@ -3049,6 +3107,8 @@ def apply_performance_defaults(args: Dict[str, Any]) -> Dict[str, Any]:
         tuned.setdefault("max_evidence_per_mod", 3)
         tuned.setdefault("balanced_text_files_per_mod", 4)
         tuned.setdefault("max_log_files", 6)
+        tuned.setdefault("max_runtime_findings", 30)
+        tuned.setdefault("max_runtime_index_files", 30_000)
         tuned.setdefault("timeout_seconds", 45)
         tuned.setdefault("include_conflicts", False)
         tuned.setdefault("include_profile_backup", False)
@@ -3062,6 +3122,8 @@ def apply_performance_defaults(args: Dict[str, Any]) -> Dict[str, Any]:
         tuned.setdefault("max_evidence_per_mod", 2)
         tuned.setdefault("max_mods", 250)
         tuned.setdefault("max_log_files", 4)
+        tuned.setdefault("max_runtime_findings", 20)
+        tuned.setdefault("max_runtime_index_files", 20_000)
         tuned.setdefault("timeout_seconds", 25)
         tuned.setdefault("include_conflicts", False)
         tuned.setdefault("include_profile_backup", False)
@@ -4342,6 +4404,420 @@ def read_text_file(args: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def apply_config_text_patch(args: Dict[str, Any]) -> Dict[str, Any]:
+    path = expand_path(args.get("path"))
+    if not path or not path.exists() or not path.is_file():
+        raise ToolError("path must point to an existing file.")
+    suffix = path.suffix.lower()
+    if suffix not in CONFIG_PATCH_SUFFIXES:
+        raise ToolError(
+            f"Refusing to patch {suffix or 'extensionless'} files. Allowed config/text suffixes: {', '.join(sorted(CONFIG_PATCH_SUFFIXES))}."
+        )
+    allow_any = bool(args.get("allow_any_path", False))
+    roots = allowed_roots(args)
+    if not allow_any and not any(is_under(path, root) for root in roots):
+        raise ToolError("Refusing to patch outside detected Vortex/Skyrim roots unless allow_any_path=true.")
+
+    old_text = args.get("old_text")
+    new_text = args.get("new_text")
+    if not isinstance(old_text, str) or old_text == "":
+        raise ToolError("old_text must be a non-empty string copied exactly from the target file.")
+    if not isinstance(new_text, str):
+        raise ToolError("new_text must be a string.")
+    max_bytes = int(args.get("max_bytes", 2_000_000))
+    text, encoding, truncated = read_text_with_encoding(path, max_bytes)
+    if truncated:
+        raise ToolError(f"Refusing to patch because the file is larger than max_bytes={max_bytes}.")
+    count = text.count(old_text)
+    if count == 0:
+        raise ToolError("old_text was not found in the file. Reread the file before proposing a patch.")
+    allow_multiple = bool(args.get("allow_multiple", False))
+    if count > 1 and not allow_multiple:
+        raise ToolError("old_text appears more than once. Pass allow_multiple=true only after confirming every occurrence should change.")
+
+    apply_requested = bool(args.get("apply", False))
+    dry_run = bool(args.get("dry_run", not apply_requested))
+    make_backup = bool(args.get("make_backup", True))
+    after = text.replace(old_text, new_text)
+    backup_path = None
+    changed = False
+    if not dry_run:
+        if make_backup:
+            backup_path = path.with_suffix(path.suffix + f".bak-{now_stamp()}")
+            shutil.copy2(path, backup_path)
+        path.write_bytes(after.encode(encoding))
+        changed = True
+        log_event(
+            "support",
+            "config_text_patch_applied",
+            {"path": str(path), "backup": str(backup_path) if backup_path else None, "occurrences": count},
+        )
+
+    return {
+        "path": str(path),
+        "dryRun": dry_run,
+        "changed": changed,
+        "wouldChange": text != after,
+        "occurrences": count,
+        "encoding": encoding,
+        "backup": str(backup_path) if backup_path else None,
+        "backupWillBeCreated": bool(make_backup and dry_run),
+        "preview": {"old": compact_preview(old_text, 500), "new": compact_preview(new_text, 500)},
+        "notes": [
+            "This replaces exact text only; it does not understand plugin records or arbitrary scripts.",
+            "Use dry_run first, keep the backup, then deploy/test in Vortex if the patched file is staged by a mod.",
+        ],
+    }
+
+
+def runtime_log_kind(path: Path, my_games: Optional[Path], skyrim_dir: Optional[Path]) -> str:
+    lower = str(path).lower()
+    name = path.name.lower()
+    if "netscriptframework" in lower or "crash" in lower or "trainwreck" in lower:
+        return "crash"
+    if "papyrus" in name or "\\logs\\script" in lower.replace("/", "\\"):
+        return "papyrus"
+    if "\\skse\\" in lower.replace("/", "\\") or "\\skse\\plugins" in lower.replace("/", "\\"):
+        return "skse"
+    if my_games and is_under(path, my_games):
+        return "my_games_runtime"
+    if skyrim_dir and is_under(path, skyrim_dir):
+        return "skyrim_runtime"
+    return "runtime"
+
+
+def collect_skyrim_runtime_log_files(args: Dict[str, Any]) -> Dict[str, Any]:
+    _vortex_appdata, skyrim_dir, _staging_dir, my_games = get_context_paths(args)
+    candidates: List[Path] = []
+
+    def add_glob(root: Optional[Path], pattern: str) -> None:
+        if not root or not root.exists():
+            return
+        try:
+            candidates.extend(path for path in root.glob(pattern) if path.is_file() and path.suffix.lower() in RUNTIME_LOG_SUFFIXES)
+        except OSError:
+            return
+
+    if my_games:
+        add_glob(my_games / "Logs" / "Script", "Papyrus*.log")
+        add_glob(my_games / "Logs" / "Script", "*.log")
+        add_glob(my_games / "SKSE", "*.log")
+        add_glob(my_games / "SKSE", "*.txt")
+        add_glob(my_games / "Logs", "*.log")
+        add_glob(my_games / "Logs", "*.txt")
+    if skyrim_dir:
+        add_glob(skyrim_dir, "*.log")
+        add_glob(skyrim_dir, "*.txt")
+        add_glob(skyrim_dir / "Data" / "SKSE" / "Plugins", "*.log")
+        add_glob(skyrim_dir / "Data" / "SKSE" / "Plugins", "*.txt")
+        add_glob(skyrim_dir / "Data" / "NetScriptFramework" / "Crash", "*.txt")
+        add_glob(skyrim_dir / "Data" / "NetScriptFramework" / "Crash", "*.log")
+
+    seen: set[str] = set()
+    files: List[Path] = []
+    for path in candidates:
+        try:
+            key = str(path.resolve()).lower()
+        except OSError:
+            key = str(path).lower()
+        if key not in seen:
+            seen.add(key)
+            files.append(path)
+    files.sort(key=lambda item: item.stat().st_mtime, reverse=True)
+    return {"files": files, "myGamesDir": my_games, "skyrimDir": skyrim_dir}
+
+
+def clean_runtime_reference(raw: str) -> str:
+    value = raw.strip().strip("'\"`[](){}<>,;:")
+    value = re.sub(r"^(?:file|plugin|script|config|path|setting)\s+", "", value, flags=re.IGNORECASE).strip()
+    return value.replace("\\\\", "\\")
+
+
+def extract_runtime_references(text: str, max_refs: int = 12) -> List[str]:
+    refs: List[str] = []
+    seen: set[str] = set()
+    for match in RUNTIME_REFERENCE_RE.finditer(text):
+        ref = clean_runtime_reference(match.group(1))
+        key = ref.lower().replace("\\", "/")
+        if ref and key not in seen:
+            seen.add(key)
+            refs.append(ref)
+            if len(refs) >= max_refs:
+                break
+    return refs
+
+
+def runtime_reference_keys(ref: str) -> Tuple[str, str]:
+    normalized = clean_runtime_reference(ref).lower().replace("\\", "/").strip("/")
+    name = Path(normalized).name
+    return normalized, name
+
+
+def runtime_line_terms(line: str, problem_terms: Iterable[str]) -> List[str]:
+    lower = line.lower()
+    hits = [term for term in sorted(RUNTIME_LOG_ERROR_TERMS) if term in lower]
+    hits.extend(term for term in problem_terms if term and term in lower and term not in hits)
+    return hits
+
+
+def runtime_line_severity(line: str, kind: str) -> str:
+    lower = line.lower()
+    if any(term in lower for term in ("access violation", "fatal", "unhandled exception", "stack overflow")):
+        return "critical"
+    if kind == "crash" and any(term in lower for term in ("crash", "exception", "error")):
+        return "critical"
+    if "address library" in lower or ("dll" in lower and any(term in lower for term in ("failed", "missing", "not found", "could not"))):
+        return "high"
+    if any(term in lower for term in ("error", "failed", "could not", "cannot", "missing", "not found", "not configured")):
+        return "medium"
+    if "warning" in lower:
+        return "low"
+    return "info"
+
+
+def build_staged_file_index(staging_dir: Path, args: Dict[str, Any]) -> Dict[str, Any]:
+    max_mods = int(args.get("max_mods", 500))
+    max_files_per_mod = int(args.get("max_files_per_mod", 3000))
+    max_index_files = int(args.get("max_runtime_index_files", 60_000))
+    by_name: Dict[str, List[Dict[str, Any]]] = {}
+    by_rel: Dict[str, List[Dict[str, Any]]] = {}
+    configs_by_mod: Dict[str, List[Dict[str, Any]]] = {}
+    total_files = 0
+    truncated = False
+    mod_dirs = [p for p in sorted(staging_dir.iterdir(), key=lambda item: item.name.lower()) if p.is_dir()][:max_mods]
+    for mod_dir in mod_dirs:
+        for file_path in safe_walk(mod_dir, max_files_per_mod):
+            if total_files >= max_index_files:
+                truncated = True
+                break
+            rel = rel_to(file_path, mod_dir)
+            kind = classify_file(rel)
+            suffix = Path(rel).suffix.lower()
+            total_files += 1
+            entry = {
+                "mod": mod_dir.name,
+                "path": str(file_path),
+                "relativePath": rel,
+                "kind": kind,
+                "suffix": suffix,
+            }
+            rel_key = rel.lower().replace("\\", "/")
+            by_rel.setdefault(rel_key, []).append(entry)
+            by_name.setdefault(Path(rel_key).name, []).append(entry)
+            if kind == "config" or suffix in CONFIG_PATCH_SUFFIXES:
+                configs_by_mod.setdefault(mod_dir.name, []).append(entry)
+        if truncated:
+            break
+    return {
+        "available": True,
+        "stagingDir": str(staging_dir),
+        "indexedModCount": len(mod_dirs),
+        "indexedFileCount": total_files,
+        "truncated": truncated,
+        "byName": by_name,
+        "byRel": by_rel,
+        "configsByMod": configs_by_mod,
+    }
+
+
+def match_runtime_references_to_staged_files(references: List[str], index: Optional[Dict[str, Any]], max_matches: int = 12) -> List[Dict[str, Any]]:
+    if not index:
+        return []
+    by_name = index.get("byName") if isinstance(index.get("byName"), dict) else {}
+    by_rel = index.get("byRel") if isinstance(index.get("byRel"), dict) else {}
+    matches: List[Dict[str, Any]] = []
+    seen: set[Tuple[str, str, str]] = set()
+    for ref in references:
+        rel_key, name_key = runtime_reference_keys(ref)
+        candidates = list(by_rel.get(rel_key, []))
+        candidates.extend(item for key, items in by_rel.items() if key.endswith("/" + rel_key) for item in items)
+        candidates.extend(by_name.get(name_key, []))
+        for item in candidates:
+            if not isinstance(item, dict):
+                continue
+            key = (str(item.get("mod")), str(item.get("relativePath")), ref)
+            if key in seen:
+                continue
+            seen.add(key)
+            matches.append({**item, "reference": ref})
+            if len(matches) >= max_matches:
+                return matches
+    return matches
+
+
+def runtime_config_candidates(
+    findings: List[Dict[str, Any]],
+    index: Optional[Dict[str, Any]],
+    max_candidates: int = 20,
+) -> List[Dict[str, Any]]:
+    candidates: List[Dict[str, Any]] = []
+    seen: set[Tuple[str, str]] = set()
+    configs_by_mod = index.get("configsByMod") if isinstance(index, dict) and isinstance(index.get("configsByMod"), dict) else {}
+    for finding in findings:
+        line = str(finding.get("line") or "")
+        lower = line.lower()
+        configish = any(term in lower for term in ("config", "configured", "ini", "json", "toml", "xml", "setting", "mcm"))
+        matches = finding.get("stagedMatches", []) if isinstance(finding.get("stagedMatches"), list) else []
+        for match in matches:
+            if not isinstance(match, dict):
+                continue
+            suffix = str(match.get("suffix") or "").lower()
+            mod = str(match.get("mod") or "")
+            rel = str(match.get("relativePath") or "")
+            if suffix in CONFIG_PATCH_SUFFIXES or str(match.get("kind")) == "config":
+                key = (mod, rel)
+                if key not in seen:
+                    seen.add(key)
+                    candidates.append(
+                        {
+                            "mod": mod,
+                            "path": match.get("path"),
+                            "relativePath": rel,
+                            "reference": match.get("reference"),
+                            "reason": "Runtime log referenced this config/text file.",
+                            "repairTool": "apply_config_text_patch",
+                        }
+                    )
+            elif configish and mod:
+                for config in configs_by_mod.get(mod, [])[:4]:
+                    if not isinstance(config, dict):
+                        continue
+                    key = (str(config.get("mod")), str(config.get("relativePath")))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    candidates.append(
+                        {
+                            "mod": config.get("mod"),
+                            "path": config.get("path"),
+                            "relativePath": config.get("relativePath"),
+                            "reference": match.get("reference"),
+                            "reason": "Runtime log referenced this mod during a config-like error.",
+                            "repairTool": "apply_config_text_patch",
+                        }
+                    )
+            if len(candidates) >= max_candidates:
+                return candidates
+    return candidates
+
+
+def skyrim_runtime_log_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    args = apply_performance_defaults(args)
+    collected = collect_skyrim_runtime_log_files(args)
+    files = collected["files"][: int(args.get("max_runtime_log_files", args.get("max_log_files", 12)))]
+    max_bytes = int(args.get("max_log_bytes_per_file", args.get("max_log_bytes", LOG_TAIL_DEFAULT_BYTES)))
+    max_findings = int(args.get("max_runtime_findings", 80))
+    max_refs = int(args.get("max_runtime_references", 12))
+    problem_terms = tokenize_issue_terms(
+        args.get("description"),
+        args.get("popup_text"),
+        args.get("extra_terms"),
+        args.get("problem"),
+    )
+    _vortex_appdata, skyrim_dir, staging_dir, my_games = get_context_paths(args)
+    include_staged_matches = bool(args.get("include_staged_file_matches", True))
+    staged_index = None
+
+    findings: List[Dict[str, Any]] = []
+    log_summaries: List[Dict[str, Any]] = []
+    for path in files:
+        kind = runtime_log_kind(path, my_games, skyrim_dir)
+        text = tail_file_text(path, max_bytes)
+        file_findings = 0
+        for tail_line, line in enumerate(text.splitlines(), start=1):
+            hits = runtime_line_terms(line, problem_terms)
+            refs = extract_runtime_references(line, max_refs)
+            if not hits and not refs:
+                continue
+            if refs and not hits and kind != "crash":
+                continue
+            severity = runtime_line_severity(line, kind)
+            findings.append(
+                {
+                    "severity": severity,
+                    "kind": kind,
+                    "log": str(path),
+                    "logName": path.name,
+                    "tailLine": tail_line,
+                    "matchedTerms": hits,
+                    "references": refs,
+                    "stagedMatches": [],
+                    "line": compact_preview(line, 600),
+                }
+            )
+            file_findings += 1
+            if len(findings) >= max_findings:
+                break
+        stat = path.stat()
+        log_summaries.append(
+            {
+                "path": str(path),
+                "name": path.name,
+                "kind": kind,
+                "sizeBytes": stat.st_size,
+                "modifiedAt": epoch_to_iso(stat.st_mtime),
+                "scannedTailBytes": min(stat.st_size, max_bytes),
+                "findingCount": file_findings,
+            }
+        )
+        if len(findings) >= max_findings:
+            break
+
+    if include_staged_matches and staging_dir and staging_dir.exists() and any(item.get("references") for item in findings):
+        staged_index = build_staged_file_index(staging_dir, args)
+        for finding in findings:
+            refs = finding.get("references") if isinstance(finding.get("references"), list) else []
+            finding["stagedMatches"] = match_runtime_references_to_staged_files(refs, staged_index, max_matches=max_refs)
+
+    findings.sort(
+        key=lambda item: (
+            {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}.get(str(item.get("severity")), 5),
+            str(item.get("logName", "")).lower(),
+            int(item.get("tailLine", 0)),
+        )
+    )
+    config_candidates = runtime_config_candidates(findings, staged_index, int(args.get("max_runtime_config_candidates", 20)))
+    severity_counts: Dict[str, int] = {}
+    for finding in findings:
+        severity = str(finding.get("severity") or "info")
+        severity_counts[severity] = severity_counts.get(severity, 0) + 1
+
+    recommended_actions = [
+        "Start with critical/high findings first; one SKSE DLL or Address Library mismatch can create many downstream symptoms.",
+        "For config candidates, use read_text_file first, then apply_config_text_patch with dry_run=true and exact old/new text.",
+        "Do not edit ESP/ESM/ESL records or delete mods from a log line alone. Confirm with xEdit or a cloned Vortex profile test.",
+    ]
+    if config_candidates:
+        recommended_actions.insert(0, "A config-like runtime error points to staged config/text candidates that OpenClaw can inspect and patch with backups.")
+    if not files:
+        recommended_actions.insert(0, "No Skyrim runtime logs were found. Enable Papyrus logging only for debugging, launch Skyrim once, reproduce the issue, then rerun.")
+
+    return {
+        "available": bool(files),
+        "myGamesDir": str(my_games) if my_games else None,
+        "skyrimDir": str(skyrim_dir) if skyrim_dir else None,
+        "stagingDir": str(staging_dir) if staging_dir else None,
+        "logCount": len(files),
+        "findingCount": len(findings),
+        "severityCounts": severity_counts,
+        "logs": log_summaries,
+        "findings": findings,
+        "configCandidates": config_candidates,
+        "stagedFileIndex": {
+            "available": bool(staged_index),
+            "indexedModCount": staged_index.get("indexedModCount") if isinstance(staged_index, dict) else 0,
+            "indexedFileCount": staged_index.get("indexedFileCount") if isinstance(staged_index, dict) else 0,
+            "truncated": staged_index.get("truncated") if isinstance(staged_index, dict) else False,
+        },
+        "recommendedActions": recommended_actions,
+        "notes": [
+            "This scans recent tails of Papyrus, SKSE, crash, Trainwreck/CrashLogger, and NetScriptFramework logs when present.",
+            "The report stores short matching lines, not whole log files.",
+            "Papyrus warnings can be noisy; repeated fatal/SKSE/crash/config errors are usually more useful than one-off warnings.",
+        ],
+    }
+
+
 def vortex_cli_get(args: Dict[str, Any]) -> Dict[str, Any]:
     paths = args.get("paths") or ["persistent.profiles", "settings.profiles"]
     if not isinstance(paths, list) or not all(isinstance(path, str) and path for path in paths):
@@ -5474,6 +5950,7 @@ def safe_session_findings(sections: Dict[str, Any]) -> List[Dict[str, Any]]:
         "setupValidationError": ("high", "Fix basic path detection first, then rerun the safe session."),
         "skyrimModdedPlayError": ("high", "Pass explicit skyrim_dir, staging_dir, vortex_exe, or local_appdata and rerun."),
         "inGameIssueError": ("medium", "Rerun with simpler issue text, screenshot/OCR popup text, or console FormID if available."),
+        "skyrimRuntimeLogsError": ("medium", "Rerun after launching Skyrim once, reproducing the issue, or passing my_games_dir/skyrim_dir explicitly."),
         "nexusUpdateReportError": ("low", "Keep using local diagnostics; rerun Nexus metadata checks after configuring the API key/cache."),
         "logStatusError": ("low", "Pass log_dir explicitly or rerun after MCP Doctor creates logs."),
     }
@@ -5556,6 +6033,36 @@ def safe_session_findings(sections: Dict[str, Any]) -> List[Dict[str, Any]]:
             f"Vortex exposed {collection.get('collectionStateCount')} collection-like state item(s) and {collection.get('modCollectionMarkerCount')} mod marker(s).",
             "Use this for collection mismatch context only; do not auto-install or remove collection mods.",
         )
+    runtime_logs = sections.get("skyrimRuntimeLogs")
+    if isinstance(runtime_logs, dict):
+        for item in runtime_logs.get("findings", [])[:12]:
+            if not isinstance(item, dict):
+                continue
+            severity = str(item.get("severity") or "info")
+            if severity not in {"critical", "high", "medium"}:
+                continue
+            add_finding(
+                findings,
+                severity,
+                "skyrim_runtime_log_finding",
+                f"{item.get('logName') or 'runtime log'}: {item.get('line')}",
+                "Inspect the referenced mod/config first; use exact-text config patches with backups only after reading the file.",
+                {
+                    "log": item.get("log"),
+                    "references": item.get("references"),
+                    "stagedMatches": item.get("stagedMatches"),
+                },
+            )
+        for candidate in runtime_logs.get("configCandidates", [])[:8]:
+            if isinstance(candidate, dict):
+                add_finding(
+                    findings,
+                    "medium",
+                    "runtime_config_candidate",
+                    f"Runtime logs point to config candidate {candidate.get('relativePath')} from {candidate.get('mod')}.",
+                    "Use read_text_file, then apply_config_text_patch dry-run with exact old/new text.",
+                    candidate,
+                )
     nexus_updates = sections.get("nexusUpdateReport") or sections.get("nexusUpdates")
     if isinstance(nexus_updates, dict):
         if not nexus_updates.get("available") and nexus_updates.get("notes"):
@@ -5697,6 +6204,32 @@ def safe_session_markdown(session: Dict[str, Any]) -> str:
         for item in collection.get("collectionStates", [])[:8]:
             lines.append(f"- {item.get('name') or item.get('slug') or item.get('id') or item.get('path')}")
 
+    runtime_logs = sections.get("skyrimRuntimeLogs")
+    if isinstance(runtime_logs, dict):
+        lines.extend(["", "## Skyrim Runtime Logs", ""])
+        lines.append(f"- Logs scanned: {runtime_logs.get('logCount')}")
+        lines.append(f"- Findings: {runtime_logs.get('findingCount')}")
+        severity_counts = runtime_logs.get("severityCounts")
+        if isinstance(severity_counts, dict) and severity_counts:
+            lines.append("- Severity counts: " + ", ".join(f"{key}={value}" for key, value in severity_counts.items()))
+        for item in runtime_logs.get("findings", [])[:8]:
+            if isinstance(item, dict):
+                lines.append(f"- [{item.get('severity')}] {item.get('logName')}: {item.get('line')}")
+                matches = item.get("stagedMatches")
+                if isinstance(matches, list) and matches:
+                    first = matches[0]
+                    if isinstance(first, dict):
+                        lines.append(f"  Match: {first.get('mod')} -> {first.get('relativePath')}")
+        candidates = runtime_logs.get("configCandidates", [])
+        if candidates:
+            lines.append("- Config candidates:")
+            for candidate in candidates[:8]:
+                if isinstance(candidate, dict):
+                    lines.append(f"  - {candidate.get('mod')}: {candidate.get('relativePath')}")
+    elif sections.get("skyrimRuntimeLogsError"):
+        lines.extend(["", "## Skyrim Runtime Logs", ""])
+        lines.append(f"- Runtime log scan error: {sections.get('skyrimRuntimeLogsError')}")
+
     nexus_updates = sections.get("nexusUpdateReport") or sections.get("nexusUpdates")
     if isinstance(nexus_updates, dict):
         lines.extend(["", "## Nexus Metadata", ""])
@@ -5748,6 +6281,7 @@ def safe_session_report(args: Dict[str, Any]) -> Dict[str, Any]:
     include_profile_backup = bool(args.get("include_profile_backup", True))
     include_play_report = bool(args.get("include_play_report", True))
     include_logs = bool(args.get("include_logs", True))
+    include_runtime_logs = bool(args.get("include_runtime_logs", True))
     include_xedit_report = bool(args.get("include_xedit_report", False))
     include_collection_report = bool(args.get("include_collection_report", False))
     redact_user_paths = bool(args.get("redact_user_paths", True))
@@ -5773,6 +6307,8 @@ def safe_session_report(args: Dict[str, Any]) -> Dict[str, Any]:
         collect_section(sections, "vortexCollection", vortex_collection_report, args)
     if bool(args.get("include_nexus_metadata", False)):
         collect_section(sections, "nexusUpdateReport", nexus_update_report, args)
+    if include_runtime_logs:
+        collect_section(sections, "skyrimRuntimeLogs", skyrim_runtime_log_report, args)
     if include_logs:
         collect_section(sections, "logStatus", log_status, {"log_dir": args.get("log_dir"), "max_files": args.get("max_log_files", 12)})
 
@@ -5819,6 +6355,7 @@ def safe_session_report(args: Dict[str, Any]) -> Dict[str, Any]:
             "Use include_nexus_metadata=true with NEXUS_MODS_API_KEY for optional Nexus source/update metadata.",
             "Use include_xedit_report=true for read-only xEdit/SSEEdit target hints.",
             "Use include_collection_report=true to inspect collection-like state exposed by Vortex.",
+            "Runtime log scanning checks recent Skyrim/Papyrus/SKSE/crash logs and points config-like errors at staged files when possible.",
             "Use deep_scan_files=true for a slower second pass on weak in-game issue results.",
         ],
     }
@@ -5935,6 +6472,7 @@ def bug_report_bundle(args: Dict[str, Any]) -> Dict[str, Any]:
     include_conflicts = bool(args.get("include_conflicts", False))
     include_xedit_report = bool(args.get("include_xedit_report", False))
     include_collection_report = bool(args.get("include_collection_report", False))
+    include_runtime_logs = bool(args.get("include_runtime_logs", True))
     redact_user_paths = bool(args.get("redact_user_paths", True))
     zip_output = bool(args.get("zip_output", False))
     zip_path = expand_path(args.get("zip_path"))
@@ -5973,6 +6511,7 @@ def bug_report_bundle(args: Dict[str, Any]) -> Dict[str, Any]:
             "Do not apply INI or Vortex profile writes unless the user explicitly approves.",
             "If Vortex profile or deployment sections failed, ask for explicit vortex_exe, skyrim_dir, staging_dir, or vortex_appdata paths.",
             "If logs show a Vortex CLI database lock, tell the user to close Vortex and rerun the same tool.",
+            "If Skyrim runtime logs include configCandidates, read the candidate file before proposing an exact-text patch.",
         ],
     }
 
@@ -6018,6 +6557,12 @@ def bug_report_bundle(args: Dict[str, Any]) -> Dict[str, Any]:
             bundle["vortexCollection"] = vortex_collection_report(args)
         except Exception as exc:
             bundle["vortexCollectionError"] = str(exc)
+
+    if include_runtime_logs:
+        try:
+            bundle["skyrimRuntimeLogs"] = skyrim_runtime_log_report(args)
+        except Exception as exc:
+            bundle["skyrimRuntimeLogsError"] = str(exc)
 
     if include_profiles:
         try:
@@ -6140,6 +6685,7 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                         "mods_not_working",
                         "weird_object",
                         "popup",
+                        "runtime_logs",
                         "large_collection_review",
                         "collection_drift",
                         "safe_profile_undo",
@@ -6549,6 +7095,7 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "include_profile_state": {"type": "boolean", "default": True},
                 "include_play_report": {"type": "boolean", "default": True},
                 "include_logs": {"type": "boolean", "default": True},
+                "include_runtime_logs": {"type": "boolean", "default": True},
                 "include_conflicts": {"type": "boolean", "default": False},
                 "include_nexus_metadata": {"type": "boolean", "default": False},
                 "include_xedit_report": {"type": "boolean", "default": False},
@@ -6576,6 +7123,10 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "max_files_per_mod": {"type": "integer", "default": 3000},
                 "max_conflicts": {"type": "integer", "default": 300},
                 "max_log_files": {"type": "integer", "default": 12},
+                "max_runtime_log_files": {"type": "integer", "default": 12},
+                "max_log_bytes_per_file": {"type": "integer", "default": LOG_TAIL_DEFAULT_BYTES},
+                "max_runtime_findings": {"type": "integer", "default": 80},
+                "max_runtime_index_files": {"type": "integer", "default": 60000},
                 "nexus_max_lookup_mods": {"type": "integer", "default": 80},
                 "nexus_api_key": {"type": "string"},
                 "nexus_api_key_file": {"type": "string"},
@@ -6613,6 +7164,7 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "include_profile_state": {"type": "boolean", "default": True},
                 "include_play_report": {"type": "boolean", "default": True},
                 "include_logs": {"type": "boolean", "default": True},
+                "include_runtime_logs": {"type": "boolean", "default": True},
                 "include_conflicts": {"type": "boolean", "default": False},
                 "include_nexus_metadata": {"type": "boolean", "default": False},
                 "include_xedit_report": {"type": "boolean", "default": False},
@@ -6637,6 +7189,10 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "max_files_per_mod": {"type": "integer", "default": 3000},
                 "max_conflicts": {"type": "integer", "default": 300},
                 "max_log_files": {"type": "integer", "default": 12},
+                "max_runtime_log_files": {"type": "integer", "default": 12},
+                "max_log_bytes_per_file": {"type": "integer", "default": LOG_TAIL_DEFAULT_BYTES},
+                "max_runtime_findings": {"type": "integer", "default": 80},
+                "max_runtime_index_files": {"type": "integer", "default": 60000},
                 "nexus_max_lookup_mods": {"type": "integer", "default": 80},
                 "nexus_api_key": {"type": "string"},
                 "nexus_api_key_file": {"type": "string"},
@@ -6676,6 +7232,37 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         },
         apply_ini_fixes,
     ),
+    "skyrim_runtime_log_report": (
+        "Read recent Skyrim/Papyrus/SKSE/crash logs, detect high-signal errors/popups, and map referenced files back to staged mods.",
+        {
+            "type": "object",
+            "properties": {
+                "description": {"type": "string"},
+                "popup_text": {"type": "string"},
+                "extra_terms": {"type": "string"},
+                "problem": {"type": "string"},
+                "skyrim_dir": {"type": "string"},
+                "staging_dir": {"type": "string"},
+                "vortex_appdata": {"type": "string"},
+                "my_games_dir": {"type": "string"},
+                "performance_mode": {"type": "string", "enum": ["normal", "slow_model", "fast", "thorough"], "default": "normal"},
+                "response_mode": {"type": "string", "enum": ["standard", "compact"], "default": "standard"},
+                "include_staged_file_matches": {"type": "boolean", "default": True},
+                "max_runtime_log_files": {"type": "integer", "default": 12},
+                "max_log_files": {"type": "integer", "default": 12},
+                "max_log_bytes_per_file": {"type": "integer", "default": LOG_TAIL_DEFAULT_BYTES},
+                "max_log_bytes": {"type": "integer", "default": LOG_TAIL_DEFAULT_BYTES},
+                "max_runtime_findings": {"type": "integer", "default": 80},
+                "max_runtime_references": {"type": "integer", "default": 12},
+                "max_runtime_config_candidates": {"type": "integer", "default": 20},
+                "max_runtime_index_files": {"type": "integer", "default": 60000},
+                "max_mods": {"type": "integer", "default": 500},
+                "max_files_per_mod": {"type": "integer", "default": 3000},
+            },
+            "additionalProperties": False,
+        },
+        skyrim_runtime_log_report,
+    ),
     "read_text_file": (
         "Read a text file under detected Vortex/Skyrim roots. Use for mod readmes, logs, INIs, and XML configs.",
         {
@@ -6694,6 +7281,31 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
             "additionalProperties": False,
         },
         read_text_file,
+    ),
+    "apply_config_text_patch": (
+        "Safely replace exact text in a staged Skyrim config/text file. Dry-run by default and creates backups when writing.",
+        {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "old_text": {"type": "string"},
+                "new_text": {"type": "string"},
+                "dry_run": {"type": "boolean", "default": True},
+                "apply": {"type": "boolean", "default": False},
+                "make_backup": {"type": "boolean", "default": True},
+                "allow_multiple": {"type": "boolean", "default": False},
+                "max_bytes": {"type": "integer", "default": 2000000},
+                "allow_any_path": {"type": "boolean", "default": False},
+                "allowed_roots": {"type": "array", "items": {"type": "string"}},
+                "vortex_appdata": {"type": "string"},
+                "skyrim_dir": {"type": "string"},
+                "staging_dir": {"type": "string"},
+                "my_games_dir": {"type": "string"},
+            },
+            "required": ["path", "old_text", "new_text"],
+            "additionalProperties": False,
+        },
+        apply_config_text_patch,
     ),
     "vortex_cli_get": (
         "Read raw Vortex state through Vortex.exe --get. Useful for diagnosing profile/state paths.",
@@ -6964,12 +7576,17 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "include_nexus_metadata": {"type": "boolean", "default": False},
                 "include_xedit_report": {"type": "boolean", "default": False},
                 "include_collection_report": {"type": "boolean", "default": False},
+                "include_runtime_logs": {"type": "boolean", "default": True},
                 "redact_user_paths": {"type": "boolean", "default": True},
                 "zip_output": {"type": "boolean", "default": False},
                 "zip_path": {"type": "string"},
                 "include_log_tails_in_zip": {"type": "boolean", "default": True},
                 "max_log_files": {"type": "integer", "default": 12},
                 "max_log_bytes": {"type": "integer", "default": LOG_TAIL_DEFAULT_BYTES},
+                "max_runtime_log_files": {"type": "integer", "default": 12},
+                "max_log_bytes_per_file": {"type": "integer", "default": LOG_TAIL_DEFAULT_BYTES},
+                "max_runtime_findings": {"type": "integer", "default": 80},
+                "max_runtime_index_files": {"type": "integer", "default": 60000},
                 "max_mods": {"type": "integer", "default": 500},
                 "max_files_per_mod": {"type": "integer", "default": 3000},
                 "nexus_max_lookup_mods": {"type": "integer", "default": 80},
@@ -7222,6 +7839,9 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         "collection_manifest_json": parsed.collection_manifest_json,
         "problem": parsed.problem,
         "workflow_key": parsed.workflow_key,
+        "path": parsed.path,
+        "old_text": parsed.old_text,
+        "new_text": parsed.new_text,
     }
     for key, value in common.items():
         if value:
@@ -7230,6 +7850,14 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["max_mods"] = parsed.max_mods
     if parsed.max_log_files is not None:
         tool_args["max_log_files"] = parsed.max_log_files
+    if parsed.max_runtime_log_files is not None:
+        tool_args["max_runtime_log_files"] = parsed.max_runtime_log_files
+    if parsed.max_log_bytes_per_file is not None:
+        tool_args["max_log_bytes_per_file"] = parsed.max_log_bytes_per_file
+    if parsed.max_runtime_findings is not None:
+        tool_args["max_runtime_findings"] = parsed.max_runtime_findings
+    if parsed.max_runtime_index_files is not None:
+        tool_args["max_runtime_index_files"] = parsed.max_runtime_index_files
     if parsed.balanced_text_files_per_mod is not None:
         tool_args["balanced_text_files_per_mod"] = parsed.balanced_text_files_per_mod
     if parsed.nexus_cache_ttl_seconds is not None:
@@ -7288,6 +7916,16 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["include_play_report"] = False
     if parsed.no_logs:
         tool_args["include_logs"] = False
+    if parsed.no_runtime_logs:
+        tool_args["include_runtime_logs"] = False
+    if parsed.no_staged_file_matches:
+        tool_args["include_staged_file_matches"] = False
+    if parsed.allow_any_path:
+        tool_args["allow_any_path"] = True
+    if parsed.allow_multiple:
+        tool_args["allow_multiple"] = True
+    if parsed.no_config_backup:
+        tool_args["make_backup"] = False
     return tool_args
 
 
@@ -7345,6 +7983,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--mod-knowledge", action="store_true", help="Shortcut for --tool mod_knowledge_report.")
     parser.add_argument("--safe-session", action="store_true", help="Shortcut for --tool safe_session_report.")
     parser.add_argument("--skyrim-diagnostics", action="store_true", help="Shortcut for --tool skyrim_diagnostics_report.")
+    parser.add_argument("--runtime-logs", action="store_true", help="Shortcut for --tool skyrim_runtime_log_report.")
     parser.add_argument("--workflow-guide", action="store_true", help="Shortcut for --tool workflow_guide.")
     parser.add_argument("--args-json", help="JSON object with tool arguments.")
     parser.add_argument("--args-file", help="Path to a JSON object file with tool arguments.")
@@ -7363,6 +8002,9 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--backup-dir", help="Folder for automatic profile backups.")
     parser.add_argument("--session-json-path", help="JSON output path for --safe-session.")
     parser.add_argument("--log-dir", help="Override MCP log folder for log_status and support reports.")
+    parser.add_argument("--path", help="Target path for read_text_file or apply_config_text_patch.")
+    parser.add_argument("--old-text", help="Exact text to replace for apply_config_text_patch.")
+    parser.add_argument("--new-text", help="Replacement text for apply_config_text_patch.")
     parser.add_argument("--description", help="In-game issue description for in_game_issue_report.")
     parser.add_argument("--problem", help="Plain-language problem for workflow_guide.")
     parser.add_argument("--workflow-key", help="Specific workflow key for workflow_guide, or all.")
@@ -7394,6 +8036,10 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--max-workflows", type=int, help="Maximum workflows returned by workflow_guide.")
     parser.add_argument("--max-mods", type=int, help="Maximum mods to scan for supported tools.")
     parser.add_argument("--max-log-files", type=int, help="Maximum recent log files for support reports.")
+    parser.add_argument("--max-runtime-log-files", type=int, help="Maximum recent Skyrim runtime log files to scan.")
+    parser.add_argument("--max-log-bytes-per-file", type=int, help="Maximum tail bytes read from each Skyrim runtime log.")
+    parser.add_argument("--max-runtime-findings", type=int, help="Maximum runtime log findings to return.")
+    parser.add_argument("--max-runtime-index-files", type=int, help="Maximum staged files to index for runtime log reference matching.")
     parser.add_argument("--balanced-text-files-per-mod", type=int, help="For balanced issue scans, max config/text files to read per mod.")
     parser.add_argument("--hash-files", action="store_true", help="Hash files for stronger duplicate evidence. Slower.")
     parser.add_argument("--include-nexus-metadata", action="store_true", help="Include optional read-only Nexus metadata in supported reports.")
@@ -7417,6 +8063,11 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--no-profile-backup", action="store_true", help="For --safe-session, skip the profile backup section.")
     parser.add_argument("--no-play-report", action="store_true", help="For --safe-session, skip the modded play health section.")
     parser.add_argument("--no-logs", action="store_true", help="For --safe-session or bug reports, skip log status.")
+    parser.add_argument("--no-runtime-logs", action="store_true", help="Skip Skyrim runtime log scanning in safe-session, diagnostics, and bug bundles.")
+    parser.add_argument("--no-staged-file-matches", action="store_true", help="For skyrim_runtime_log_report, skip staged file indexing/matching.")
+    parser.add_argument("--allow-any-path", action="store_true", help="Allow read/patch tools outside detected Vortex/Skyrim roots.")
+    parser.add_argument("--allow-multiple", action="store_true", help="Allow apply_config_text_patch to replace multiple occurrences of old_text.")
+    parser.add_argument("--no-config-backup", action="store_true", help="Do not create a backup when apply_config_text_patch writes.")
 
     parsed = parser.parse_args(argv)
     if parsed.self_test:
@@ -7433,6 +8084,8 @@ def cli_main(argv: List[str]) -> int:
         if parsed.skyrim_diagnostics
         else "safe_session_report"
         if parsed.safe_session
+        else "skyrim_runtime_log_report"
+        if parsed.runtime_logs
         else "mod_knowledge_report"
         if parsed.mod_knowledge
         else "workflow_guide"
@@ -7440,7 +8093,7 @@ def cli_main(argv: List[str]) -> int:
         else parsed.tool
     )
     if not tool_name:
-        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, or --workflow-guide")
+        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --runtime-logs, or --workflow-guide")
 
     try:
         tool_args = load_cli_tool_args(parsed)

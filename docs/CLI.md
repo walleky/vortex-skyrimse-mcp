@@ -98,6 +98,30 @@ If the first result is weak, use the slower deep scan:
 py -3 .\server.py --tool in_game_issue_report --description "annoying popup after loading a save" --scan-mode deep
 ```
 
+Read Skyrim runtime logs for a popup/config error:
+
+```powershell
+py -3 .\server.py --runtime-logs --description "popup says file was not configured properly"
+```
+
+If the report returns `configCandidates`, read the exact file:
+
+```powershell
+py -3 .\server.py --tool read_text_file --path "C:\path\to\config\popup.json"
+```
+
+Preview an exact config patch:
+
+```powershell
+py -3 .\server.py --tool apply_config_text_patch --path "C:\path\to\config\popup.json" --old-text "configured=false" --new-text "configured=true"
+```
+
+Apply only after approval:
+
+```powershell
+py -3 .\server.py --tool apply_config_text_patch --path "C:\path\to\config\popup.json" --old-text "configured=false" --new-text "configured=true" --apply
+```
+
 Return compact JSON for a slower model:
 
 ```powershell
@@ -242,6 +266,8 @@ Direct CLI mode uses the same tool implementations and safety rules as MCP mode.
 Profile write tools create backups before `--apply` by default. Use `--no-backup-before-apply` only for advanced recovery when you already have a known-good backup.
 
 `in_game_issue_report` is read-only. It searches for likely cause candidates but does not edit plugins, delete objects, or disable mods.
+
+`skyrim_runtime_log_report` is read-only. `apply_config_text_patch` is write-capable but exact-text only, dry-run by default, restricted to detected Vortex/Skyrim roots, and backed up by default.
 
 By default it uses the balanced issue scan: mod names, plugin names, readmes,
 plugin strings, important file paths, and limited config/text files. Add

@@ -42,6 +42,7 @@ Attach:
 - whether the issue happened after installing a collection, changing profiles, updating SKSE, or deploying mods
 - the profile backup path if a profile write or restore was involved
 - for in-game object/popup issues, the location, object/FormID if known, and screenshots/OCR or exact popup text if available
+- for config popups, run the game once until the popup appears so `skyrim_runtime_log_report` has fresh Papyrus/SKSE/crash evidence
 
 ## Manual Bundle Tool
 
@@ -64,6 +65,7 @@ Useful arguments:
   "include_conflicts": false,
   "include_xedit_report": false,
   "include_collection_report": false,
+  "include_runtime_logs": true,
   "performance_mode": "slow_model"
 }
 ```
@@ -87,6 +89,7 @@ Use `zip_output=true` when you want one attachable file. The zip contains:
 - scan-cache status
 - optional xEdit/SSEEdit target hints when requested or FormID/plugin evidence is supplied
 - optional Vortex collection state when requested
+- Skyrim runtime log findings and config candidates when enabled
 - modded play report
 - Vortex profile report if available
 - Vortex profile deployment report if available
@@ -138,6 +141,7 @@ Start with:
 - recent `vortex-cli` nonzero return codes or timeouts
 - `nexusUpdateReport` errors, stale mods, missing source metadata, or lookup-limit skips
 - `xeditDiagnostics` target hints for FormID/plugin issues
+- `skyrimRuntimeLogs.findings` and `skyrimRuntimeLogs.configCandidates` for popup/config/crash issues
 - `vortexCollection` collection-state context for collection drift
 - `backupPath` fields from any profile write result
 

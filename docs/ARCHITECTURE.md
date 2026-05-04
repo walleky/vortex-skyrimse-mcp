@@ -11,6 +11,7 @@ OpenClaw or MCP client
       -> detect local Steam/Vortex/Skyrim paths
       -> inspect staging folders, plugins, INIs, profiles, conflicts
       -> optionally recommend a safe workflow from a plain-language problem
+      -> optionally inspect Skyrim/Papyrus/SKSE/crash runtime logs
       -> optionally enrich reports with read-only Nexus Mods metadata
       -> optionally use local scan cache, xEdit target hints, and collection diagnostics
       -> optionally call Vortex.exe --get/--set for profile state
@@ -41,6 +42,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - `openclaw.mcp.example.json`: static example config.
 - `docs/SAFE-SESSION.md`: explains the one-call safe-session report flow.
 - `docs/SKYRIM-DIAGNOSTICS.md`: explains the broad one-button diagnostics report.
+- `docs/SKYRIM-RUNTIME-LOGS.md`: explains runtime log scanning and safe config patching.
 - `docs/MOD-KNOWLEDGE.md`: explains the collection knowledge report and safe removal-review flow.
 - `docs/NEXUS-API.md`: explains optional read-only Nexus Mods API metadata support.
 - `docs/ADR-0001-NEXUS-API-KEYS.md`: records why this MCP uses its own explicit Nexus API key.
@@ -61,9 +63,10 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - xEdit/SSEEdit target hints: `xedit_diagnostics_report`, `xedit_candidates`, `form_id_load_order_hint`.
 - collection diagnostics: `vortex_collection_report`, `collection_local_match_report`, `extract_manifest_mod_refs`.
 - in-game issue triage: `in_game_issue_report`, `scan_mod_for_issue`, `extract_plugin_strings`.
+- runtime log diagnosis: `skyrim_runtime_log_report`, `collect_skyrim_runtime_log_files`, `match_runtime_references_to_staged_files`, `runtime_config_candidates`.
 - performance shaping: `apply_performance_defaults`, `compact_issue_report`, `compact_play_report`.
 - plugin/load-order checks: `parse_plugin_list`, `plugin_report`, `plugin_masters`.
-- INI checks and writes: `ini_report`, `apply_ini_fixes`.
+- INI/config checks and writes: `ini_report`, `apply_ini_fixes`, `read_text_file`, `apply_config_text_patch`.
 - setup validation: `validate_setup`.
 - workflow routing: `workflow_guide`, `workflow_catalog`, `workflow_score`.
 - profile tools: `vortex_profile_report`, `vortex_profile_mods`, `vortex_compare_profiles`, `vortex_profile_deployment_report`, `vortex_profile_backup`, `vortex_profile_restore_plan`, `vortex_clone_profile`, `vortex_set_profile_mods`.
@@ -76,6 +79,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 Most tools are read-only. The write tools are narrow and opt-in:
 
 - `apply_ini_fixes` writes only when `dry_run=false`.
+- `apply_config_text_patch` writes only when `apply=true` or `dry_run=false`, replaces exact text only, restricts paths to detected roots by default, and backs up before writing.
 - `vortex_clone_profile` writes only when `apply=true`.
 - `vortex_set_profile_mods` writes only when `apply=true`.
 - `vortex_clone_profile` and `vortex_set_profile_mods` write a profile backup before `apply=true` unless `backup_before_apply=false`.
@@ -148,8 +152,8 @@ skyrim_diagnostics_report
 
 `skyrim_diagnostics_report` writes a Markdown report plus JSON. It calls setup
 validation, optional profile backup, modded play health, optional in-game issue
-triage, optional Nexus metadata, and log status. It is no-change except for
-writing report files and a profile backup JSON.
+triage, Skyrim runtime log scanning, optional Nexus metadata, and log status. It
+is no-change except for writing report files and a profile backup JSON.
 
 For a bug, OpenClaw should call:
 

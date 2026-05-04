@@ -151,6 +151,17 @@ safe_session_report with description/location/object/popup_text, or in_game_issu
 
 If the user says "popup", "notification", "warning", "alert", "prompt", "dialog", "MCM message", or similar, run popup triage from the plain description first. Do not block on exact popup text. Ask for exact text or screenshot/OCR only if the first candidates are weak.
 
+For "file was not configured properly", SKSE popups, crash popups, or any log-like error:
+
+```text
+skyrim_runtime_log_report with description=<plain user problem>
+```
+
+Read `findings`, `severityCounts`, and `configCandidates`. If a config candidate
+exists, call `read_text_file` on that path. Only propose
+`apply_config_text_patch` with exact `old_text` and `new_text`, and start with
+`dry_run=true`. Do not patch plugin files, DLLs, scripts, or arbitrary folders.
+
 For placed objects, ask for exact location, object name, and if possible the console-clicked FormID.
 
 For "make me a safe test profile":
@@ -254,6 +265,19 @@ For popups, first rerun from the user's natural-language description if OpenClaw
 Read `diagnosticQuality` and `nextBestInputs` before asking the user for more information. If the first pass is still too weak, rerun with `scan_mode=deep` or `deep_scan_files=true`. Warn the user that it is slower on large collections.
 
 If `scan.timedOut=true`, explain that the result is partial. Increase `timeout_seconds`, lower `max_mods`, or ask for stronger evidence before blaming a mod.
+
+`skyrim_runtime_log_report has configCandidates`
+
+Read the candidate config file first. If the needed fix is a tiny exact text
+replacement, propose `apply_config_text_patch` as a dry run. Applying requires
+explicit user approval and writes a backup by default. If the candidate is an
+ESP/ESM/ESL, DLL, PEX, BSA, or SWF, do not patch it with this tool.
+
+`skyrim_runtime_log_report shows Address Library, DLL, fatal, or crash findings`
+
+Treat those as higher priority than Papyrus warnings. Check SKSE version,
+Address Library/runtime compatibility, plugin install path, and deployment
+before changing gameplay mods.
 
 `safe_session_report` has `dryRunOnly=true`. It may write report files and a profile backup, but it should never deploy, disable, delete, sort, or edit mods.
 

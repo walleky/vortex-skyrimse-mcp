@@ -19,8 +19,8 @@ py -3 .\server.py --skyrim-diagnostics --performance-mode slow_model
 ```
 
 `slow_model` keeps the balanced first scan for in-game issues, but returns
-compact candidate summaries, fewer evidence snippets, fewer log files, and skips
-the optional profile backup unless you explicitly ask for it.
+compact candidate summaries, fewer evidence snippets, fewer MCP/runtime log
+findings, and skips the optional profile backup unless you explicitly ask for it.
 
 ## Modes
 
@@ -84,6 +84,7 @@ For large collections:
 - Use `performance_mode=slow_model` for most OpenClaw conversations.
 - Use `--no-profile-state` if Vortex CLI is slow or Vortex is open/locked.
 - Use `--no-logs` if logs are not relevant.
+- Use `--no-runtime-logs` if Skyrim/Papyrus/SKSE/crash logs are not relevant.
 - Use `--max-mods 200` for rough triage on massive collections.
 - Keep `nexus_max_lookup_mods` modest for the first pass; increase it only when
   you need a fuller Nexus metadata review.

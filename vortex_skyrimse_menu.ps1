@@ -26,6 +26,7 @@ param(
   [switch]$NoReadmeExcerpts,
   [switch]$NoProfileBackup,
   [switch]$NoLogs,
+  [switch]$NoRuntimeLogs,
   [switch]$NoPlayReport,
   [switch]$IncludeNexusMetadata,
   [switch]$IncludeXeditReport,
@@ -143,6 +144,9 @@ function Get-CommonArgs {
   if ($NoScanCache) {
     $args += "--no-scan-cache"
   }
+  if ($NoRuntimeLogs) {
+    $args += "--no-runtime-logs"
+  }
   if ($IncludeAllWorkflows) {
     $args += "--include-all-workflows"
   }
@@ -197,6 +201,7 @@ function Show-Actions {
   Write-Host "15. Vortex collection state"
   Write-Host "16. Collection manifest match"
   Write-Host "17. Workflow guide"
+  Write-Host "18. Skyrim runtime logs"
   Write-Host "Q. Quit"
 }
 
@@ -269,6 +274,7 @@ function Invoke-MenuAction {
         include_vortex_profiles = $true
         include_vortex_deployment = $true
         include_play_report = $true
+        include_runtime_logs = (-not $NoRuntimeLogs)
       }
       $out = Join-Path $script:ReportDir "bug-report-$stamp.result.json"
       Invoke-Server (@("--tool", "bug_report_bundle", "--args-file", $argsFile, "--output-json", $out) + $common)
@@ -371,6 +377,7 @@ function Invoke-MenuAction {
         include_all_profiles = $true
         include_play_report = (-not $NoPlayReport)
         include_logs = (-not $NoLogs)
+        include_runtime_logs = (-not $NoRuntimeLogs)
         redact_user_paths = $true
       }
       if ($description) {
@@ -423,6 +430,7 @@ function Invoke-MenuAction {
         include_all_profiles = $true
         include_play_report = (-not $NoPlayReport)
         include_logs = (-not $NoLogs)
+        include_runtime_logs = (-not $NoRuntimeLogs)
         redact_user_paths = $true
       }
       if ($description) {
@@ -525,6 +533,29 @@ function Invoke-MenuAction {
       Invoke-Server (@("--workflow-guide", "--args-file", $argsFile, "--output-json", $out) + $common)
       Write-Host "Wrote workflow guide: $out" -ForegroundColor Green
       Write-Host "This action only recommends safe next tools; it did not inspect or change Vortex." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("18", "runtime", "runtime-logs", "skyrim-logs", "papyrus", "skse-logs") } {
+      $description = $IssueDescription
+      $popup = $PopupText
+      if (!$description -and !$script:StartedWithAction) {
+        $description = Read-Host "Optional problem/popup description (press Enter to scan logs only)"
+      }
+      if (!$popup -and !$script:StartedWithAction) {
+        $popup = Read-Host "Exact popup text, if any (press Enter to skip)"
+      }
+      $argsData = @{}
+      if ($description) {
+        $argsData.description = $description
+      }
+      if ($popup) {
+        $argsData.popup_text = $popup
+      }
+      $argsFile = Write-JsonArgs "runtime-logs" $argsData
+      $out = Join-Path $script:ReportDir "skyrim-runtime-logs-$stamp.json"
+      Invoke-Server (@("--runtime-logs", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Wrote Skyrim runtime log report: $out" -ForegroundColor Green
+      Write-Host "This action did not edit logs, mods, configs, or Vortex." -ForegroundColor Green
       return
     }
     { $_ -in @("q", "quit", "exit") } {

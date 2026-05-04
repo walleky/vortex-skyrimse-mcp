@@ -34,3 +34,6 @@ if (($MenuOutput -join "`n") -notmatch "Collection manifest match") {
 if (($MenuOutput -join "`n") -notmatch "Workflow guide") {
   throw "Menu did not list the workflow guide action."
 }
+if (($MenuOutput -join "`n") -notmatch "Skyrim runtime logs") {
+  throw "Menu did not list the Skyrim runtime logs action."
+}

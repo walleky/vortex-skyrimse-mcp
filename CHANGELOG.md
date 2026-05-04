@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.2.17
+
+- Adds `skyrim_runtime_log_report` for recent Papyrus/SKSE/crash log scanning, high-signal error detection, and staged-file matching.
+- Adds config/error candidate detection for popup messages such as "file was not configured properly".
+- Adds `apply_config_text_patch`, an exact-text config patch tool that is dry-run by default, root-restricted, and backed up when writing.
+- Wires Skyrim runtime logs into safe-session reports, Skyrim diagnostics, bug bundles, the workflow guide, direct CLI, and local menu action 18.
+- Documents the runtime-log and safe config-patch workflow for OpenClaw and no-OpenClaw users.
+- Extends smoke, fixture, and PowerShell menu tests for runtime logs and config patching.
+
 ## v0.2.16
 
 - Adds `workflow_guide`, a read-only routing helper that turns a plain-language Skyrim/Vortex problem into a safe recommended MCP tool sequence.

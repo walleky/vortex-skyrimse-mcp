@@ -39,6 +39,18 @@ looks for UI/interface, script, SKSE, config, FOMOD, and MCM-style evidence.
 Exact text or screenshot/OCR is optional second-pass evidence when the first
 candidate list is weak.
 
+If the popup says a file was not configured properly, use the runtime log tool
+too:
+
+```text
+skyrim_runtime_log_report with description "popup says file was not configured properly"
+```
+
+That checks Papyrus/SKSE/crash logs for the exact config or DLL/script/plugin
+that complained. When it returns `configCandidates`, OpenClaw should read those
+files with `read_text_file` before proposing an exact-text
+`apply_config_text_patch` dry run.
+
 The tool searches staged mods for:
 
 - mod names
@@ -109,13 +121,15 @@ Safer path:
 
 1. Run `skyrim_diagnostics_report` with the issue details.
 2. If needed, run `in_game_issue_report` again with `scan_mode=deep`.
-3. Confirm a profile backup exists, or run `vortex_profile_backup`.
-4. Use `xedit_diagnostics_report` with any FormID/plugin evidence.
-5. Inspect the top candidate in xEdit/SSEEdit if available.
-6. Clone the Vortex profile.
-7. Disable one candidate in the cloned profile as a dry run first.
-8. Apply only after approval.
-9. Deploy in Vortex and test.
+3. Run `skyrim_runtime_log_report` after reproducing a popup/config/crash issue.
+4. If config candidates appear, read the file and patch exact text only as a dry run.
+5. Confirm a profile backup exists, or run `vortex_profile_backup`.
+6. Use `xedit_diagnostics_report` with any FormID/plugin evidence.
+7. Inspect the top candidate in xEdit/SSEEdit if available.
+8. Clone the Vortex profile.
+9. Disable one candidate in the cloned profile as a dry run first.
+10. Apply only after approval.
+11. Deploy in Vortex and test.
 
 ## What A True Live Skyrim MCP Needs
 

@@ -160,12 +160,13 @@ Use this when you do not want to type the exact popup text.
 Ask OpenClaw:
 
 ```text
-Use in_game_issue_report with description "annoying popup after loading a save". Do not ask me for exact text unless the first scan is weak.
+Use skyrim_runtime_log_report and in_game_issue_report with description "annoying popup after loading a save". Do not ask me for exact text unless the first scan is weak.
 ```
 
 What OpenClaw should call:
 
 ```text
+skyrim_runtime_log_report
 in_game_issue_report
 ```
 
@@ -181,6 +182,11 @@ Human next step:
 If the first result is weak, provide a screenshot/OCR or exact popup text and
 rerun. If the result is strong, test in a cloned Vortex profile before changing
 mods.
+
+If the popup says a file was not configured properly, read
+`skyrim_runtime_log_report.configCandidates` first. OpenClaw should use
+`read_text_file` on the candidate, then propose `apply_config_text_patch` as a
+dry run only when the old/new text is exact.
 
 ## Workflow 5: Large Collection Review
 
@@ -326,7 +332,8 @@ because it may contain mod names, plugin names, and unusual custom paths.
 | "Missing masters or crash?" | `plugin_report` |
 | "What mod added this thing?" | `in_game_issue_report` |
 | "I have a FormID" | `xedit_diagnostics_report` |
-| "Annoying popup" | `in_game_issue_report` |
+| "Annoying popup" | `skyrim_runtime_log_report`, then `in_game_issue_report` |
+| "File was not configured properly" | `skyrim_runtime_log_report` |
 | "What can I remove?" | `mod_knowledge_report` |
 | "Collection seems off" | `vortex_collection_report` |
 | "OpenClaw got confused" | `bug_report_bundle` |

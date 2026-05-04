@@ -23,6 +23,7 @@ It writes two files:
 - `xedit_diagnostics_report`: only when `include_xedit_report=true` or you pass a FormID/plugin name.
 - `vortex_collection_report`: only when `include_collection_report=true`.
 - `nexus_update_report`: only when `include_nexus_metadata=true` or the broader `skyrim_diagnostics_report` sees a configured Nexus key.
+- `skyrim_runtime_log_report`: recent Papyrus/SKSE/crash logs by default.
 - `log_status`: recent MCP logs and channels.
 
 In-game issue triage uses the balanced first scan by default. That means it
@@ -69,6 +70,12 @@ For popups, a plain description is enough:
 If the report says the evidence is weak, rerun the narrower tool with
 `scan_mode=deep` or provide screenshot/OCR text.
 
+To skip Skyrim runtime logs:
+
+```powershell
+.\vortex_skyrimse_menu.ps1 -Action safe -NoRuntimeLogs
+```
+
 ## Direct CLI
 
 ```powershell
@@ -100,6 +107,12 @@ Skip profile backup if Vortex CLI is locked or unavailable:
 py -3 .\server.py --safe-session --no-profile-backup
 ```
 
+Skip Skyrim runtime log scanning:
+
+```powershell
+py -3 .\server.py --safe-session --no-runtime-logs
+```
+
 ## OpenClaw Prompt
 
 ```text
@@ -127,8 +140,9 @@ Start with:
 3. `sections.setupValidation.blockers`
 4. `sections.skyrimModdedPlay.findings`
 5. `sections.inGameIssue.candidates`
-6. `sections.xeditDiagnostics`, if present
-7. `sections.vortexCollection`, if present
-8. `sections.logStatus`
+6. `sections.skyrimRuntimeLogs.findings` and `sections.skyrimRuntimeLogs.configCandidates`
+7. `sections.xeditDiagnostics`, if present
+8. `sections.vortexCollection`, if present
+9. `sections.logStatus`
 
 For a mod candidate, OpenClaw should recommend a cloned-profile disable test, not deletion. For deployment findings, the safest next action is usually to select the intended Vortex profile, click Deploy Mods, confirm plugins are enabled, then launch through SKSE.

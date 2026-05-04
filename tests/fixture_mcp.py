@@ -79,10 +79,17 @@ def main() -> int:
         write(staging / "Popup UI Mod" / "interface" / "annoyingpopup.swf", "ui")
         write(staging / "Popup UI Mod" / "scripts" / "popupnotice.pex", "script")
         write(staging / "Popup UI Mod" / "config" / "popup.json", '{"warning":"notification after loading a save"}')
+        write(staging / "Popup UI Mod" / "config" / "broken.ini", "[Popup]\nconfigured=false\n")
+        write(staging / "Popup UI Mod" / "SKSE" / "Plugins" / "PopupDll.dll", "dll")
         write(staging / "Popup UI Mod" / "readme.txt", "Shows a warning notification after loading a save. Configure the popup in MCM.")
         write(plugins_dir / "plugins.txt", "# comment\r\n*Skyrim.esm\r\n*MYMOD.ESP\r\n*MissingOnDisk.esp\r\n")
         write(my_games / "Skyrim.ini", "[Archive]\nbInvalidateOlderFiles=1\n")
         write(my_games / "SkyrimPrefs.ini", "[Launcher]\nbEnableFileSelection=1\n")
+        write(
+            my_games / "Logs" / "Script" / "Papyrus.0.log",
+            '[05/04/2026 - 10:00:00PM] Error: File "Popup UI Mod\\config\\popup.json" was not configured properly\n',
+        )
+        write(my_games / "SKSE" / "CrashLogger.log", "ERROR: failed to load plugin PopupDll.dll\n")
         write(vortex_exe)
         write(log_dir / "tool-20260504.jsonl", '{"event":"tool_error","path":"%USERPROFILE%\\\\example"}\n')
 
@@ -364,6 +371,49 @@ def main() -> int:
         assert popup_kind_only["scan"]["mode"] == "balanced", popup_kind_only
         assert popup_kind_only["candidateCount"] >= 1, popup_kind_only
 
+        runtime_logs = server.skyrim_runtime_log_report(
+            {
+                **base_args,
+                "description": "popup says file was not configured properly",
+                "max_runtime_log_files": 5,
+                "max_runtime_findings": 10,
+            }
+        )
+        assert runtime_logs["available"] is True, runtime_logs
+        assert runtime_logs["findingCount"] >= 1, runtime_logs
+        assert any("configured properly" in item["line"] for item in runtime_logs["findings"]), runtime_logs
+        assert any(
+            match["mod"] == "Popup UI Mod"
+            for item in runtime_logs["findings"]
+            for match in item.get("stagedMatches", [])
+        ), runtime_logs
+        assert any(candidate["relativePath"] == "config/popup.json" for candidate in runtime_logs["configCandidates"]), runtime_logs
+
+        config_path = staging / "Popup UI Mod" / "config" / "broken.ini"
+        patch_dry = server.apply_config_text_patch(
+            {
+                **base_args,
+                "path": str(config_path),
+                "old_text": "configured=false",
+                "new_text": "configured=true",
+            }
+        )
+        assert patch_dry["dryRun"] is True, patch_dry
+        assert patch_dry["wouldChange"] is True, patch_dry
+        assert "configured=false" in config_path.read_text(encoding="utf-8"), patch_dry
+        patch_apply = server.apply_config_text_patch(
+            {
+                **base_args,
+                "path": str(config_path),
+                "old_text": "configured=false",
+                "new_text": "configured=true",
+                "apply": True,
+            }
+        )
+        assert patch_apply["changed"] is True, patch_apply
+        assert Path(patch_apply["backup"]).exists(), patch_apply
+        assert "configured=true" in config_path.read_text(encoding="utf-8"), patch_apply
+
         safe_md = root / "safe-session.md"
         safe_json = root / "safe-session.json"
         safe = server.safe_session_report(
@@ -389,9 +439,11 @@ def main() -> int:
         safe_payload = json.loads(safe_payload_text)
         assert "Vortex Skyrim SE Safe Session" in safe_text
         assert "Whiterun Tavern Overhaul" in safe_text
+        assert "Skyrim Runtime Logs" in safe_text
         assert str(root) not in safe_text
         assert str(root) not in safe_payload_text
         assert "inGameIssue" in safe["sections"], safe
+        assert "skyrimRuntimeLogs" in safe["sections"], safe
         assert safe_payload["dryRunOnly"] is True, safe_payload
 
         slow_safe_md = root / "safe-session-slow.md"
@@ -534,6 +586,8 @@ def main() -> int:
         assert payload["redactedUserPaths"] is True
         assert payload["setupValidation"]["ready"] is True
         assert "logs" in payload
+        assert "skyrimRuntimeLogs" in payload
+        assert payload["skyrimRuntimeLogs"]["findingCount"] >= 1, payload
 
         with zipfile.ZipFile(bundle["zip_path"]) as archive:
             names = set(archive.namelist())

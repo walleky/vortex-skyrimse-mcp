@@ -71,6 +71,7 @@ doctor-YYYYMMDD-HHMMSS.log
 
 - bug-report bundle creation
 - safe-session report creation and per-section errors
+- exact config-text patch application events, including backup path
 
 `scan-cache`
 
@@ -102,6 +103,15 @@ For an attachable bug bundle:
 ```text
 bug_report_bundle
 ```
+
+To inspect Skyrim's own runtime logs, use:
+
+```text
+skyrim_runtime_log_report
+```
+
+That is separate from MCP logs. It scans recent Papyrus/SKSE/crash logs for
+game/mod errors and maps referenced files back to staged mods when possible.
 
 The bundle includes recent log tails by default. For one attachable file:
 

@@ -143,6 +143,18 @@ Use xedit_diagnostics_report with form_id 0100ABCD and tell me the likely plugin
 
 For annoying popups, just say "popup", "notification", "warning", or similar in the description. The first scan is balanced and checks local file/path/config clues automatically. Exact popup text or a screenshot/OCR can help later, but it is not required for the first scan.
 
+If the popup says a file was not configured properly, reproduce it once and ask:
+
+```text
+Use skyrim_runtime_log_report for this popup: file was not configured properly. Read any configCandidates and propose only a dry-run apply_config_text_patch if the fix is exact. Do not edit plugins or disable mods.
+```
+
+No-OpenClaw command:
+
+```powershell
+py -3 .\server.py --runtime-logs --description "popup says file was not configured properly"
+```
+
 For collection drift:
 
 ```text
@@ -169,6 +181,7 @@ The bundle redacts normal user profile paths by default, but it may still includ
 
 - Most tools are read-only.
 - `apply_ini_fixes` writes only when `dry_run=false`.
+- `apply_config_text_patch` writes only when `apply=true` or `dry_run=false`; it replaces exact text and backs up by default.
 - `vortex_clone_profile` and `vortex_set_profile_mods` write only when `apply=true`.
 - Profile write tools create a profile backup before `apply=true` by default.
 - `vortex_profile_restore_plan` previews undo actions by default.
