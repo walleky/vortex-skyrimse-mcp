@@ -72,6 +72,10 @@ def main() -> int:
     assert "in_game_issue_report" in listed_names, listed_names
     assert "safe_session_report" in listed_names, listed_names
     assert "skyrim_diagnostics_report" in listed_names, listed_names
+    assert "scan_cache_status" in listed_names, listed_names
+    assert "xedit_diagnostics_report" in listed_names, listed_names
+    assert "vortex_collection_report" in listed_names, listed_names
+    assert "collection_local_match_report" in listed_names, listed_names
     assert "nexus_validate_key" in listed_names, listed_names
     assert "nexus_update_report" in listed_names, listed_names
     assert "vortex_profile_backup" in listed_names, listed_names
@@ -79,6 +83,9 @@ def main() -> int:
     assert "performance_mode" in listed_by_name["in_game_issue_report"]["inputSchema"]["properties"], listed_by_name
     assert "response_mode" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
     assert "include_nexus_metadata" in listed_by_name["skyrim_diagnostics_report"]["inputSchema"]["properties"], listed_by_name
+    assert "scan_cache_dir" in listed_by_name["mod_knowledge_report"]["inputSchema"]["properties"], listed_by_name
+    assert "include_xedit_report" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
+    assert "include_collection_report" in listed_by_name["bug_report_bundle"]["inputSchema"]["properties"], listed_by_name
 
     direct = subprocess.run(
         [sys.executable, str(server), "--tool", "detect_environment"],
@@ -136,6 +143,10 @@ def main() -> int:
             assert "in_game_issue_report" in names, names
             assert "safe_session_report" in names, names
             assert "skyrim_diagnostics_report" in names, names
+            assert "scan_cache_status" in names, names
+            assert "xedit_diagnostics_report" in names, names
+            assert "vortex_collection_report" in names, names
+            assert "collection_local_match_report" in names, names
             assert "nexus_validate_key" in names, names
             assert "nexus_mod_lookup" in names, names
             assert "nexus_update_report" in names, names

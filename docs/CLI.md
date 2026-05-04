@@ -41,6 +41,12 @@ Generate the collection knowledge report:
 py -3 .\server.py --mod-knowledge
 ```
 
+Check the local scan cache:
+
+```powershell
+py -3 .\server.py --tool scan_cache_status
+```
+
 Triage an in-game object problem:
 
 ```powershell
@@ -57,6 +63,12 @@ With stronger console evidence:
 
 ```powershell
 py -3 .\server.py --tool in_game_issue_report --description "bad bed placement" --location "Whiterun Bannered Mare" --object "bed" --form-id "1200ABCD" --base-object "CommonBed01"
+```
+
+Get a read-only xEdit/SSEEdit target hint from the same FormID:
+
+```powershell
+py -3 .\server.py --tool xedit_diagnostics_report --form-id "1200ABCD"
 ```
 
 Triage an annoying popup:
@@ -112,6 +124,23 @@ For a key file:
 py -3 .\server.py --tool nexus_validate_key --nexus-api-key-file "$env:USERPROFILE\.vortex-skyrimse-mcp\nexus-api-key.txt"
 ```
 
+## Collection Diagnostics
+
+Inspect Vortex collection-like state:
+
+```powershell
+py -3 .\server.py --tool vortex_collection_report
+```
+
+Compare a manifest-like JSON file to local Nexus metadata:
+
+```powershell
+py -3 .\server.py --tool collection_local_match_report --collection-manifest-path "C:\path\collection.json"
+```
+
+These commands are read-only. They do not install, update, remove, or deploy
+collection mods.
+
 ## Useful Safe Session Options
 
 ```powershell
@@ -125,6 +154,13 @@ py -3 .\server.py --safe-session --output-path .\safe-session.md --session-json-
 ```
 
 Use explicit output paths when attaching the report to a bug or keeping a baseline before experiments.
+
+Include optional xEdit or collection context:
+
+```powershell
+py -3 .\server.py --skyrim-diagnostics --include-xedit-report --form-id "1200ABCD"
+py -3 .\server.py --skyrim-diagnostics --include-collection-report
+```
 
 ## Useful Mod Knowledge Options
 
@@ -207,3 +243,6 @@ plugin strings, important file paths, and limited config/text files. Add
 
 Use `--performance-mode slow_model` when an OpenClaw model is slow or confused
 by long JSON. Use `--performance-mode fast` only for a rough first pass.
+
+The scan cache is enabled by default. Use `--no-scan-cache` for a fresh scan if
+you just changed many mod files or suspect stale diagnostics.

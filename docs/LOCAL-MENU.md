@@ -28,6 +28,10 @@ Vortex-SkyrimSE-Menu.cmd
 10. In-game issue triage
 11. Safe session report
 12. Skyrim diagnostics report
+13. Scan cache status
+14. xEdit/SSEEdit target helper
+15. Vortex collection state
+16. Collection manifest match
 
 Reports are written to:
 
@@ -55,6 +59,10 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action safe -IssueDescription "bed outside tavern room" -IssueLocation "Whiterun Bannered Mare" -IssueObject "bed"
 .\vortex_skyrimse_menu.ps1 -Action diagnostics
 .\vortex_skyrimse_menu.ps1 -Action diagnostics -IncludeNexusMetadata
+.\vortex_skyrimse_menu.ps1 -Action cache
+.\vortex_skyrimse_menu.ps1 -Action xedit -FormId "0100ABCD"
+.\vortex_skyrimse_menu.ps1 -Action collection
+.\vortex_skyrimse_menu.ps1 -Action collection-match -CollectionManifestPath "C:\path\collection.json"
 ```
 
 Custom paths:
@@ -83,8 +91,16 @@ Optional Nexus metadata:
 
 The menu passes the key file path to the MCP. It does not copy Vortex's key.
 
+Optional xEdit and collection context:
+
+```powershell
+.\vortex_skyrimse_menu.ps1 -Action diagnostics -IncludeXeditReport -FormId "0100ABCD"
+.\vortex_skyrimse_menu.ps1 -Action diagnostics -IncludeCollectionReport
+.\vortex_skyrimse_menu.ps1 -Action xedit -XeditExe "C:\Tools\SSEEdit\SSEEdit.exe" -FormId "0100ABCD"
+```
+
 ## Safety
 
-The menu runs read-only report actions plus profile backup and restore preview. It does not delete mods, sort load order, write INI fixes, edit plugins, or apply restore plans.
+The menu runs read-only report actions plus profile backup and restore preview. It does not delete mods, sort load order, write INI fixes, edit plugins, install collections, or apply restore plans.
 
 The safe session and diagnostics actions write Markdown and JSON reports and try to include a profile backup unless `-NoProfileBackup` is passed. The backup action writes a JSON backup file. The restore action previews what would be restored; it does not change Vortex. The in-game issue action searches for likely mod candidates; it does not fix records automatically.

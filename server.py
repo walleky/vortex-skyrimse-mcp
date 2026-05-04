@@ -39,7 +39,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.14"
+SERVER_VERSION = "0.2.15"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -54,6 +54,9 @@ NEXUS_GRAPHQL_URL = "https://api.nexusmods.com/v2/graphql"
 NEXUS_API_KEY_ENV_VAR = "NEXUS_MODS_API_KEY"
 NEXUS_CACHE_ENV_VAR = "VORTEX_SKYRIMSE_MCP_NEXUS_CACHE_DIR"
 NEXUS_DEFAULT_CACHE_TTL_SECONDS = 24 * 60 * 60
+SCAN_CACHE_ENV_VAR = "VORTEX_SKYRIMSE_MCP_SCAN_CACHE_DIR"
+SCAN_DEFAULT_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
+XEDIT_EXE_NAMES = ("SSEEdit.exe", "xEdit.exe", "TES5Edit.exe")
 SENSITIVE_FIELD_NAMES = {
     "apikey",
     "api_key",
@@ -795,17 +798,25 @@ def default_my_games_dir(override: Optional[str] = None) -> Optional[Path]:
     return (docs / "My Games" / "Skyrim Special Edition").resolve() if docs else None
 
 
-def nexus_default_cache_dir(override: Optional[str] = None) -> Path:
+def local_support_cache_dir(env_var: str, folder: str, override: Optional[str] = None) -> Path:
     override_path = expand_path(override)
     if override_path:
         return override_path
-    env_path = os.environ.get(NEXUS_CACHE_ENV_VAR)
+    env_path = os.environ.get(env_var)
     if env_path:
         return expand_path(env_path) or Path(env_path)
     base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
     if base:
-        return (Path(base) / SERVER_NAME / "nexus-cache").resolve()
-    return (Path.home() / f".{SERVER_NAME}" / "nexus-cache").resolve()
+        return (Path(base) / SERVER_NAME / folder).resolve()
+    return (Path.home() / f".{SERVER_NAME}" / folder).resolve()
+
+
+def nexus_default_cache_dir(override: Optional[str] = None) -> Path:
+    return local_support_cache_dir(NEXUS_CACHE_ENV_VAR, "nexus-cache", override)
+
+
+def scan_default_cache_dir(override: Optional[str] = None) -> Path:
+    return local_support_cache_dir(SCAN_CACHE_ENV_VAR, "scan-cache", override)
 
 
 def nexus_game_domain(args: Dict[str, Any]) -> str:
@@ -1311,8 +1322,9 @@ def nexus_update_report(args: Dict[str, Any]) -> Dict[str, Any]:
     unavailable = []
     errors = []
     mod_dirs = sorted([path for path in staging_dir.iterdir() if path.is_dir()], key=lambda path: path.name.lower())[:max_mods]
+    scan_cache = load_scan_cache(args) if scan_cache_enabled(args) else {}
     for mod_dir in mod_dirs:
-        summary = mod_summary(mod_dir, include_files=False, max_files=max_files_per_mod)
+        summary = mod_summary_cached(mod_dir, include_files=False, max_files=max_files_per_mod, args=args, cache=scan_cache)
         try:
             profile_key = str(mod_dir.resolve()).lower()
         except OSError:
@@ -1352,6 +1364,9 @@ def nexus_update_report(args: Dict[str, Any]) -> Dict[str, Any]:
         if local_version and remote_version and local_version != remote_version:
             stale.append(item)
 
+    if scan_cache_enabled(args):
+        write_scan_cache(args, scan_cache)
+
     return {
         "available": True,
         "configured": True,
@@ -1374,6 +1389,153 @@ def nexus_update_report(args: Dict[str, Any]) -> Dict[str, Any]:
             "This report is read-only and compares local/Vortex metadata to current Nexus metadata.",
             "A version mismatch is a review signal, not an automatic update instruction.",
             "Do not auto-update or uninstall mods from this report alone.",
+        ],
+    }
+
+
+def scan_cache_path(args: Dict[str, Any]) -> Path:
+    return scan_default_cache_dir(args.get("scan_cache_dir")) / "mod-summary-cache.json"
+
+
+def scan_cache_enabled(args: Dict[str, Any]) -> bool:
+    return bool(args.get("use_scan_cache", True))
+
+
+def load_scan_cache(args: Dict[str, Any]) -> Dict[str, Any]:
+    path = scan_cache_path(args)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(read_text(path, 20_000_000))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def write_scan_cache(args: Dict[str, Any], cache: Dict[str, Any]) -> None:
+    path = scan_cache_path(args)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_text(path, json.dumps(cache, indent=2, ensure_ascii=False, default=str))
+    except Exception as exc:
+        log_event("scan-cache", "write_failed", {"path": str(path), "error": str(exc)})
+
+
+def mod_dir_cache_signature(mod_dir: Path) -> Dict[str, Any]:
+    def stat_part(path: Path) -> Optional[Dict[str, Any]]:
+        try:
+            stat = path.stat()
+            return {
+                "name": path.name,
+                "isDir": path.is_dir(),
+                "size": stat.st_size if path.is_file() else None,
+                "mtimeNs": getattr(stat, "st_mtime_ns", int(stat.st_mtime * 1_000_000_000)),
+            }
+        except OSError:
+            return None
+
+    try:
+        stat = mod_dir.stat()
+        immediate: List[Dict[str, Any]] = []
+        for child in sorted(mod_dir.iterdir(), key=lambda item: item.name.lower())[:200]:
+            part = stat_part(child)
+            if part:
+                immediate.append(part)
+        metadata_stats = [
+            part
+            for name in ("meta.ini", "info.json", "mod.json")
+            for part in [stat_part(mod_dir / name)]
+            if part
+        ]
+        return {
+            "rootMtimeNs": getattr(stat, "st_mtime_ns", int(stat.st_mtime * 1_000_000_000)),
+            "rootCtimeNs": getattr(stat, "st_ctime_ns", int(stat.st_ctime * 1_000_000_000)),
+            "immediate": immediate,
+            "metadata": metadata_stats,
+        }
+    except OSError:
+        return {"rootMtimeNs": None, "rootCtimeNs": None}
+
+
+def mod_summary_cache_key(mod_dir: Path, include_files: bool, max_files: int) -> str:
+    try:
+        root = str(mod_dir.resolve()).lower()
+    except OSError:
+        root = str(mod_dir).lower()
+    raw = json.dumps(
+        {
+            "schema": "mod-summary-v2",
+            "root": root,
+            "includeFiles": bool(include_files),
+            "maxFiles": int(max_files),
+            "serverVersion": SERVER_VERSION,
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def mod_summary_cached(
+    mod_dir: Path,
+    include_files: bool = False,
+    max_files: int = 5000,
+    args: Optional[Dict[str, Any]] = None,
+    cache: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    args = args or {}
+    if not scan_cache_enabled(args):
+        summary = mod_summary(mod_dir, include_files=include_files, max_files=max_files)
+        summary["_cache"] = {"enabled": False, "hit": False}
+        return summary
+
+    own_cache = cache is None
+    cache_data = cache if cache is not None else load_scan_cache(args)
+    entries = cache_data.setdefault("entries", {}) if isinstance(cache_data, dict) else {}
+    key = mod_summary_cache_key(mod_dir, include_files, max_files)
+    signature = mod_dir_cache_signature(mod_dir)
+    ttl = int(args.get("scan_cache_ttl_seconds", SCAN_DEFAULT_CACHE_TTL_SECONDS))
+    now = time.time()
+    entry = entries.get(key) if isinstance(entries, dict) else None
+    if (
+        isinstance(entry, dict)
+        and entry.get("signature") == signature
+        and (now - float(entry.get("fetchedAtEpoch", 0))) <= ttl
+        and isinstance(entry.get("summary"), dict)
+    ):
+        summary = json.loads(json.dumps(entry["summary"], default=str))
+        summary["_cache"] = {"enabled": True, "hit": True, "cacheKey": key}
+        return summary
+
+    summary = mod_summary(mod_dir, include_files=include_files, max_files=max_files)
+    summary["_cache"] = {"enabled": True, "hit": False, "cacheKey": key}
+    entries[key] = {
+        "signature": signature,
+        "summary": {k: v for k, v in summary.items() if k != "_cache"},
+        "fetchedAt": iso_now(),
+        "fetchedAtEpoch": now,
+    }
+    cache_data["schema"] = "vortex-skyrimse-mcp-scan-cache-v1"
+    cache_data["updatedAt"] = iso_now()
+    if own_cache:
+        write_scan_cache(args, cache_data)
+    return summary
+
+
+def scan_cache_status(args: Dict[str, Any]) -> Dict[str, Any]:
+    cache = load_scan_cache(args)
+    entries = cache.get("entries") if isinstance(cache.get("entries"), dict) else {}
+    path = scan_cache_path(args)
+    return {
+        "enabledByDefault": True,
+        "enabledForThisCall": scan_cache_enabled(args),
+        "path": str(path),
+        "exists": path.exists(),
+        "entryCount": len(entries),
+        "ttlSeconds": int(args.get("scan_cache_ttl_seconds", SCAN_DEFAULT_CACHE_TTL_SECONDS)),
+        "envVar": SCAN_CACHE_ENV_VAR,
+        "notes": [
+            "The scan cache stores derived local mod summaries only; it does not store Nexus API keys.",
+            "It is a speed hint for large collections. Use no_scan_cache=true or --no-scan-cache for a fresh scan.",
         ],
     }
 
@@ -1451,6 +1613,7 @@ def detect_environment(args: Dict[str, Any]) -> Dict[str, Any]:
     paths = plugin_state_paths(local_appdata)
     if not paths["plugins_txt"]:
         issues.append("plugins.txt was not found. Launch Skyrim once, then let Vortex deploy plugins.")
+    xedit_found = xedit_candidates(args)
 
     return {
         "platform": sys.platform,
@@ -1468,6 +1631,12 @@ def detect_environment(args: Dict[str, Any]) -> Dict[str, Any]:
         "my_games_dir": str(my_games) if my_games else None,
         "plugin_state": paths,
         "nexus_api": nexus_config_status(args),
+        "scan_cache": scan_cache_status(args),
+        "xedit": {
+            "available": bool(xedit_found),
+            "exe": str(xedit_found[0]) if xedit_found else None,
+            "candidateNames": list(XEDIT_EXE_NAMES),
+        },
         "issues": issues,
     }
 
@@ -1488,6 +1657,8 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "safe_session_report",
             "bug_report_bundle",
             "skyrim_diagnostics_report",
+            "scan_cache_status",
+            "xedit_diagnostics_report",
         ],
         "nexusMetadataOptional": [
             "nexus_validate_key",
@@ -1498,11 +1669,15 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "nexus_parse_nxm_link",
             "nexus_update_report",
         ],
+        "collectionDiagnostics": [
+            "collection_local_match_report",
+        ],
         "vortexCliRequired": [
             "vortex_profile_report",
             "vortex_profile_mods",
             "vortex_compare_profiles",
             "vortex_profile_deployment_report",
+            "vortex_collection_report",
             "vortex_profile_backup",
             "vortex_profile_restore_plan",
             "vortex_clone_profile",
@@ -1751,13 +1926,17 @@ def inventory_mods(args: Dict[str, Any]) -> Dict[str, Any]:
     max_mods = int(args.get("max_mods", 300))
     max_files_per_mod = int(args.get("max_files_per_mod", 5000))
     mods = []
+    scan_cache = load_scan_cache(args) if scan_cache_enabled(args) else {}
     for mod_dir in sorted([p for p in staging_dir.iterdir() if p.is_dir()], key=lambda p: p.name.lower())[:max_mods]:
-        mods.append(mod_summary(mod_dir, include_files=include_files, max_files=max_files_per_mod))
+        mods.append(mod_summary_cached(mod_dir, include_files=include_files, max_files=max_files_per_mod, args=args, cache=scan_cache))
+    if scan_cache_enabled(args):
+        write_scan_cache(args, scan_cache)
     return {
         "vortex_appdata": str(vortex_appdata) if vortex_appdata else None,
         "staging_dir": str(staging_dir),
         "modCount": len(mods),
         "mods": mods,
+        "scanCache": scan_cache_status(args) if bool(args.get("include_scan_cache_status", False)) else None,
     }
 
 
@@ -1772,6 +1951,69 @@ def sha256_file(path: Path, max_mb: int = 256) -> Optional[str]:
         return h.hexdigest()
     except OSError:
         return None
+
+
+def conflict_risk(kind: str, same_hash: Optional[bool]) -> Dict[str, str]:
+    if same_hash is True:
+        return {
+            "severity": "low",
+            "impact": "The files appear identical, so the conflict is usually harmless duplication.",
+            "safeAction": "Leave it alone unless you are cleaning redundant mods in a cloned profile.",
+        }
+    if kind in {"skse_plugin", "script"}:
+        return {
+            "severity": "high",
+            "impact": "Runtime code conflicts can change quests, gameplay, plugins, or SKSE behavior.",
+            "safeAction": "Use Vortex's Conflicts view to confirm the intended winner; test in a cloned profile before changing rules.",
+        }
+    if kind in {"plugin", "archive"}:
+        return {
+            "severity": "high",
+            "impact": "Plugin/archive conflicts can change records, assets, and load-order behavior.",
+            "safeAction": "Inspect the related plugins and collection notes before changing load order or rules.",
+        }
+    if kind in {"interface", "config", "animation_tool"}:
+        return {
+            "severity": "medium",
+            "impact": "UI, config, and generated-tool conflicts can break menus, MCM behavior, or generated outputs.",
+            "safeAction": "Prefer the mod author's compatibility instructions and regenerate external outputs if required.",
+        }
+    if kind in {"mesh", "texture"}:
+        return {
+            "severity": "low-medium",
+            "impact": "Visual conflicts usually change appearance, but skeleton/body/physics assets can affect gameplay stability.",
+            "safeAction": "Pick the visual winner intentionally in Vortex; avoid changing body/skeleton/physics winners casually.",
+        }
+    return {
+        "severity": "low",
+        "impact": "The conflict is in a less-classified file type.",
+        "safeAction": "Review only if the file path matches the problem you are diagnosing.",
+    }
+
+
+def explain_conflict_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    kind = str(item.get("kind") or "other")
+    risk = conflict_risk(kind, item.get("sameHash"))
+    providers = [str(provider.get("mod")) for provider in item.get("providers", []) if isinstance(provider, dict)]
+    same_size = item.get("sameSize")
+    same_hash = item.get("sameHash")
+    if same_hash is True:
+        difference = "same hash"
+    elif same_hash is False:
+        difference = "different hash"
+    elif same_size is True:
+        difference = "same size, content not hashed"
+    else:
+        difference = "different size or unknown size"
+    return {
+        "risk": risk["severity"],
+        "difference": difference,
+        "impact": risk["impact"],
+        "safeAction": risk["safeAction"],
+        "winnerKnown": False,
+        "winnerNote": "This outside-Vortex report can see providers, but not Vortex's final rule winner. Check Vortex's Conflicts view for the actual winner.",
+        "providerMods": providers,
+    }
 
 
 def analyze_conflicts(args: Dict[str, Any]) -> Dict[str, Any]:
@@ -1806,17 +2048,25 @@ def analyze_conflicts(args: Dict[str, Any]) -> Dict[str, Any]:
         hashes = None
         if hash_files:
             hashes = sorted(set(sha256_file(Path(e["path"])) for e in entries))
-        conflicts.append(
-            {
-                "relativePath": rel,
-                "kind": classify_file(rel),
-                "providerCount": len(entries),
-                "sameSize": len(sizes) == 1,
-                "sameHash": (len([h for h in hashes or [] if h]) == 1) if hash_files else None,
-                "providers": entries,
-            }
+        item = {
+            "relativePath": rel,
+            "kind": classify_file(rel),
+            "providerCount": len(entries),
+            "sameSize": len(sizes) == 1,
+            "sameHash": (len([h for h in hashes or [] if h]) == 1) if hash_files else None,
+            "providers": entries,
+        }
+        item["explanation"] = explain_conflict_item(item)
+        conflicts.append(item)
+    severity_order = {"high": 0, "medium": 1, "low-medium": 2, "low": 3}
+    conflicts.sort(
+        key=lambda c: (
+            severity_order.get(str(c.get("explanation", {}).get("risk")), 9),
+            c["kind"],
+            -c["providerCount"],
+            c["relativePath"],
         )
-    conflicts.sort(key=lambda c: (c["kind"], -c["providerCount"], c["relativePath"]))
+    )
 
     unmanaged_conflicts = []
     if game_data and game_data.exists():
@@ -1840,6 +2090,10 @@ def analyze_conflicts(args: Dict[str, Any]) -> Dict[str, Any]:
         "scannedFilesApprox": scanned_files,
         "conflictCount": len(conflicts),
         "conflicts": conflicts[:max_conflicts],
+        "riskSummary": {
+            risk: sum(1 for item in conflicts if item.get("explanation", {}).get("risk") == risk)
+            for risk in ("high", "medium", "low-medium", "low")
+        },
         "unmanagedDataOverlapCount": len(unmanaged_conflicts),
         "unmanagedDataOverlaps": unmanaged_conflicts,
         "notes": [
@@ -1856,7 +2110,10 @@ def redundant_mod_report(args: Dict[str, Any]) -> Dict[str, Any]:
     hash_files = bool(args.get("hash_files", False))
     max_mods = int(args.get("max_mods", 200))
     mods = [p for p in sorted(staging_dir.iterdir(), key=lambda p: p.name.lower()) if p.is_dir()][:max_mods]
-    summaries = [mod_summary(p, include_files=False, max_files=8000) for p in mods]
+    scan_cache = load_scan_cache(args) if scan_cache_enabled(args) else {}
+    summaries = [mod_summary_cached(p, include_files=False, max_files=8000, args=args, cache=scan_cache) for p in mods]
+    if scan_cache_enabled(args):
+        write_scan_cache(args, scan_cache)
 
     duplicate_plugins: Dict[str, List[str]] = {}
     duplicate_nexus: Dict[str, List[str]] = {}
@@ -1969,6 +2226,338 @@ def plugin_report(args: Dict[str, Any]) -> Dict[str, Any]:
         "missingEnabledPlugins": missing_enabled,
         "missingMasters": missing_masters,
         "pluginHeaders": plugin_details,
+    }
+
+
+def find_on_path(names: Iterable[str]) -> List[Path]:
+    result: List[Path] = []
+    path_env = os.environ.get("PATH") or ""
+    for folder in path_env.split(os.pathsep):
+        if not folder:
+            continue
+        base = Path(folder)
+        for name in names:
+            candidate = base / name
+            if candidate.exists() and candidate.is_file():
+                result.append(candidate)
+    return result
+
+
+def xedit_candidates(args: Dict[str, Any]) -> List[Path]:
+    explicit = expand_path(args.get("xedit_exe") or args.get("sseedit_exe"))
+    candidates: List[Path] = [explicit] if explicit else []
+    _vortex_appdata, skyrim_dir, _staging_dir, _my_games = get_context_paths(args)
+    roots: List[Path] = []
+    if skyrim_dir:
+        roots.extend([skyrim_dir, skyrim_dir.parent, skyrim_dir.parent / "SSEEdit", skyrim_dir.parent / "xEdit"])
+    docs = default_documents()
+    if docs:
+        roots.extend([docs / "SSEEdit", docs / "xEdit", docs / "Tools" / "SSEEdit"])
+    for root in roots:
+        for exe_name in XEDIT_EXE_NAMES:
+            candidates.append(root / exe_name)
+    candidates.extend(find_on_path(XEDIT_EXE_NAMES))
+
+    seen: set[str] = set()
+    found: List[Path] = []
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            resolved = candidate
+        key = str(resolved).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        if resolved.exists() and resolved.is_file():
+            found.append(resolved)
+    return found
+
+
+def xedit_diagnostics_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    found = xedit_candidates(args)
+    form_id = str(args.get("form_id") or "").strip()
+    plugin_name = str(args.get("plugin_name") or "").strip()
+    hint = form_id_load_order_hint(args, form_id)
+    plugins: Dict[str, Any] = {}
+    try:
+        plugins = plugin_report(args)
+    except Exception as exc:
+        plugins = {"error": str(exc)}
+
+    normalized_plugin = plugin_name.lower()
+    if not normalized_plugin and isinstance(hint, dict) and hint.get("pluginName"):
+        normalized_plugin = str(hint.get("pluginName")).lower()
+    plugin_header = None
+    if normalized_plugin and isinstance(plugins.get("pluginHeaders"), dict):
+        for name, header in plugins["pluginHeaders"].items():
+            if str(name).lower() == normalized_plugin:
+                plugin_header = header
+                break
+
+    return {
+        "available": bool(found),
+        "xeditExe": str(found[0]) if found else None,
+        "candidateExecutables": [str(path) for path in found[:10]],
+        "formIdHint": hint,
+        "pluginName": plugin_name or (hint.get("pluginName") if isinstance(hint, dict) else None),
+        "pluginHeader": plugin_header,
+        "pluginReportAvailable": "error" not in plugins,
+        "pluginReportError": plugins.get("error") if isinstance(plugins, dict) else None,
+        "readOnly": True,
+        "suggestedWorkflow": [
+            "Open xEdit/SSEEdit manually with the active Skyrim load order.",
+            "If a FormID hint points to a plugin, inspect that plugin first.",
+            "For placed objects, inspect the current cell and reference/base record before disabling mods.",
+            "For popups, inspect message, quest, script, and MCM/config records related to the candidate mod.",
+            "Do not clean, delete records, or save plugin changes from this diagnostic alone.",
+        ],
+        "notes": [
+            "This MCP does not automate xEdit writes. It only points OpenClaw at the safest read-only inspection target.",
+            "ESL/light plugins and runtime-created references can make FormID prefix hints incomplete.",
+        ],
+    }
+
+
+def collection_state_paths(game_id: str) -> List[str]:
+    return [
+        "persistent.collections",
+        "persistent.collectionDownloads",
+        "persistent.collectionInstallations",
+        "settings.collections",
+        state_path("persistent", "mods", game_id),
+        "persistent.profiles",
+    ]
+
+
+def collectionish_keys(value: Dict[str, Any]) -> bool:
+    keys = {str(key).lower() for key in value.keys()}
+    return (
+        any("collection" in key for key in keys)
+        or {"slug", "revision", "revisionid"} & keys
+        or ({"mods", "modids", "fileids"} & keys and {"name", "title", "id"} & keys)
+    )
+
+
+def summarize_collectionish(path: str, value: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(value, dict) or not collectionish_keys(value):
+        return None
+    list_counts = {
+        str(key): len(item)
+        for key, item in value.items()
+        if isinstance(item, (list, dict)) and any(term in str(key).lower() for term in ("mod", "file", "collection", "revision"))
+    }
+    return {
+        "path": path,
+        "id": value.get("id") or value.get("collectionId") or value.get("collection_id"),
+        "name": value.get("name") or value.get("title"),
+        "slug": value.get("slug") or value.get("collectionSlug"),
+        "revision": value.get("revision") or value.get("revisionId") or value.get("revision_id"),
+        "listCounts": list_counts,
+        "keys": sorted(str(key) for key in value.keys())[:40],
+    }
+
+
+def find_collectionish_state(value: Any, path: str = "", max_items: int = 80) -> List[Dict[str, Any]]:
+    found: List[Dict[str, Any]] = []
+
+    def walk(current: Any, current_path: str) -> None:
+        if len(found) >= max_items:
+            return
+        if isinstance(current, dict):
+            summary = summarize_collectionish(current_path, current)
+            if summary:
+                found.append(summary)
+            for key, item in current.items():
+                key_path = f"{current_path}.{key}" if current_path else str(key)
+                if "collection" in key_path.lower() or isinstance(item, dict):
+                    walk(item, key_path)
+                elif isinstance(item, list) and "collection" in key_path.lower():
+                    walk(item, key_path)
+        elif isinstance(current, list):
+            for index, item in enumerate(current[:max_items]):
+                walk(item, f"{current_path}[{index}]")
+
+    walk(value, path)
+    return found
+
+
+def mod_collection_markers(mods: Dict[str, Any], max_mods: int = 500) -> List[Dict[str, Any]]:
+    rows = []
+    for mod_id, entry in list(mods.items())[:max_mods]:
+        if not isinstance(entry, dict):
+            continue
+        attributes = entry.get("attributes") if isinstance(entry.get("attributes"), dict) else {}
+        marker_keys = [key for key in attributes.keys() if "collection" in str(key).lower()]
+        if not marker_keys:
+            continue
+        rows.append(
+            {
+                "modId": str(mod_id),
+                "name": summarize_vortex_mod(str(mod_id), mods).get("name"),
+                "markers": {str(key): attributes.get(key) for key in marker_keys[:20]},
+            }
+        )
+    return rows
+
+
+def vortex_collection_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    game_id = str(args.get("game_id") or GAME_ID)
+    max_items = int(args.get("max_collection_items", 80))
+    paths = collection_state_paths(game_id)
+    result = vortex_state_get(paths, args.get("vortex_exe"), int(args.get("timeout_seconds", 60)))
+    state = result["state"]
+    mods = nested_get(state, ["persistent", "mods", game_id])
+    mods = mods if isinstance(mods, dict) else {}
+    collection_states = find_collectionish_state(state, max_items=max_items)
+    markers = mod_collection_markers(mods, int(args.get("max_mods", 500)))
+    return {
+        "gameId": game_id,
+        "vortexExe": result.get("vortex_exe"),
+        "rawPaths": paths,
+        "collectionStateCount": len(collection_states),
+        "collectionStates": collection_states[:max_items],
+        "modCollectionMarkerCount": len(markers),
+        "modCollectionMarkers": markers[:max_items],
+        "available": bool(collection_states or markers),
+        "notes": [
+            "This is read-only and depends on whatever collection state Vortex exposes through its CLI.",
+            "If no collection state appears, Vortex may store collection details in extension-private state this MCP cannot safely read yet.",
+        ],
+    }
+
+
+def extract_manifest_mod_refs(value: Any, max_items: int = 5000) -> List[Dict[str, Optional[int]]]:
+    refs: List[Dict[str, Optional[int]]] = []
+
+    def parse_int(value: Any) -> Optional[int]:
+        try:
+            parsed = int(str(value))
+            return parsed if parsed > 0 else None
+        except (TypeError, ValueError):
+            return None
+
+    def lookup_id(current: Dict[str, Any], names: Iterable[str]) -> Optional[int]:
+        normalized = {
+            re.sub(r"[^a-z0-9]", "", str(key).lower()): item
+            for key, item in current.items()
+        }
+        for name in names:
+            value = normalized.get(re.sub(r"[^a-z0-9]", "", name.lower()))
+            parsed = parse_int(value)
+            if parsed:
+                return parsed
+        return None
+
+    def walk(current: Any) -> None:
+        if len(refs) >= max_items:
+            return
+        if isinstance(current, dict):
+            mod_id = lookup_id(current, ("modId", "nexusModId", "nexus_mod_id", "mod_id", "nexusModsModId"))
+            file_id = lookup_id(current, ("fileId", "nexusFileId", "nexus_file_id", "file_id", "nexusModsFileId"))
+            if mod_id:
+                refs.append({"modId": mod_id, "fileId": file_id})
+            for item in current.values():
+                if isinstance(item, (dict, list)):
+                    walk(item)
+        elif isinstance(current, list):
+            for item in current:
+                walk(item)
+
+    walk(value)
+    unique: Dict[Tuple[Optional[int], Optional[int]], Dict[str, Optional[int]]] = {}
+    for ref in refs:
+        unique[(ref.get("modId"), ref.get("fileId"))] = ref
+    return list(unique.values())
+
+
+def load_collection_manifest_arg(args: Dict[str, Any]) -> Any:
+    try:
+        if args.get("collection_manifest_json"):
+            return json.loads(str(args.get("collection_manifest_json")))
+        manifest_path = expand_path(args.get("collection_manifest_path"))
+        if manifest_path and manifest_path.exists():
+            return json.loads(read_text(manifest_path, 20_000_000))
+        if manifest_path:
+            raise ToolError(f"Collection manifest path was not found: {manifest_path}")
+    except json.JSONDecodeError as exc:
+        raise ToolError(f"Collection manifest JSON could not be parsed: {exc}") from exc
+    raise ToolError("Pass collection_manifest_path or collection_manifest_json.")
+
+
+def local_nexus_source_rows(args: Dict[str, Any]) -> List[Dict[str, Any]]:
+    _vortex_appdata, _skyrim_dir, staging_dir, _my_games = get_context_paths(args)
+    if not staging_dir or not staging_dir.exists():
+        raise ToolError("Vortex staging folder was not found. Pass staging_dir explicitly.")
+    max_mods = int(args.get("max_mods", 500))
+    max_files_per_mod = int(args.get("max_files_per_mod", 3000))
+    profile_lookup = profile_lookup_for_staging(args, staging_dir) if bool(args.get("include_profile_state", True)) else {"modsByPath": {}}
+    profile_by_path = profile_lookup.get("modsByPath") if isinstance(profile_lookup.get("modsByPath"), dict) else {}
+    scan_cache = load_scan_cache(args) if scan_cache_enabled(args) else {}
+    rows = []
+    for mod_dir in sorted([path for path in staging_dir.iterdir() if path.is_dir()], key=lambda path: path.name.lower())[:max_mods]:
+        summary = mod_summary_cached(mod_dir, include_files=False, max_files=max_files_per_mod, args=args, cache=scan_cache)
+        try:
+            profile_key = str(mod_dir.resolve()).lower()
+        except OSError:
+            profile_key = str(mod_dir).lower()
+        profile = profile_by_path.get(profile_key)
+        ids = local_nexus_ids(summary, profile if isinstance(profile, dict) else None)
+        rows.append(
+            {
+                "mod": summary.get("name"),
+                "path": str(mod_dir),
+                "modId": ids.get("modId"),
+                "fileId": ids.get("fileId"),
+                "localVersion": local_mod_version(summary, profile if isinstance(profile, dict) else None),
+                "enabled": profile.get("enabled") if isinstance(profile, dict) else None,
+                "vortexModId": profile.get("id") if isinstance(profile, dict) else None,
+            }
+        )
+    if scan_cache_enabled(args):
+        write_scan_cache(args, scan_cache)
+    return rows
+
+
+def collection_local_match_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    manifest = load_collection_manifest_arg(args)
+    refs = extract_manifest_mod_refs(manifest, int(args.get("max_collection_items", 5000)))
+    local_rows = local_nexus_source_rows(args)
+    expected_mod_ids = {ref["modId"] for ref in refs if ref.get("modId")}
+    expected_pairs = {(ref.get("modId"), ref.get("fileId")) for ref in refs if ref.get("modId") and ref.get("fileId")}
+    local_mod_ids = {row["modId"] for row in local_rows if row.get("modId")}
+    local_pairs = {(row.get("modId"), row.get("fileId")) for row in local_rows if row.get("modId") and row.get("fileId")}
+    missing_mod_ids = sorted(expected_mod_ids - local_mod_ids)
+    extra_mod_ids = sorted(local_mod_ids - expected_mod_ids) if expected_mod_ids else []
+    file_mismatches = sorted(expected_pairs - local_pairs)
+    disabled_expected = [
+        row for row in local_rows if row.get("modId") in expected_mod_ids and row.get("enabled") is False
+    ]
+    warnings = []
+    if not refs:
+        warnings.append(
+            "No Nexus mod/file references were found in the supplied manifest. The JSON shape may not be a collection manifest this tool recognizes."
+        )
+    return {
+        "manifestReferenceCount": len(refs),
+        "expectedModCount": len(expected_mod_ids),
+        "expectedFilePairCount": len(expected_pairs),
+        "localNexusModCount": len(local_mod_ids),
+        "missingModIds": missing_mod_ids[:200],
+        "missingModIdCount": len(missing_mod_ids),
+        "extraLocalNexusModIds": extra_mod_ids[:200],
+        "extraLocalNexusModIdCount": len(extra_mod_ids),
+        "filePairMismatchCount": len(file_mismatches),
+        "filePairMismatches": [{"modId": mod_id, "fileId": file_id} for mod_id, file_id in file_mismatches[:200]],
+        "disabledExpectedCount": len(disabled_expected),
+        "disabledExpected": disabled_expected[:100],
+        "warnings": warnings,
+        "notes": [
+            "This compares a supplied manifest-like JSON file to local Vortex/staging Nexus metadata. It does not install collection mods.",
+            "File-pair mismatches can be normal when a collection pins older files or local metadata is incomplete.",
+        ],
     }
 
 
@@ -2900,6 +3489,7 @@ def in_game_issue_report(args: Dict[str, Any]) -> Dict[str, Any]:
 
     candidates: List[Dict[str, Any]] = []
     mod_dirs = [p for p in sorted(staging_dir.iterdir(), key=lambda p: p.name.lower()) if p.is_dir()][:max_mods]
+    scan_cache = load_scan_cache(args) if scan_cache_enabled(args) else {}
     timed_out = False
     scanned_mod_count = 0
     for mod_dir in mod_dirs:
@@ -2907,10 +3497,12 @@ def in_game_issue_report(args: Dict[str, Any]) -> Dict[str, Any]:
             timed_out = True
             break
         scanned_mod_count += 1
-        summary = mod_summary(
+        summary = mod_summary_cached(
             mod_dir,
             include_files=scan_mode in {"balanced", "deep"},
             max_files=int(args.get("max_files_per_mod", 3000)),
+            args=args,
+            cache=scan_cache,
         )
         try:
             key = str(mod_dir.resolve()).lower()
@@ -2937,6 +3529,8 @@ def in_game_issue_report(args: Dict[str, Any]) -> Dict[str, Any]:
             str(item.get("mod", "")).lower(),
         )
     )
+    if scan_cache_enabled(args):
+        write_scan_cache(args, scan_cache)
 
     recommended_actions = [
         "Do not delete the candidate mod. Create or use a cloned Vortex profile and test disabling one candidate at a time.",
@@ -3363,8 +3957,9 @@ def mod_knowledge_report(args: Dict[str, Any]) -> Dict[str, Any]:
 
     rows: List[Dict[str, Any]] = []
     mod_dirs = sorted([path for path in staging_dir.iterdir() if path.is_dir()], key=lambda path: path.name.lower())[:max_mods]
+    scan_cache = load_scan_cache(args) if scan_cache_enabled(args) else {}
     for mod_dir in mod_dirs:
-        summary = mod_summary(mod_dir, include_files=False, max_files=max_files_per_mod)
+        summary = mod_summary_cached(mod_dir, include_files=False, max_files=max_files_per_mod, args=args, cache=scan_cache)
         plugin_headers = {}
         for rel in summary.get("plugins", []):
             plugin_path = mod_dir / rel
@@ -3407,6 +4002,9 @@ def mod_knowledge_report(args: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 row["nexus"] = {"error": "No Nexus mod id found in local/Vortex metadata."}
         rows.append(row)
+
+    if scan_cache_enabled(args):
+        write_scan_cache(args, scan_cache)
 
     candidates = knowledge_removal_candidates(rows, redundancy)
     markdown = render_mod_knowledge_markdown(
@@ -4173,6 +4771,7 @@ def vortex_profile_deployment_report(args: Dict[str, Any]) -> Dict[str, Any]:
     unresolved_mods = []
     plugin_rows = []
     profile_plugin_names: set[str] = set()
+    scan_cache = load_scan_cache(args) if scan_cache_enabled(args) else {}
 
     for mod_id in sorted(enabled_mod_ids, key=str.lower)[:max_mods]:
         mod_entry = snapshot["mods"].get(mod_id)
@@ -4180,7 +4779,7 @@ def vortex_profile_deployment_report(args: Dict[str, Any]) -> Dict[str, Any]:
         if not mod_path:
             unresolved_mods.append({**summarize_vortex_mod(mod_id, snapshot["mods"]), "reason": "staging folder not found"})
             continue
-        summary = mod_summary(mod_path, include_files=False, max_files=max_files_per_mod)
+        summary = mod_summary_cached(mod_path, include_files=False, max_files=max_files_per_mod, args=args, cache=scan_cache)
         checked_mods.append(
             {
                 **summarize_vortex_mod(mod_id, snapshot["mods"]),
@@ -4205,6 +4804,9 @@ def vortex_profile_deployment_report(args: Dict[str, Any]) -> Dict[str, Any]:
                     "dataPath": data_plugins.get(plugin_key),
                 }
             )
+
+    if scan_cache_enabled(args):
+        write_scan_cache(args, scan_cache)
 
     missing_from_data = [row for row in plugin_rows if not row["deployedInData"]]
     not_enabled = [row for row in plugin_rows if not row["enabledInPluginsTxt"]]
@@ -4675,13 +5277,17 @@ def suggest_conflict_fixes(args: Dict[str, Any]) -> Dict[str, Any]:
                 }
             )
         elif item["kind"] in {"script", "skse_plugin", "interface"}:
+            explanation = item.get("explanation", {})
             actions.append(
                 {
-                    "priority": "medium",
+                    "priority": "high" if explanation.get("risk") == "high" else "medium",
                     "type": "sensitive_file_conflict",
                     "relativePath": item["relativePath"],
                     "providers": [p["mod"] for p in item["providers"]],
-                    "message": "Conflict touches scripts, SKSE DLLs, or UI files. Pick the intended winner in Vortex's Conflicts view.",
+                    "message": explanation.get("impact")
+                    or "Conflict touches scripts, SKSE DLLs, or UI files. Pick the intended winner in Vortex's Conflicts view.",
+                    "safeAction": explanation.get("safeAction"),
+                    "winnerNote": explanation.get("winnerNote"),
                 }
             )
     return {
@@ -4774,6 +5380,29 @@ def safe_session_findings(sections: Dict[str, Any]) -> List[Dict[str, Any]]:
                     "vortexModId": top.get("vortexModId"),
                 },
             )
+    xedit = sections.get("xeditDiagnostics")
+    if isinstance(xedit, dict) and (xedit.get("formIdHint") or xedit.get("pluginName")):
+        target = xedit.get("pluginName")
+        if not target and isinstance(xedit.get("formIdHint"), dict):
+            target = xedit["formIdHint"].get("pluginName")
+        if target:
+            add_finding(
+                findings,
+                "low",
+                "xedit_read_only_target",
+                f"xEdit/SSEEdit inspection target: {target}.",
+                "Use xEdit/SSEEdit read-only first; do not save plugin edits from this diagnostic alone.",
+                {"pluginName": target, "xeditExe": xedit.get("xeditExe")},
+            )
+    collection = sections.get("vortexCollection")
+    if isinstance(collection, dict) and collection.get("available"):
+        add_finding(
+            findings,
+            "low",
+            "vortex_collection_state_seen",
+            f"Vortex exposed {collection.get('collectionStateCount')} collection-like state item(s) and {collection.get('modCollectionMarkerCount')} mod marker(s).",
+            "Use this for collection mismatch context only; do not auto-install or remove collection mods.",
+        )
     nexus_updates = sections.get("nexusUpdateReport") or sections.get("nexusUpdates")
     if isinstance(nexus_updates, dict):
         if not nexus_updates.get("available") and nexus_updates.get("notes"):
@@ -4894,6 +5523,27 @@ def safe_session_markdown(session: Dict[str, Any]) -> str:
         else:
             lines.append("- No candidates found. Try screenshot/OCR popup text, console FormID, or deep_scan_files=true.")
 
+    xedit = sections.get("xeditDiagnostics")
+    if isinstance(xedit, dict):
+        lines.extend(["", "## xEdit/SSEEdit", ""])
+        lines.append(f"- Detected: {xedit.get('available')}")
+        if xedit.get("xeditExe"):
+            lines.append(f"- Executable: {xedit.get('xeditExe')}")
+        if xedit.get("pluginName"):
+            lines.append(f"- Suggested plugin: {xedit.get('pluginName')}")
+        hint = xedit.get("formIdHint") if isinstance(xedit.get("formIdHint"), dict) else {}
+        if hint:
+            lines.append(f"- FormID hint: {hint.get('formId')} -> {hint.get('pluginName') or 'unknown'} ({hint.get('confidence')})")
+        lines.append("- This section is read-only. Do not save plugin edits from this report alone.")
+
+    collection = sections.get("vortexCollection")
+    if isinstance(collection, dict):
+        lines.extend(["", "## Vortex Collection State", ""])
+        lines.append(f"- Collection-like state found: {collection.get('collectionStateCount')}")
+        lines.append(f"- Mod collection markers found: {collection.get('modCollectionMarkerCount')}")
+        for item in collection.get("collectionStates", [])[:8]:
+            lines.append(f"- {item.get('name') or item.get('slug') or item.get('id') or item.get('path')}")
+
     nexus_updates = sections.get("nexusUpdateReport") or sections.get("nexusUpdates")
     if isinstance(nexus_updates, dict):
         lines.extend(["", "## Nexus Metadata", ""])
@@ -4945,6 +5595,8 @@ def safe_session_report(args: Dict[str, Any]) -> Dict[str, Any]:
     include_profile_backup = bool(args.get("include_profile_backup", True))
     include_play_report = bool(args.get("include_play_report", True))
     include_logs = bool(args.get("include_logs", True))
+    include_xedit_report = bool(args.get("include_xedit_report", False))
+    include_collection_report = bool(args.get("include_collection_report", False))
     redact_user_paths = bool(args.get("redact_user_paths", True))
     sections: Dict[str, Any] = {}
 
@@ -4962,6 +5614,10 @@ def safe_session_report(args: Dict[str, Any]) -> Dict[str, Any]:
             sections["skyrimModdedPlay"] = compact_play_report(sections["skyrimModdedPlay"])
     if any(args.get(key) for key in ("description", "location", "object", "form_id", "cell", "base_object", "popup_text", "extra_terms", "issue_kind")):
         collect_section(sections, "inGameIssue", in_game_issue_report, args)
+    if include_xedit_report or args.get("form_id") or args.get("plugin_name"):
+        collect_section(sections, "xeditDiagnostics", xedit_diagnostics_report, args)
+    if include_collection_report:
+        collect_section(sections, "vortexCollection", vortex_collection_report, args)
     if bool(args.get("include_nexus_metadata", False)):
         collect_section(sections, "nexusUpdateReport", nexus_update_report, args)
     if include_logs:
@@ -5008,6 +5664,8 @@ def safe_session_report(args: Dict[str, Any]) -> Dict[str, Any]:
             "Profile backup may fail if Vortex.exe is not detected; pass vortex_exe or back up in Vortex.",
             "Use performance_mode=slow_model for smaller outputs on weaker OpenClaw models.",
             "Use include_nexus_metadata=true with NEXUS_MODS_API_KEY for optional Nexus source/update metadata.",
+            "Use include_xedit_report=true for read-only xEdit/SSEEdit target hints.",
+            "Use include_collection_report=true to inspect collection-like state exposed by Vortex.",
             "Use deep_scan_files=true for a slower second pass on weak in-game issue results.",
         ],
     }
@@ -5033,6 +5691,7 @@ def skyrim_diagnostics_report(args: Dict[str, Any]) -> Dict[str, Any]:
     tuned = dict(args)
     tuned.setdefault("performance_mode", "slow_model")
     tuned.setdefault("include_nexus_metadata", bool(nexus_api_key(tuned)))
+    tuned.setdefault("include_xedit_report", bool(tuned.get("form_id") or tuned.get("plugin_name")))
     if not tuned.get("output_path"):
         docs = default_documents() or Path.cwd()
         tuned["output_path"] = str(docs / "vortex-skyrimse-mcp-reports" / f"skyrim-diagnostics-{now_stamp()}.md")
@@ -5121,6 +5780,8 @@ def bug_report_bundle(args: Dict[str, Any]) -> Dict[str, Any]:
     include_deployment = bool(args.get("include_vortex_deployment", True))
     include_play_report = bool(args.get("include_play_report", True))
     include_conflicts = bool(args.get("include_conflicts", False))
+    include_xedit_report = bool(args.get("include_xedit_report", False))
+    include_collection_report = bool(args.get("include_collection_report", False))
     redact_user_paths = bool(args.get("redact_user_paths", True))
     zip_output = bool(args.get("zip_output", False))
     zip_path = expand_path(args.get("zip_path"))
@@ -5192,6 +5853,18 @@ def bug_report_bundle(args: Dict[str, Any]) -> Dict[str, Any]:
             bundle["nexusUpdateReport"] = nexus_update_report(args)
         except Exception as exc:
             bundle["nexusUpdateReportError"] = str(exc)
+
+    if include_xedit_report or args.get("form_id") or args.get("plugin_name"):
+        try:
+            bundle["xeditDiagnostics"] = xedit_diagnostics_report(args)
+        except Exception as exc:
+            bundle["xeditDiagnosticsError"] = str(exc)
+
+    if include_collection_report:
+        try:
+            bundle["vortexCollection"] = vortex_collection_report(args)
+        except Exception as exc:
+            bundle["vortexCollectionError"] = str(exc)
 
     if include_profiles:
         try:
@@ -5306,8 +5979,12 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "vortex_appdata": {"type": "string"},
                 "staging_dir": {"type": "string"},
                 "include_files": {"type": "boolean", "default": False},
+                "include_scan_cache_status": {"type": "boolean", "default": False},
                 "max_mods": {"type": "integer", "default": 300},
                 "max_files_per_mod": {"type": "integer", "default": 5000},
+                "scan_cache_dir": {"type": "string"},
+                "use_scan_cache": {"type": "boolean", "default": True},
+                "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
             },
             "additionalProperties": False,
         },
@@ -5338,6 +6015,9 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "staging_dir": {"type": "string"},
                 "hash_files": {"type": "boolean", "default": False},
                 "max_mods": {"type": "integer", "default": 200},
+                "scan_cache_dir": {"type": "string"},
+                "use_scan_cache": {"type": "boolean", "default": True},
+                "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
             },
             "additionalProperties": False,
         },
@@ -5355,6 +6035,75 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
             "additionalProperties": False,
         },
         plugin_report,
+    ),
+    "scan_cache_status": (
+        "Show the local mod-summary scan cache used to speed up repeated large-collection diagnostics.",
+        {
+            "type": "object",
+            "properties": {
+                "scan_cache_dir": {"type": "string"},
+                "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
+            },
+            "additionalProperties": False,
+        },
+        scan_cache_status,
+    ),
+    "xedit_diagnostics_report": (
+        "Read-only xEdit/SSEEdit helper report for FormID/plugin inspection targets.",
+        {
+            "type": "object",
+            "properties": {
+                "xedit_exe": {"type": "string"},
+                "sseedit_exe": {"type": "string"},
+                "form_id": {"type": "string"},
+                "plugin_name": {"type": "string"},
+                "skyrim_dir": {"type": "string"},
+                "staging_dir": {"type": "string"},
+                "local_appdata": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        xedit_diagnostics_report,
+    ),
+    "vortex_collection_report": (
+        "Read-only inspection of collection-like state and mod collection markers exposed by Vortex CLI.",
+        {
+            "type": "object",
+            "properties": {
+                "vortex_exe": {"type": "string"},
+                "game_id": {"type": "string", "default": GAME_ID},
+                "max_mods": {"type": "integer", "default": 500},
+                "max_collection_items": {"type": "integer", "default": 80},
+                "timeout_seconds": {"type": "integer", "default": 60},
+            },
+            "additionalProperties": False,
+        },
+        vortex_collection_report,
+    ),
+    "collection_local_match_report": (
+        "Compare a supplied collection manifest-like JSON file to local Vortex/staging Nexus metadata. Read-only.",
+        {
+            "type": "object",
+            "properties": {
+                "collection_manifest_path": {"type": "string"},
+                "collection_manifest_json": {"type": "string"},
+                "vortex_appdata": {"type": "string"},
+                "vortex_exe": {"type": "string"},
+                "staging_dir": {"type": "string"},
+                "profile_id": {"type": "string"},
+                "game_id": {"type": "string", "default": GAME_ID},
+                "include_profile_state": {"type": "boolean", "default": True},
+                "max_mods": {"type": "integer", "default": 500},
+                "max_files_per_mod": {"type": "integer", "default": 3000},
+                "max_collection_items": {"type": "integer", "default": 5000},
+                "scan_cache_dir": {"type": "string"},
+                "use_scan_cache": {"type": "boolean", "default": True},
+                "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
+                "timeout_seconds": {"type": "integer", "default": 60},
+            },
+            "additionalProperties": False,
+        },
+        collection_local_match_report,
     ),
     "mod_evidence": (
         "Read one mod folder and return evidence of what it does: file kinds, plugins, masters, FOMOD, and readmes.",
@@ -5498,6 +6247,9 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "nexus_use_cache": {"type": "boolean", "default": True},
                 "nexus_cache_ttl_seconds": {"type": "integer", "default": NEXUS_DEFAULT_CACHE_TTL_SECONDS},
                 "nexus_timeout_seconds": {"type": "integer", "default": 20},
+                "scan_cache_dir": {"type": "string"},
+                "use_scan_cache": {"type": "boolean", "default": True},
+                "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
                 "timeout_seconds": {"type": "integer", "default": 60},
             },
             "additionalProperties": False,
@@ -5540,6 +6292,9 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "nexus_cache_dir": {"type": "string"},
                 "nexus_use_cache": {"type": "boolean", "default": True},
                 "nexus_cache_ttl_seconds": {"type": "integer", "default": NEXUS_DEFAULT_CACHE_TTL_SECONDS},
+                "scan_cache_dir": {"type": "string"},
+                "use_scan_cache": {"type": "boolean", "default": True},
+                "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
                 "timeout_seconds": {"type": "integer", "default": 60},
             },
             "additionalProperties": False,
@@ -5578,6 +6333,9 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "scan_mode": {"type": "string", "enum": ["quick", "balanced", "deep"], "default": "balanced"},
                 "balanced_text_files_per_mod": {"type": "integer", "default": 8},
                 "deep_scan_files": {"type": "boolean", "default": False},
+                "scan_cache_dir": {"type": "string"},
+                "use_scan_cache": {"type": "boolean", "default": True},
+                "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
                 "timeout_seconds": {"type": "integer", "default": 60},
             },
             "additionalProperties": False,
@@ -5609,6 +6367,8 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "include_logs": {"type": "boolean", "default": True},
                 "include_conflicts": {"type": "boolean", "default": False},
                 "include_nexus_metadata": {"type": "boolean", "default": False},
+                "include_xedit_report": {"type": "boolean", "default": False},
+                "include_collection_report": {"type": "boolean", "default": False},
                 "redact_user_paths": {"type": "boolean", "default": True},
                 "description": {"type": "string"},
                 "location": {"type": "string"},
@@ -5618,6 +6378,8 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "base_object": {"type": "string"},
                 "popup_text": {"type": "string"},
                 "extra_terms": {"type": "string"},
+                "plugin_name": {"type": "string"},
+                "xedit_exe": {"type": "string"},
                 "issue_kind": {"type": "string", "enum": ["placed_object", "popup", "general"]},
                 "performance_mode": {"type": "string", "enum": ["normal", "slow_model", "fast", "thorough"], "default": "normal"},
                 "response_mode": {"type": "string", "enum": ["standard", "compact"], "default": "standard"},
@@ -5638,6 +6400,9 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "nexus_use_cache": {"type": "boolean", "default": True},
                 "nexus_cache_ttl_seconds": {"type": "integer", "default": NEXUS_DEFAULT_CACHE_TTL_SECONDS},
                 "nexus_timeout_seconds": {"type": "integer", "default": 20},
+                "scan_cache_dir": {"type": "string"},
+                "use_scan_cache": {"type": "boolean", "default": True},
+                "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
                 "timeout_seconds": {"type": "integer", "default": 60},
             },
             "additionalProperties": False,
@@ -5666,6 +6431,8 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "include_logs": {"type": "boolean", "default": True},
                 "include_conflicts": {"type": "boolean", "default": False},
                 "include_nexus_metadata": {"type": "boolean", "default": False},
+                "include_xedit_report": {"type": "boolean", "default": False},
+                "include_collection_report": {"type": "boolean", "default": False},
                 "redact_user_paths": {"type": "boolean", "default": True},
                 "description": {"type": "string"},
                 "location": {"type": "string"},
@@ -5675,6 +6442,8 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "base_object": {"type": "string"},
                 "popup_text": {"type": "string"},
                 "extra_terms": {"type": "string"},
+                "plugin_name": {"type": "string"},
+                "xedit_exe": {"type": "string"},
                 "issue_kind": {"type": "string", "enum": ["placed_object", "popup", "general"]},
                 "performance_mode": {"type": "string", "enum": ["normal", "slow_model", "fast", "thorough"], "default": "slow_model"},
                 "response_mode": {"type": "string", "enum": ["standard", "compact"], "default": "compact"},
@@ -5692,6 +6461,9 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "nexus_use_cache": {"type": "boolean", "default": True},
                 "nexus_cache_ttl_seconds": {"type": "integer", "default": NEXUS_DEFAULT_CACHE_TTL_SECONDS},
                 "nexus_timeout_seconds": {"type": "integer", "default": 20},
+                "scan_cache_dir": {"type": "string"},
+                "use_scan_cache": {"type": "boolean", "default": True},
+                "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
                 "timeout_seconds": {"type": "integer", "default": 60},
             },
             "additionalProperties": False,
@@ -5813,6 +6585,9 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "local_appdata": {"type": "string"},
                 "max_mods": {"type": "integer", "default": 500},
                 "max_files_per_mod": {"type": "integer", "default": 3000},
+                "scan_cache_dir": {"type": "string"},
+                "use_scan_cache": {"type": "boolean", "default": True},
+                "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
                 "timeout_seconds": {"type": "integer", "default": 60},
             },
             "additionalProperties": False,
@@ -5929,6 +6704,9 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "nexus_use_cache": {"type": "boolean", "default": True},
                 "nexus_cache_ttl_seconds": {"type": "integer", "default": NEXUS_DEFAULT_CACHE_TTL_SECONDS},
                 "nexus_timeout_seconds": {"type": "integer", "default": 20},
+                "scan_cache_dir": {"type": "string"},
+                "use_scan_cache": {"type": "boolean", "default": True},
+                "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
                 "timeout_seconds": {"type": "integer", "default": 60},
             },
             "additionalProperties": False,
@@ -6000,6 +6778,8 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "include_play_report": {"type": "boolean", "default": True},
                 "include_conflicts": {"type": "boolean", "default": False},
                 "include_nexus_metadata": {"type": "boolean", "default": False},
+                "include_xedit_report": {"type": "boolean", "default": False},
+                "include_collection_report": {"type": "boolean", "default": False},
                 "redact_user_paths": {"type": "boolean", "default": True},
                 "zip_output": {"type": "boolean", "default": False},
                 "zip_path": {"type": "string"},
@@ -6016,6 +6796,11 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "nexus_use_cache": {"type": "boolean", "default": True},
                 "nexus_cache_ttl_seconds": {"type": "integer", "default": NEXUS_DEFAULT_CACHE_TTL_SECONDS},
                 "nexus_timeout_seconds": {"type": "integer", "default": 20},
+                "plugin_name": {"type": "string"},
+                "xedit_exe": {"type": "string"},
+                "scan_cache_dir": {"type": "string"},
+                "use_scan_cache": {"type": "boolean", "default": True},
+                "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
                 "timeout_seconds": {"type": "integer", "default": 60},
             },
             "additionalProperties": False,
@@ -6246,6 +7031,11 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         "nexus_api_key_file": parsed.nexus_api_key_file,
         "nexus_game_domain": parsed.nexus_game_domain,
         "nexus_cache_dir": parsed.nexus_cache_dir,
+        "scan_cache_dir": parsed.scan_cache_dir,
+        "xedit_exe": parsed.xedit_exe,
+        "plugin_name": parsed.plugin_name,
+        "collection_manifest_path": parsed.collection_manifest_path,
+        "collection_manifest_json": parsed.collection_manifest_json,
     }
     for key, value in common.items():
         if value:
@@ -6262,12 +7052,22 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["nexus_timeout_seconds"] = parsed.nexus_timeout_seconds
     if parsed.nexus_max_lookup_mods is not None:
         tool_args["nexus_max_lookup_mods"] = parsed.nexus_max_lookup_mods
+    if parsed.scan_cache_ttl_seconds is not None:
+        tool_args["scan_cache_ttl_seconds"] = parsed.scan_cache_ttl_seconds
+    if parsed.max_collection_items is not None:
+        tool_args["max_collection_items"] = parsed.max_collection_items
     if parsed.hash_files:
         tool_args["hash_files"] = True
     if parsed.include_nexus_metadata:
         tool_args["include_nexus_metadata"] = True
+    if parsed.include_xedit_report:
+        tool_args["include_xedit_report"] = True
+    if parsed.include_collection_report:
+        tool_args["include_collection_report"] = True
     if parsed.no_nexus_cache:
         tool_args["nexus_use_cache"] = False
+    if parsed.no_scan_cache:
+        tool_args["use_scan_cache"] = False
     if parsed.no_profile_state:
         tool_args["include_profile_state"] = False
     if parsed.no_conflicts:
@@ -6389,12 +7189,22 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--nexus-cache-ttl-seconds", type=int, help="Nexus metadata cache TTL in seconds.")
     parser.add_argument("--nexus-timeout-seconds", type=int, help="Timeout for Nexus API calls.")
     parser.add_argument("--nexus-max-lookup-mods", type=int, help="Maximum local mods to enrich with Nexus metadata.")
+    parser.add_argument("--scan-cache-dir", help="Override local mod-summary scan cache folder.")
+    parser.add_argument("--scan-cache-ttl-seconds", type=int, help="Mod-summary scan cache TTL in seconds.")
+    parser.add_argument("--xedit-exe", help="Path to SSEEdit.exe or xEdit.exe for xedit_diagnostics_report.")
+    parser.add_argument("--plugin-name", help="Plugin filename for xedit_diagnostics_report.")
+    parser.add_argument("--collection-manifest-path", help="JSON manifest-like file for collection_local_match_report.")
+    parser.add_argument("--collection-manifest-json", help="Inline JSON object for collection_local_match_report.")
+    parser.add_argument("--max-collection-items", type=int, help="Maximum collection-like entries or manifest refs to scan.")
     parser.add_argument("--max-mods", type=int, help="Maximum mods to scan for supported tools.")
     parser.add_argument("--max-log-files", type=int, help="Maximum recent log files for support reports.")
     parser.add_argument("--balanced-text-files-per-mod", type=int, help="For balanced issue scans, max config/text files to read per mod.")
     parser.add_argument("--hash-files", action="store_true", help="Hash files for stronger duplicate evidence. Slower.")
     parser.add_argument("--include-nexus-metadata", action="store_true", help="Include optional read-only Nexus metadata in supported reports.")
+    parser.add_argument("--include-xedit-report", action="store_true", help="Include read-only xEdit/SSEEdit target hints in supported reports.")
+    parser.add_argument("--include-collection-report", action="store_true", help="Include read-only Vortex collection-state hints in supported reports.")
     parser.add_argument("--no-nexus-cache", action="store_true", help="Disable the local Nexus metadata cache for this call.")
+    parser.add_argument("--no-scan-cache", action="store_true", help="Disable the local mod-summary scan cache for this call.")
     parser.add_argument("--apply", action="store_true", help="Apply a write-capable tool. Most tools are dry-run without this.")
     parser.add_argument("--allow-running-vortex", action="store_true", help="Allow Vortex profile writes while Vortex.exe is running.")
     parser.add_argument("--include-all-profiles", action="store_true", help="For profile backup, include every detected Skyrim SE profile.")

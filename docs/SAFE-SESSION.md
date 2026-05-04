@@ -6,6 +6,8 @@ For the newest broad no-hassle entry point, prefer
 [SKYRIM-DIAGNOSTICS.md](SKYRIM-DIAGNOSTICS.md). `skyrim_diagnostics_report`
 wraps this same no-change safe-session flow, defaults to compact slow-model
 output, and can include optional Nexus metadata.
+It can also include read-only xEdit/SSEEdit and Vortex collection context when
+requested.
 
 It writes two files:
 
@@ -18,6 +20,8 @@ It writes two files:
 - `vortex_profile_backup`: a backup of Skyrim SE Vortex profiles when Vortex CLI is available.
 - `skyrim_modded_play_report`: deployment, plugins, INI, audio archive, SKSE, and profile health.
 - `in_game_issue_report`: only when you pass a problem description, location, object, optional popup text, or FormID.
+- `xedit_diagnostics_report`: only when `include_xedit_report=true` or you pass a FormID/plugin name.
+- `vortex_collection_report`: only when `include_collection_report=true`.
 - `nexus_update_report`: only when `include_nexus_metadata=true` or the broader `skyrim_diagnostics_report` sees a configured Nexus key.
 - `log_status`: recent MCP logs and channels.
 
@@ -83,6 +87,13 @@ With exact issue evidence:
 py -3 .\server.py --safe-session --description "bad bed placement" --location "Whiterun Bannered Mare" --object "bed" --form-id "1200ABCD" --base-object "CommonBed01"
 ```
 
+With read-only xEdit or collection context:
+
+```powershell
+py -3 .\server.py --safe-session --include-xedit-report --form-id "1200ABCD"
+py -3 .\server.py --safe-session --include-collection-report
+```
+
 Skip profile backup if Vortex CLI is locked or unavailable:
 
 ```powershell
@@ -116,6 +127,8 @@ Start with:
 3. `sections.setupValidation.blockers`
 4. `sections.skyrimModdedPlay.findings`
 5. `sections.inGameIssue.candidates`
-6. `sections.logStatus`
+6. `sections.xeditDiagnostics`, if present
+7. `sections.vortexCollection`, if present
+8. `sections.logStatus`
 
 For a mod candidate, OpenClaw should recommend a cloned-profile disable test, not deletion. For deployment findings, the safest next action is usually to select the intended Vortex profile, click Deploy Mods, confirm plugins are enabled, then launch through SKSE.

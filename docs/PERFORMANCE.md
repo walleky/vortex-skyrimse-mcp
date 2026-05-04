@@ -87,6 +87,8 @@ For large collections:
 - Use `--max-mods 200` for rough triage on massive collections.
 - Keep `nexus_max_lookup_mods` modest for the first pass; increase it only when
   you need a fuller Nexus metadata review.
+- Keep the scan cache enabled for repeated diagnostics. It stores derived local
+  mod summaries and avoids walking the same large staging folders over and over.
 - Use exact evidence when you have it: FormID, cell name, base object, popup
   text, or screenshot/OCR text.
 - Use `scan_mode=quick` only for rough triage; use balanced or deep for final
@@ -99,3 +101,19 @@ collection. It is useful, but it is intentionally slower.
 
 Do not ask OpenClaw to read every generated JSON section at once. Have it start
 with the summary and follow the `nextActions`.
+
+## Scan Cache
+
+Use `scan_cache_status` if performance is confusing:
+
+```powershell
+py -3 .\server.py --tool scan_cache_status
+```
+
+Disable the cache only for a fresh scan:
+
+```powershell
+py -3 .\server.py --skyrim-diagnostics --no-scan-cache
+```
+
+See [SCAN-CACHE.md](SCAN-CACHE.md) for details.

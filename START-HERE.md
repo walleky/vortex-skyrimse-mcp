@@ -109,6 +109,12 @@ For redundant mods and conflicts:
 Use the vortex-skyrimse MCP to find missing masters, likely redundant mods, and sensitive file conflicts. Do not apply changes yet.
 ```
 
+For performance on huge collections:
+
+```text
+Use scan_cache_status to show whether the local scan cache is enabled. Keep it enabled unless the result looks stale.
+```
+
 For a big collection knowledge map:
 
 ```text
@@ -121,7 +127,19 @@ For something weird inside the game:
 Use skyrim_diagnostics_report with this issue: there is a bed outside the tavern room in the Whiterun Bannered Mare. Include in-game issue candidates and do not apply changes.
 ```
 
+If you have a console FormID, add it and ask for the xEdit target:
+
+```text
+Use xedit_diagnostics_report with form_id 0100ABCD and tell me the likely plugin to inspect. Do not edit plugins.
+```
+
 For annoying popups, just say "popup", "notification", "warning", or similar in the description. The first scan is balanced and checks local file/path/config clues automatically. Exact popup text or a screenshot/OCR can help later, but it is not required for the first scan.
+
+For collection drift:
+
+```text
+Use vortex_collection_report to inspect collection state and do not install, update, or remove mods.
+```
 
 Before changing a Vortex profile:
 
@@ -146,6 +164,8 @@ The bundle redacts normal user profile paths by default, but it may still includ
 - `vortex_clone_profile` and `vortex_set_profile_mods` write only when `apply=true`.
 - Profile write tools create a profile backup before `apply=true` by default.
 - `vortex_profile_restore_plan` previews undo actions by default.
+- `xedit_diagnostics_report` is read-only and does not launch xEdit or save plugins.
+- Collection diagnostics are read-only and do not install, update, remove, or deploy mods.
 - Close Vortex before profile writes.
 - Reopen Vortex afterward, pick the intended profile, then deploy mods before launching Skyrim.
 

@@ -2,7 +2,8 @@
 
 `skyrim_diagnostics_report` is the broadest no-hassle first report. It is a
 safe wrapper around the existing setup, profile, deployment, play-health,
-in-game issue, log, and optional Nexus metadata checks.
+in-game issue, log, local scan-cache, read-only xEdit target, collection, and
+optional Nexus metadata checks.
 
 It writes:
 
@@ -24,6 +25,8 @@ Use it when the user says:
 - there is a weird object in game
 - a popup keeps appearing
 - a huge collection needs a first-pass health check
+- a FormID needs an xEdit/SSEEdit inspection target
+- collection state might not match what is staged locally
 
 ## OpenClaw Prompt
 
@@ -61,6 +64,18 @@ With Nexus metadata:
 py -3 .\server.py --skyrim-diagnostics --include-nexus-metadata
 ```
 
+With read-only xEdit target hints:
+
+```powershell
+py -3 .\server.py --skyrim-diagnostics --include-xedit-report --form-id "0100ABCD"
+```
+
+With Vortex collection-state hints:
+
+```powershell
+py -3 .\server.py --skyrim-diagnostics --include-collection-report
+```
+
 With an issue:
 
 ```powershell
@@ -93,6 +108,13 @@ With optional Nexus metadata:
 .\vortex_skyrimse_menu.ps1 -Action diagnostics -IncludeNexusMetadata
 ```
 
+With optional xEdit or collection context:
+
+```powershell
+.\vortex_skyrimse_menu.ps1 -Action diagnostics -IncludeXeditReport -FormId "0100ABCD"
+.\vortex_skyrimse_menu.ps1 -Action diagnostics -IncludeCollectionReport
+```
+
 ## What The Report Checks
 
 - setup validation
@@ -108,6 +130,9 @@ With optional Nexus metadata:
 - audio archive presence
 - SKSE plugin/file evidence
 - in-game issue candidates when a description is provided
+- read-only xEdit/SSEEdit target hints when requested or a FormID/plugin is provided
+- Vortex collection-like state when requested
+- local scan-cache status
 - recent MCP logs
 - optional Nexus metadata health and update/source review
 
@@ -121,8 +146,10 @@ Read in this order:
 4. `sections.setupValidation`
 5. `sections.skyrimModdedPlay`
 6. `sections.inGameIssue`, if present
-7. `sections.nexusUpdateReport`, if present
-8. `sections.logStatus`
+7. `sections.xeditDiagnostics`, if present
+8. `sections.vortexCollection`, if present
+9. `sections.nexusUpdateReport`, if present
+10. `sections.logStatus`
 
 If a finding points to a mod candidate, the safe next step is a cloned-profile
 disable test, not deletion. If a finding points to deployment, the safe next step

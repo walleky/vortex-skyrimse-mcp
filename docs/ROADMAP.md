@@ -5,15 +5,20 @@ These are useful next steps, ordered by value and risk.
 ## Best Next Improvements
 
 1. Add a live Skyrim evidence bridge: screenshot/OCR for popups, plus optional SKSE/console telemetry for current cell and clicked FormID.
-2. Add richer Vortex collection detection if Vortex exposes collection state through stable CLI paths.
-3. Add Nexus GraphQL file-content search behind an explicit read-only flag for "which Nexus mod contains this plugin/script/mesh?" questions.
-4. Add more plugin metadata parsing for ESP/ESM headers beyond masters, such as plugin version and record counts.
-5. Add a read-only xEdit/SSEEdit integration for cell, reference, quest, and message lookup.
-6. Add a tiny local HTML report viewer for generated JSON/Markdown outputs.
-7. Add Nexus/Vortex collection manifest detection if stable local collection metadata is available.
-8. Add an optional local scan cache for mod summaries so repeated large-collection triage can reuse unchanged file metadata.
-9. Add a synthetic Vortex profile fixture so profile/deployment behavior can be tested without a real Vortex install.
-10. Add a profile restore apply helper in the local menu only after the preview UX is clear enough for nontechnical users.
+2. Add Nexus GraphQL file-content search behind an explicit read-only flag for "which Nexus mod contains this plugin/script/mesh?" questions.
+3. Add more plugin metadata parsing for ESP/ESM headers beyond masters, such as plugin version and record counts.
+4. Expand xEdit/SSEEdit diagnostics from target hints into read-only record lookup if a stable no-save workflow is proven.
+5. Add a tiny local HTML report viewer for generated JSON/Markdown outputs.
+6. Add richer Vortex collection detection if Vortex exposes more stable CLI paths.
+7. Add a synthetic Vortex profile fixture so profile/deployment behavior can be tested without a real Vortex install.
+8. Add a profile restore apply helper in the local menu only after the preview UX is clear enough for nontechnical users.
+
+## Recently Added
+
+- Read-only xEdit/SSEEdit target hints from FormIDs and plugin names.
+- Read-only Vortex collection-state inspection and collection manifest matching.
+- Local mod-summary scan cache for repeated large-collection diagnostics.
+- Conflict risk explanations and safer next-action text.
 
 ## What Not To Automate Yet
 
@@ -46,6 +51,9 @@ Those actions can break saves. Keep them as reports or dry-run plans until the e
 - Teach OpenClaw to call `safe_session_report` as the default first response for broad "something is broken" requests.
 - Teach OpenClaw to prefer `skyrim_diagnostics_report` for the broadest no-hassle first pass.
 - Teach OpenClaw to use `nexus_validate_key` and `nexus_update_report` only as read-only metadata helpers.
+- Teach OpenClaw to use `scan_cache_status` when repeated scans are slow or stale.
+- Teach OpenClaw to use `xedit_diagnostics_report` as a read-only inspection target helper.
+- Teach OpenClaw to use `vortex_collection_report` and `collection_local_match_report` for collection drift context, not automatic updates.
 - Teach slower OpenClaw models to use `performance_mode=slow_model` and read summary/findings before nested sections.
 - Teach OpenClaw to call `validate_setup` before diagnosis and `vortex_profile_backup` before profile experiments.
 - Teach OpenClaw to call `mod_knowledge_report` before suggesting collection cleanup.

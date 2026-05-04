@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.2.15
+
+- Adds a local mod-summary scan cache for faster repeated diagnostics on large collections, with `scan_cache_status`, CLI/menu flags, and safe fallback if the cache cannot be written.
+- Adds read-only `xedit_diagnostics_report` for SSEEdit/xEdit target hints from FormIDs and plugin names.
+- Adds read-only `vortex_collection_report` and `collection_local_match_report` for Vortex collection-state context and manifest-to-local Nexus metadata matching.
+- Adds conflict risk explanations so OpenClaw can explain high-risk script/SKSE/plugin/archive conflicts differently from harmless duplicates.
+- Wires xEdit, collection, and scan-cache options into safe-session, Skyrim diagnostics, bug bundles, direct CLI, and the local helper menu.
+- Adds documentation for scan cache behavior, xEdit diagnostics, collection diagnostics, and conflict interpretation.
+- Extends smoke and fixture tests for the new tools, cache behavior, collection matching, xEdit hints, and conflict explanations.
+
 ## v0.2.14
 
 - Adds optional read-only Nexus Mods API metadata support with explicit MCP-owned key handling via `NEXUS_MODS_API_KEY`, `nexus_api_key_file`, or private tool arguments.

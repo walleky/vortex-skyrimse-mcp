@@ -191,6 +191,13 @@ mods.
 
 Goal: make Nexus Collections more explainable without replacing Vortex.
 
+Partial implementation now exists:
+
+- `vortex_collection_report` reads collection-like state exposed by Vortex CLI.
+- `collection_local_match_report` compares a supplied manifest-like JSON file to
+  locally staged Nexus mod/file metadata.
+- These tools remain read-only and do not install collection mods.
+
 Possible tools:
 
 - `nexus_collection_lookup`

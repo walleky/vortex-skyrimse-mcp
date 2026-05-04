@@ -62,6 +62,8 @@ Useful arguments:
   "include_vortex_deployment": true,
   "include_play_report": true,
   "include_conflicts": false,
+  "include_xedit_report": false,
+  "include_collection_report": false,
   "performance_mode": "slow_model"
 }
 ```
@@ -82,6 +84,9 @@ Use `zip_output=true` when you want one attachable file. The zip contains:
 - setup validation blockers
 - environment detection
 - Nexus API configuration status, and optional update/source metadata when requested
+- scan-cache status
+- optional xEdit/SSEEdit target hints when requested or FormID/plugin evidence is supplied
+- optional Vortex collection state when requested
 - modded play report
 - Vortex profile report if available
 - Vortex profile deployment report if available
@@ -132,6 +137,8 @@ Start with:
 - recent `tool_error` or `exception` log events
 - recent `vortex-cli` nonzero return codes or timeouts
 - `nexusUpdateReport` errors, stale mods, missing source metadata, or lookup-limit skips
+- `xeditDiagnostics` target hints for FormID/plugin issues
+- `vortexCollection` collection-state context for collection drift
 - `backupPath` fields from any profile write result
 
 Common next actions:

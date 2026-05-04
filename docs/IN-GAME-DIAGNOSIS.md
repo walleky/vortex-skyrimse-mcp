@@ -79,6 +79,14 @@ You can pass that evidence directly:
 ```
 
 The report includes a rough FormID/load-order hint when `plugins.txt` is available.
+For a more explicit read-only xEdit target, use:
+
+```text
+xedit_diagnostics_report with form_id 1200ABCD
+```
+
+This does not launch xEdit or save plugin edits. It only points OpenClaw and the
+user toward the likely plugin to inspect first.
 
 ## Scan Modes
 
@@ -102,11 +110,12 @@ Safer path:
 1. Run `skyrim_diagnostics_report` with the issue details.
 2. If needed, run `in_game_issue_report` again with `scan_mode=deep`.
 3. Confirm a profile backup exists, or run `vortex_profile_backup`.
-4. Inspect the top candidate in xEdit/SSEEdit if available.
-5. Clone the Vortex profile.
-6. Disable one candidate in the cloned profile as a dry run first.
-7. Apply only after approval.
-8. Deploy in Vortex and test.
+4. Use `xedit_diagnostics_report` with any FormID/plugin evidence.
+5. Inspect the top candidate in xEdit/SSEEdit if available.
+6. Clone the Vortex profile.
+7. Disable one candidate in the cloned profile as a dry run first.
+8. Apply only after approval.
+9. Deploy in Vortex and test.
 
 ## What A True Live Skyrim MCP Needs
 

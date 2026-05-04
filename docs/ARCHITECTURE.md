@@ -11,6 +11,7 @@ OpenClaw or MCP client
       -> detect local Steam/Vortex/Skyrim paths
       -> inspect staging folders, plugins, INIs, profiles, conflicts
       -> optionally enrich reports with read-only Nexus Mods metadata
+      -> optionally use local scan cache, xEdit target hints, and collection diagnostics
       -> optionally call Vortex.exe --get/--set for profile state
       -> return structured JSON to the MCP client
 
@@ -42,6 +43,10 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - `docs/MOD-KNOWLEDGE.md`: explains the collection knowledge report and safe removal-review flow.
 - `docs/NEXUS-API.md`: explains optional read-only Nexus Mods API metadata support.
 - `docs/ADR-0001-NEXUS-API-KEYS.md`: records why this MCP uses its own explicit Nexus API key.
+- `docs/SCAN-CACHE.md`: explains the local derived mod-summary cache.
+- `docs/XEDIT-DIAGNOSTICS.md`: explains read-only xEdit/SSEEdit target hints.
+- `docs/COLLECTION-DIAGNOSTICS.md`: explains collection state and manifest matching.
+- `docs/CONFLICT-EXPLAINER.md`: explains conflict risk output.
 - `docs/SAMPLE-BUG-BUNDLE.md`: shortened sanitized support bundle example for agents and humans.
 
 ## server.py Code Map
@@ -50,7 +55,10 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - Steam/Vortex path detection: `find_steam_root`, `steam_libraries`, `find_skyrim_dir`, `default_vortex_appdata`, `find_vortex_exe`.
 - Vortex CLI helpers: `run_vortex_cli`, `vortex_state_get`, `vortex_state_set`.
 - filesystem and mod inspection: `safe_walk`, `mod_summary`, `inventory_mods`, `analyze_conflicts`, `redundant_mod_report`, `mod_knowledge_report`.
+- scan cache: `scan_cache_status`, `mod_summary_cached`, `load_scan_cache`, `write_scan_cache`.
 - Nexus metadata: `nexus_validate_key`, `nexus_mod_lookup`, `nexus_mod_files`, `nexus_file_info`, `nexus_file_by_md5`, `nexus_parse_nxm_link`, `nexus_update_report`.
+- xEdit/SSEEdit target hints: `xedit_diagnostics_report`, `xedit_candidates`, `form_id_load_order_hint`.
+- collection diagnostics: `vortex_collection_report`, `collection_local_match_report`, `extract_manifest_mod_refs`.
 - in-game issue triage: `in_game_issue_report`, `scan_mod_for_issue`, `extract_plugin_strings`.
 - performance shaping: `apply_performance_defaults`, `compact_issue_report`, `compact_play_report`.
 - plugin/load-order checks: `parse_plugin_list`, `plugin_report`, `plugin_masters`.
@@ -74,6 +82,9 @@ Most tools are read-only. The write tools are narrow and opt-in:
   delete placed objects, or disable mods.
 - Nexus API tools are read-only. They use this MCP's configured key and must not
   copy or reuse Vortex's key.
+- xEdit/SSEEdit tools are read-only hints. They do not launch xEdit or save plugin edits.
+- Collection diagnostics are read-only. They do not install, update, remove, or deploy collection mods.
+- Scan-cache write failures are logged and do not fail diagnostics.
 - Vortex profile writes refuse to run while `Vortex.exe` is open unless `allow_running_vortex=true`.
 - Profile writes use `Vortex.exe --set`, not direct database edits.
 

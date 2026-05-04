@@ -32,6 +32,7 @@ server-YYYYMMDD.jsonl
 tool-YYYYMMDD.jsonl
 vortex-cli-YYYYMMDD.jsonl
 support-YYYYMMDD.jsonl
+scan-cache-YYYYMMDD.jsonl
 ```
 
 MCP Doctor writes transcript logs:
@@ -70,6 +71,11 @@ doctor-YYYYMMDD-HHMMSS.log
 
 - bug-report bundle creation
 - safe-session report creation and per-section errors
+
+`scan-cache`
+
+- local scan-cache write failures
+- cache errors are logged here instead of failing the diagnosis
 
 `doctor`
 

@@ -61,6 +61,7 @@ def main() -> int:
 
         write(skyrim / "SkyrimSE.exe")
         write(skyrim / "skse64_loader.exe")
+        write(skyrim / "SSEEdit.exe")
         write(data / "Skyrim.esm", plugin_bytes())
         write(data / "Update.esm", plugin_bytes("Skyrim.esm"))
         write(data / "MyMod.esp", plugin_bytes("Skyrim.esm"))
@@ -96,10 +97,17 @@ def main() -> int:
 
         env = server.detect_environment(base_args)
         assert env["skse_installed"] is True, env
+        assert env["xedit"]["available"] is True, env
         assert not [issue for issue in env["issues"] if "SkyrimSE.exe" in issue], env
         setup = server.validate_setup(base_args)
         assert setup["ready"] is True, setup
         assert setup["environment"]["nexus_api"]["configured"] is False, setup
+        assert "xedit_diagnostics_report" in setup["toolGroups"]["alwaysAvailable"], setup
+
+        xedit = server.xedit_diagnostics_report({**base_args, "form_id": "0100ABCD"})
+        assert xedit["available"] is True, xedit
+        assert xedit["pluginName"] == "MYMOD.ESP", xedit
+        assert xedit["readOnly"] is True, xedit
 
         assert server.compact_for_log({"nexus_api_key": "secret"})["nexus_api_key"] == "<redacted>"
         previous_nexus_key = os.environ.pop("NEXUS_MODS_API_KEY", None)
@@ -203,13 +211,75 @@ def main() -> int:
 
         inventory = server.inventory_mods({**base_args, "include_files": True})
         assert inventory["modCount"] == 5, inventory
+        cached_inventory = server.inventory_mods({**base_args, "include_files": True, "include_scan_cache_status": True})
+        assert any(mod.get("_cache", {}).get("hit") for mod in cached_inventory["mods"]), cached_inventory
+        assert cached_inventory["scanCache"]["entryCount"] >= inventory["modCount"], cached_inventory
 
         conflicts = server.analyze_conflicts(base_args)
         assert any(item["relativePath"] == "scripts/shared.pex" for item in conflicts["conflicts"]), conflicts
+        shared_conflict = next(item for item in conflicts["conflicts"] if item["relativePath"] == "scripts/shared.pex")
+        assert shared_conflict["explanation"]["risk"] == "high", shared_conflict
+        assert conflicts["riskSummary"]["high"] >= 1, conflicts
 
         plugins = server.plugin_report(base_args)
         assert "MissingOnDisk.esp" in plugins["missingEnabledPlugins"], plugins
         assert any(item["missingMaster"] == "MissingMaster.esm" for item in plugins["missingMasters"]), plugins
+
+        collection_match = server.collection_local_match_report(
+            {
+                **base_args,
+                "include_profile_state": False,
+                "collection_manifest_json": json.dumps(
+                    {"mods": [{"modId": 200, "fileId": 777}, {"mod_id": 999, "file_id": 1}]}
+                ),
+            }
+        )
+        assert collection_match["manifestReferenceCount"] == 2, collection_match
+        assert 999 in collection_match["missingModIds"], collection_match
+        assert 200 not in collection_match["missingModIds"], collection_match
+        assert collection_match["filePairMismatchCount"] == 1, collection_match
+
+        original_vortex_state_get = server.vortex_state_get
+
+        def fake_vortex_state_get(paths, vortex_exe_override=None, timeout_seconds=60):
+            return {
+                "vortex_exe": str(vortex_exe),
+                "state": {
+                    "persistent": {
+                        "collections": {
+                            "abc": {
+                                "id": "abc",
+                                "name": "Fixture Collection",
+                                "revision": 1,
+                                "mods": [{"modId": 200, "fileId": 777}],
+                            }
+                        },
+                        "mods": {
+                            "skyrimse": {
+                                "lighting": {
+                                    "attributes": {
+                                        "name": "Lighting Mod",
+                                        "collectionId": "abc",
+                                        "collectionRevision": 1,
+                                    }
+                                }
+                            }
+                        },
+                        "profiles": {},
+                    },
+                    "settings": {"collections": {}},
+                },
+                "parsed": {"values": {}},
+            }
+
+        server.vortex_state_get = fake_vortex_state_get
+        try:
+            collection_report = server.vortex_collection_report(base_args)
+            assert collection_report["available"] is True, collection_report
+            assert collection_report["collectionStateCount"] >= 1, collection_report
+            assert collection_report["modCollectionMarkerCount"] == 1, collection_report
+        finally:
+            server.vortex_state_get = original_vortex_state_get
 
         issue = server.in_game_issue_report(
             {

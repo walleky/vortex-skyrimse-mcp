@@ -27,7 +27,14 @@ an MCP client.
   - duplicate Nexus IDs when metadata is present
   - file-set subsets, optionally using SHA-256 hashes
 - Detect loose-file conflicts between staged mods.
+  Each conflict includes a plain-language risk explanation and safer next
+  action so OpenClaw can explain why scripts/SKSE/plugins matter more than
+  harmless duplicates.
 - Detect missing masters and enabled plugins that are missing on disk.
+- Use a local scan cache to make repeated large-collection diagnostics faster.
+- Give read-only xEdit/SSEEdit target hints from FormIDs and plugin names.
+- Inspect Vortex collection-like state when Vortex exposes it, and compare a
+  manifest-like collection JSON file to locally staged Nexus mod/file metadata.
 - Inspect Skyrim INI settings and apply a narrow safe set of INI fixes with
   backups. INI writes are dry-run by default.
 - Read Vortex profiles through Vortex's own CLI, show the active-profile guess,
@@ -68,6 +75,10 @@ an MCP client.
 - [docs/PERFORMANCE.md](docs/PERFORMANCE.md): compact outputs and slow-model guidance.
 - [docs/NEXUS-API.md](docs/NEXUS-API.md): optional read-only Nexus Mods API setup and tools.
 - [docs/NEXUS-MODS-API-DESIGN.md](docs/NEXUS-MODS-API-DESIGN.md): Nexus API metadata design and roadmap.
+- [docs/SCAN-CACHE.md](docs/SCAN-CACHE.md): local scan cache behavior, safety, and performance tips.
+- [docs/XEDIT-DIAGNOSTICS.md](docs/XEDIT-DIAGNOSTICS.md): read-only xEdit/SSEEdit target hints.
+- [docs/COLLECTION-DIAGNOSTICS.md](docs/COLLECTION-DIAGNOSTICS.md): Vortex collection-state and manifest matching.
+- [docs/CONFLICT-EXPLAINER.md](docs/CONFLICT-EXPLAINER.md): conflict risk levels and safe interpretation.
 - [docs/ADR-0001-NEXUS-API-KEYS.md](docs/ADR-0001-NEXUS-API-KEYS.md): why this MCP uses its own explicit Nexus key instead of Vortex's key.
 - [docs/SAFETY-UNDO.md](docs/SAFETY-UNDO.md): backup, restore-preview, and dry-run rules.
 - [docs/IN-GAME-DIAGNOSIS.md](docs/IN-GAME-DIAGNOSIS.md): how to ask OpenClaw about misplaced objects, popups, FormIDs, and future live Skyrim bridging.
@@ -164,6 +175,9 @@ You can run tools without OpenClaw:
 ```powershell
 py -3 .\server.py --tool detect_environment
 py -3 .\server.py --tool validate_setup
+py -3 .\server.py --tool scan_cache_status
+py -3 .\server.py --tool xedit_diagnostics_report --form-id 0100ABCD
+py -3 .\server.py --tool vortex_collection_report
 py -3 .\server.py --skyrim-diagnostics
 py -3 .\server.py --safe-session
 py -3 .\server.py --mod-knowledge
@@ -249,6 +263,18 @@ Use in_game_issue_report to find likely mods causing this: there is an annoying 
 ```
 
 If you can open Skyrim's console for placed objects, click the bad object and include the shown FormID/base object. For popups, exact text or a screenshot/OCR can help later, but OpenClaw should run the first popup scan from your plain description.
+
+For a FormID or xEdit target:
+
+```text
+Use xedit_diagnostics_report with form_id 0100ABCD and tell me the likely plugin to inspect. Do not edit plugins.
+```
+
+For collection drift:
+
+```text
+Use vortex_collection_report and nexus_update_report to check whether my local collection state and Nexus metadata look consistent. Do not install, update, or remove mods.
+```
 
 For INI fixes:
 

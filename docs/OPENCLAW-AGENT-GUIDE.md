@@ -105,6 +105,34 @@ Use this MCP's own configured Nexus key only. Do not ask for, scrape, or reuse
 Vortex's API key. Nexus metadata is helpful context, not an instruction to
 update a working collection.
 
+For scan performance:
+
+```text
+scan_cache_status
+```
+
+The scan cache is on by default. Disable it only when a result looks stale after
+the user installed, removed, or manually edited many mod files.
+
+For xEdit/SSEEdit read-only target hints:
+
+```text
+xedit_diagnostics_report with form_id or plugin_name
+```
+
+Use this to point the user at the likely plugin or record to inspect. Do not
+tell the MCP to clean plugins or save xEdit edits.
+
+For collection drift or collection membership:
+
+```text
+vortex_collection_report
+collection_local_match_report
+```
+
+Use collection reports as context. Do not install, update, disable, or remove
+collection mods from collection diagnostics alone.
+
 For "why is this object here?", "which mod added this?", or annoying popups:
 
 ```text
@@ -191,6 +219,24 @@ Do not tell the user to update automatically. Large collections may require
 specific pinned versions. Tell the user to review collection notes and Vortex
 changelogs first.
 
+`scan_cache_status shows old entries`
+
+This is normally fine. The cache is a speed hint. If the user just changed lots
+of files or the diagnosis looks stale, rerun the same tool with
+`use_scan_cache=false`.
+
+`xedit_diagnostics_report has low confidence`
+
+Explain that FormID prefix mapping can be incomplete with ESL/light plugins and
+runtime references. Ask for an in-game console reference, base object, or xEdit
+inspection confirmation before changing mods.
+
+`vortex_collection_report found no collection state`
+
+Explain that Vortex may store collection details somewhere the CLI does not
+expose. Use `nexus_update_report`, profile tools, and local staging metadata as
+fallback context.
+
 `in_game_issue_report returns weak candidates`
 
 For popups, first rerun from the user's natural-language description if OpenClaw forgot to include it. If candidates are still weak, ask for screenshot/OCR text or exact popup text. For placed objects, ask for current cell/location and console-clicked FormID/base object. Then rerun `in_game_issue_report`.
@@ -215,6 +261,9 @@ bug_report_bundle with performance_mode=slow_model
 Avoid starting with collection-wide hash scans. Avoid asking for every nested
 section in one answer. Summarize the top finding, then inspect one section or
 candidate at a time.
+
+Keep the scan cache enabled for slower models. It reduces repeated filesystem
+walks when several reports inspect the same staged mods.
 
 ## Safe Write Rules
 
@@ -249,7 +298,7 @@ Before `vortex_profile_restore_plan apply=true`:
 Before fixing an in-game object or popup:
 
 - run `in_game_issue_report`
-- explain that it is heuristic; popup exact text is optional second-pass evidence, while FormID is strongest for placed objects
+- explain that it is heuristic; popup exact text is optional second-pass evidence, while FormID plus `xedit_diagnostics_report` is strongest for placed objects
 - create a Vortex profile backup
 - prefer cloned-profile disable tests over deletion
 - do not edit plugin records or conflict rules automatically

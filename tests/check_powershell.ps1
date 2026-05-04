@@ -28,3 +28,6 @@ $MenuOutput
 if (($MenuOutput -join "`n") -notmatch "Safe session report") {
   throw "Menu did not list the safe session report action."
 }
+if (($MenuOutput -join "`n") -notmatch "Collection manifest match") {
+  throw "Menu did not list the collection manifest match action."
+}

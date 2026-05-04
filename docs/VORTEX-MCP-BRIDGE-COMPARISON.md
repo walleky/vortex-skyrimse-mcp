@@ -46,6 +46,10 @@ This project is intentionally a safety-first sidecar:
 - SKSE/audio/INI/missing-master diagnosis in one `skyrim_modded_play_report`
 - in-game issue triage for user-described misplaced objects and popups through `in_game_issue_report`
 - read-only Nexus metadata tools for key validation, mod/file lookup, MD5 lookup, NXM parsing, and local update/source reports
+- read-only xEdit/SSEEdit target hints for FormIDs and plugin names
+- read-only collection-state and manifest-local matching diagnostics
+- scan cache for faster repeated large-collection reports
+- conflict risk explanations for safer OpenClaw interpretation
 - dry-run profile changes
 - automatic profile backups before profile writes
 - restore previews through `vortex_profile_restore_plan`
@@ -63,6 +67,8 @@ Useful Bridge ideas now mirrored in this project:
 - profile backup: export profile state before risky work.
 - profile diff/compare: already present as `vortex_compare_profiles`.
 - local no-hassle workflows: this project adds `Vortex-SkyrimSE-Menu.cmd` and direct CLI mode.
+- explainable conflicts: this project adds risk summaries and safe next actions instead of only listing overlapping files.
+- xEdit and collection context: this project adds read-only hints without trying to replace Vortex installs or xEdit edits.
 
 ## Ideas Not Adopted Yet
 

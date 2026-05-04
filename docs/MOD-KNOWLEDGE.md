@@ -17,6 +17,7 @@ By default, the report uses local evidence:
 - Vortex profile enabled/disabled state, if Vortex CLI is available
 - duplicate plugin/Nexus id/file coverage evidence
 - file-level conflict examples
+- the local scan cache for repeated collection scans
 
 With `include_nexus_metadata=true` and a configured Nexus API key, it can also
 attach read-only Nexus name, summary, category, version, status, and URL
@@ -46,6 +47,12 @@ With optional Nexus metadata:
 py -3 .\server.py --mod-knowledge --include-nexus-metadata
 ```
 
+For a fresh scan after many manual file changes:
+
+```powershell
+py -3 .\server.py --mod-knowledge --no-scan-cache
+```
+
 Or use the wrapper:
 
 ```powershell
@@ -67,7 +74,7 @@ Run mod_knowledge_report with hash_files=true. Summarize only high-confidence du
 Start with:
 
 1. `Removal Review Shortlist`: strongest local evidence for cleanup.
-2. `Sensitive Conflict Examples`: scripts, plugins, UI, config, animation, and SKSE overlaps.
+2. `Sensitive Conflict Examples`: scripts, plugins, UI, config, animation, and SKSE overlaps, using conflict risk explanations from `analyze_conflicts`.
 3. `Plugin Master Problems`: plugins that depend on missing masters.
 4. `Mod Index`: one-line role map for the full collection.
 5. `Mod Details`: evidence for each mod, including plugin masters and readme excerpts.

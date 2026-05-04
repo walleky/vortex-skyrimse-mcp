@@ -14,6 +14,9 @@ param(
   [string]$Cell = "",
   [string]$BaseObject = "",
   [string]$PopupText = "",
+  [string]$XeditExe = "",
+  [string]$PluginName = "",
+  [string]$CollectionManifestPath = "",
   [int]$MaxMods = 500,
   [switch]$HashFiles,
   [switch]$NoProfileState,
@@ -23,9 +26,12 @@ param(
   [switch]$NoLogs,
   [switch]$NoPlayReport,
   [switch]$IncludeNexusMetadata,
+  [switch]$IncludeXeditReport,
+  [switch]$IncludeCollectionReport,
   [string]$NexusApiKeyFile = "",
   [int]$NexusMaxLookupMods = 80,
-  [switch]$NoNexusCache
+  [switch]$NoNexusCache,
+  [switch]$NoScanCache
 )
 
 $ErrorActionPreference = "Stop"
@@ -98,6 +104,20 @@ function Get-CommonArgs {
   if ($IncludeNexusMetadata) {
     $args += "--include-nexus-metadata"
   }
+  if ($IncludeXeditReport) {
+    $args += "--include-xedit-report"
+  }
+  if ($IncludeCollectionReport) {
+    $args += "--include-collection-report"
+  }
+  if ($XeditExe) {
+    $args += "--xedit-exe"
+    $args += $XeditExe
+  }
+  if ($PluginName) {
+    $args += "--plugin-name"
+    $args += $PluginName
+  }
   if ($NexusApiKeyFile) {
     $args += "--nexus-api-key-file"
     $args += $NexusApiKeyFile
@@ -108,6 +128,9 @@ function Get-CommonArgs {
   }
   if ($NoNexusCache) {
     $args += "--no-nexus-cache"
+  }
+  if ($NoScanCache) {
+    $args += "--no-scan-cache"
   }
   return $args
 }
@@ -155,6 +178,10 @@ function Show-Actions {
   Write-Host "10. In-game issue triage"
   Write-Host "11. Safe session report"
   Write-Host "12. Skyrim diagnostics report"
+  Write-Host "13. Scan cache status"
+  Write-Host "14. xEdit/SSEEdit target helper"
+  Write-Host "15. Vortex collection state"
+  Write-Host "16. Collection manifest match"
   Write-Host "Q. Quit"
 }
 
@@ -411,6 +438,56 @@ function Invoke-MenuAction {
       Write-Host "Wrote Skyrim diagnostics JSON: $json" -ForegroundColor Green
       Write-Host "Wrote JSON result: $out" -ForegroundColor Green
       Write-Host "This action did not deploy, disable, delete, update, or edit mods." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("13", "cache", "scan-cache") } {
+      $out = Join-Path $script:ReportDir "scan-cache-$stamp.json"
+      Invoke-Server (@("--tool", "scan_cache_status", "--output-json", $out) + $common)
+      Write-Host "Wrote scan cache status: $out" -ForegroundColor Green
+      return
+    }
+    { $_ -in @("14", "xedit", "sseedit") } {
+      $formId = $FormId
+      $plugin = $PluginName
+      if (!$formId -and !$plugin -and !$script:StartedWithAction) {
+        $formId = Read-Host "Console-clicked FormID, if any (press Enter to skip)"
+      }
+      if (!$plugin -and !$script:StartedWithAction) {
+        $plugin = Read-Host "Plugin filename, if known (press Enter to skip)"
+      }
+      $argsData = @{}
+      if ($formId) {
+        $argsData.form_id = $formId
+      }
+      if ($plugin) {
+        $argsData.plugin_name = $plugin
+      }
+      $argsFile = Write-JsonArgs "xedit" $argsData
+      $out = Join-Path $script:ReportDir "xedit-$stamp.json"
+      Invoke-Server (@("--tool", "xedit_diagnostics_report", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Wrote xEdit/SSEEdit helper report: $out" -ForegroundColor Green
+      Write-Host "This action did not launch xEdit or edit plugins." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("15", "collection", "collections") } {
+      $out = Join-Path $script:ReportDir "vortex-collection-$stamp.json"
+      Invoke-Server (@("--tool", "vortex_collection_report", "--output-json", $out) + $common)
+      Write-Host "Wrote Vortex collection state report: $out" -ForegroundColor Green
+      Write-Host "This action did not install, update, or remove collection mods." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("16", "collection-match", "manifest-match") } {
+      $manifest = $CollectionManifestPath
+      if (!$manifest) {
+        if ($script:StartedWithAction) {
+          throw "Pass -CollectionManifestPath with -Action collection-match."
+        }
+        $manifest = Read-Host "Paste the collection manifest JSON path"
+      }
+      $out = Join-Path $script:ReportDir "collection-match-$stamp.json"
+      Invoke-Server (@("--tool", "collection_local_match_report", "--collection-manifest-path", $manifest, "--output-json", $out) + $common)
+      Write-Host "Wrote collection manifest match report: $out" -ForegroundColor Green
+      Write-Host "This action did not install, update, or remove collection mods." -ForegroundColor Green
       return
     }
     { $_ -in @("q", "quit", "exit") } {
