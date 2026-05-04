@@ -25,6 +25,7 @@ Vortex-SkyrimSE-Menu.cmd
 7. Bug report zip
 8. Log status
 9. List available tools
+10. In-game issue triage
 
 Reports are written to:
 
@@ -47,6 +48,7 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action validate
 .\vortex_skyrimse_menu.ps1 -Action backup
 .\vortex_skyrimse_menu.ps1 -Action restore -BackupPath "C:\path\profile-backup.json"
+.\vortex_skyrimse_menu.ps1 -Action ingame -IssueDescription "bed outside tavern room" -IssueLocation "Whiterun Bannered Mare" -IssueObject "bed"
 ```
 
 Custom paths:
@@ -69,6 +71,6 @@ If Vortex profile state is slow or locked:
 
 ## Safety
 
-The menu runs read-only report actions plus profile backup and restore preview. It does not delete mods, sort load order, write INI fixes, or apply restore plans.
+The menu runs read-only report actions plus profile backup and restore preview. It does not delete mods, sort load order, write INI fixes, edit plugins, or apply restore plans.
 
-The backup action writes a JSON backup file. The restore action previews what would be restored; it does not change Vortex.
+The backup action writes a JSON backup file. The restore action previews what would be restored; it does not change Vortex. The in-game issue action searches for likely mod candidates; it does not fix records automatically.

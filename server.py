@@ -36,7 +36,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.7"
+SERVER_VERSION = "0.2.8"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -876,6 +876,7 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "plugin_report",
             "ini_report",
             "mod_knowledge_report",
+            "in_game_issue_report",
             "bug_report_bundle",
         ],
         "vortexCliRequired": [
@@ -1558,6 +1559,351 @@ def profile_lookup_for_staging(args: Dict[str, Any], staging_dir: Optional[Path]
         }
     except Exception as exc:
         return {"available": False, "modsByPath": {}, "error": str(exc)}
+
+
+ISSUE_STOP_WORDS = {
+    "about",
+    "also",
+    "and",
+    "are",
+    "because",
+    "been",
+    "being",
+    "can",
+    "causing",
+    "does",
+    "find",
+    "from",
+    "get",
+    "has",
+    "have",
+    "how",
+    "into",
+    "its",
+    "lot",
+    "mod",
+    "mods",
+    "outside",
+    "problem",
+    "some",
+    "that",
+    "the",
+    "there",
+    "things",
+    "this",
+    "was",
+    "what",
+    "when",
+    "which",
+    "why",
+    "with",
+}
+
+
+def tokenize_issue_terms(*values: Optional[str]) -> List[str]:
+    terms: set[str] = set()
+    joined = " ".join(str(value or "") for value in values).lower()
+    for token in re.findall(r"[a-z0-9_'-]{3,}", joined):
+        clean = token.strip("_'-")
+        if clean and clean not in ISSUE_STOP_WORDS:
+            terms.add(clean)
+    if "whiterun" in terms and ({"tavern", "inn", "room"} & terms):
+        terms.update({"bannered", "mare", "inn"})
+    if "bannered" in terms or "mare" in terms:
+        terms.update({"bannered", "mare", "whiterun", "tavern", "inn"})
+    if "bed" in terms:
+        terms.update({"bedroll", "furniture", "furn"})
+    if {"popup", "popups", "notification", "message"} & terms:
+        terms.update({"message", "notification", "mcm", "menu", "interface", "dialog", "skyui"})
+    return sorted(terms)
+
+
+def matched_issue_terms(text: str, terms: Iterable[str]) -> List[str]:
+    lower = text.lower()
+    return sorted({term for term in terms if term and term in lower})
+
+
+def add_issue_evidence(
+    evidence: List[Dict[str, Any]],
+    matched: set[str],
+    source: str,
+    text: str,
+    terms: Iterable[str],
+    max_items: int,
+) -> List[str]:
+    hits = matched_issue_terms(text, terms)
+    if not hits:
+        return []
+    matched.update(hits)
+    if len(evidence) < max_items:
+        preview = re.sub(r"\s+", " ", text).strip()
+        if len(preview) > 180:
+            preview = preview[:177] + "..."
+        evidence.append({"source": source, "matchedTerms": hits, "preview": preview})
+    return hits
+
+
+def read_file_head(path: Path, max_bytes: int) -> str:
+    try:
+        with path.open("rb") as handle:
+            data = handle.read(max_bytes)
+        return data.decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+
+
+def extract_plugin_strings(path: Path, max_bytes: int = 5_000_000, max_strings: int = 2500) -> List[str]:
+    try:
+        with path.open("rb") as handle:
+            data = handle.read(max_bytes)
+    except OSError:
+        return []
+    strings: List[str] = []
+    seen: set[str] = set()
+    for raw in re.findall(rb"[ -~]{4,}", data):
+        text = raw.decode("utf-8", errors="replace").strip()
+        key = text.lower()
+        if key and key not in seen:
+            seen.add(key)
+            strings.append(text)
+            if len(strings) >= max_strings:
+                return strings
+    for raw in re.findall(rb"(?:[ -~]\x00){4,}", data):
+        text = raw.decode("utf-16le", errors="replace").strip()
+        key = text.lower()
+        if key and key not in seen:
+            seen.add(key)
+            strings.append(text)
+            if len(strings) >= max_strings:
+                return strings
+    return strings
+
+
+def infer_issue_kind(args: Dict[str, Any], terms: List[str]) -> str:
+    explicit = str(args.get("issue_kind") or "").strip().lower()
+    if explicit in {"placed_object", "popup", "ui_popup", "general"}:
+        return "popup" if explicit == "ui_popup" else explicit
+    if args.get("popup_text") or {"popup", "popups", "notification", "message", "mcm", "menu"} & set(terms):
+        return "popup"
+    if args.get("object") or {"bed", "bedroll", "furniture", "furn"} & set(terms):
+        return "placed_object"
+    return "general"
+
+
+def scan_mod_for_issue(
+    mod_dir: Path,
+    summary: Dict[str, Any],
+    args: Dict[str, Any],
+    terms: List[str],
+    location_terms: List[str],
+    object_terms: List[str],
+    popup_terms: List[str],
+    profile: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    max_files = int(args.get("max_files_per_mod", 3000))
+    max_text_bytes = int(args.get("max_text_bytes", 12000))
+    max_plugin_bytes = int(args.get("max_plugin_bytes", 5_000_000))
+    max_evidence = int(args.get("max_evidence_per_mod", 10))
+    evidence: List[Dict[str, Any]] = []
+    matched: set[str] = set()
+    score = 0
+    plugin_location_hit = False
+    plugin_object_hit = False
+    popup_text_hit = False
+
+    def score_hits(source: str, text: str, search_terms: Iterable[str], weight: int) -> List[str]:
+        nonlocal score
+        hits = add_issue_evidence(evidence, matched, source, text, search_terms, max_evidence)
+        if hits:
+            score += weight * len(hits)
+        return hits
+
+    score_hits("mod name", str(summary.get("name") or mod_dir.name), terms, 2)
+    for plugin in summary.get("plugins", []):
+        score_hits(f"plugin filename: {plugin}", plugin, terms, 3)
+    for readme in summary.get("readmes", []):
+        path = mod_dir / readme
+        if path.exists():
+            score_hits(f"readme: {readme}", read_file_head(path, max_text_bytes), terms, 3)
+
+    text_suffixes = {".txt", ".md", ".ini", ".json", ".xml"}
+    scanned_files = 0
+    for file_path in safe_walk(mod_dir, max_files):
+        scanned_files += 1
+        rel = rel_to(file_path, mod_dir)
+        kind = classify_file(rel)
+        path_hits = score_hits(f"file path: {rel}", rel, terms, 1)
+        if kind == "plugin":
+            strings = extract_plugin_strings(file_path, max_plugin_bytes)
+            for text in strings:
+                hits = score_hits(f"plugin strings: {rel}", text, terms, 4)
+                if hits:
+                    loc_hits = matched_issue_terms(text, location_terms)
+                    obj_hits = matched_issue_terms(text, object_terms)
+                    pop_hits = matched_issue_terms(text, popup_terms)
+                    plugin_location_hit = plugin_location_hit or bool(loc_hits)
+                    plugin_object_hit = plugin_object_hit or bool(obj_hits)
+                    if loc_hits and obj_hits:
+                        score += 18
+                    elif loc_hits:
+                        score += 6
+                    elif obj_hits:
+                        score += 4
+                    if pop_hits:
+                        score += 8
+        elif file_path.suffix.lower() in text_suffixes and len(evidence) < max_evidence:
+            text = read_file_head(file_path, max_text_bytes)
+            score_hits(f"text file: {rel}", text, terms, 2)
+        if path_hits and kind in {"interface", "script", "skse_plugin"}:
+            score += 2
+
+    popup_text = str(args.get("popup_text") or "").strip()
+    if popup_text:
+        popup_lower = popup_text.lower()
+        for item in evidence:
+            if popup_lower and popup_lower in str(item.get("preview", "")).lower():
+                popup_text_hit = True
+                score += 25
+                break
+
+    if score <= 0:
+        return None
+
+    knowledge = infer_mod_knowledge(summary)
+    confidence = "low"
+    if plugin_location_hit and plugin_object_hit:
+        confidence = "high"
+    elif popup_text_hit:
+        confidence = "high"
+    elif score >= 18 and (summary.get("plugins") or summary.get("sksePlugins")):
+        confidence = "medium"
+    elif score >= 10:
+        confidence = "medium"
+
+    issue_kind = infer_issue_kind(args, terms)
+    if issue_kind == "popup":
+        likely_reason = "This mod has UI/script/plugin evidence matching the popup description. Check MCM/settings first, then test in a cloned profile."
+    elif plugin_location_hit and plugin_object_hit:
+        likely_reason = "This mod has plugin string evidence for both the location and object/problem terms. Inspect this plugin in xEdit first."
+    elif plugin_location_hit:
+        likely_reason = "This mod references the reported location. It is a candidate for xEdit cell inspection."
+    elif plugin_object_hit:
+        likely_reason = "This mod references the reported object/problem terms. It is a candidate, but the location match is weaker."
+    else:
+        likely_reason = "This mod matched the issue terms in filenames, readmes, or metadata. Treat it as a weak candidate until confirmed."
+
+    return {
+        "mod": summary.get("name") or mod_dir.name,
+        "path": str(mod_dir),
+        "score": score,
+        "confidence": confidence,
+        "matchedTerms": sorted(matched),
+        "enabledInSelectedProfile": profile.get("enabled") if isinstance(profile, dict) else None,
+        "vortexModId": profile.get("id") if isinstance(profile, dict) else None,
+        "role": knowledge.get("role"),
+        "categories": knowledge.get("categories"),
+        "removalRisk": knowledge.get("removalRisk"),
+        "plugins": summary.get("plugins", []),
+        "sksePlugins": summary.get("sksePlugins", []),
+        "evidence": evidence,
+        "likelyReason": likely_reason,
+        "scannedFilesApprox": scanned_files,
+    }
+
+
+def in_game_issue_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    _vortex_appdata, _skyrim_dir, staging_dir, _my_games = get_context_paths(args)
+    if not staging_dir or not staging_dir.exists():
+        raise ToolError("Vortex staging folder was not found. Pass staging_dir explicitly.")
+
+    description = str(args.get("description") or "").strip()
+    location = str(args.get("location") or "").strip()
+    problem_object = str(args.get("object") or "").strip()
+    popup_text = str(args.get("popup_text") or "").strip()
+    terms = tokenize_issue_terms(description, location, problem_object, popup_text, args.get("extra_terms"))
+    if not terms:
+        raise ToolError("Pass description, location, object, popup_text, or extra_terms so the tool has something to search for.")
+    location_terms = tokenize_issue_terms(location)
+    object_terms = tokenize_issue_terms(problem_object)
+    popup_terms = tokenize_issue_terms(popup_text, description if infer_issue_kind(args, terms) == "popup" else "")
+    issue_kind = infer_issue_kind(args, terms)
+
+    max_mods = int(args.get("max_mods", 500))
+    max_candidates = int(args.get("max_candidates", 20))
+    profile_lookup = profile_lookup_for_staging(args, staging_dir)
+    mods_by_path = profile_lookup.get("modsByPath", {}) if isinstance(profile_lookup.get("modsByPath"), dict) else {}
+
+    candidates: List[Dict[str, Any]] = []
+    mod_dirs = [p for p in sorted(staging_dir.iterdir(), key=lambda p: p.name.lower()) if p.is_dir()][:max_mods]
+    for mod_dir in mod_dirs:
+        summary = mod_summary(mod_dir, include_files=False, max_files=int(args.get("max_files_per_mod", 3000)))
+        try:
+            key = str(mod_dir.resolve()).lower()
+        except OSError:
+            key = str(mod_dir).lower()
+        profile = mods_by_path.get(key)
+        candidate = scan_mod_for_issue(
+            mod_dir,
+            summary,
+            args,
+            terms,
+            location_terms,
+            object_terms,
+            popup_terms,
+            profile if isinstance(profile, dict) else None,
+        )
+        if candidate:
+            candidates.append(candidate)
+
+    candidates.sort(
+        key=lambda item: (
+            {"high": 0, "medium": 1, "low": 2}.get(str(item.get("confidence")), 3),
+            -int(item.get("score", 0)),
+            str(item.get("mod", "")).lower(),
+        )
+    )
+
+    recommended_actions = [
+        "Do not delete the candidate mod. Create or use a cloned Vortex profile and test disabling one candidate at a time.",
+        "If this is a placed object, open Skyrim's console, click the object, and give OpenClaw the shown reference/base FormID and object name.",
+        "If the first two hex digits of a FormID identify a plugin in your load order, inspect that plugin first.",
+        "Use xEdit/SSEEdit to inspect the reported cell or quest/message records before applying any fix.",
+    ]
+    if issue_kind == "popup":
+        recommended_actions.insert(1, "Copy the exact popup text or attach a screenshot/OCR text; exact text makes the search much stronger.")
+        recommended_actions.append("Check the candidate mod's MCM/settings before disabling it, because many popups are configurable notifications.")
+
+    return {
+        "issue": {
+            "kind": issue_kind,
+            "description": description,
+            "location": location,
+            "object": problem_object,
+            "popupTextProvided": bool(popup_text),
+        },
+        "staging_dir": str(staging_dir),
+        "searchedTerms": terms,
+        "profileState": profile_lookup,
+        "scannedModCount": len(mod_dirs),
+        "candidateCount": len(candidates),
+        "candidates": candidates[:max_candidates],
+        "truncated": len(candidates) > max_candidates,
+        "recommendedActions": recommended_actions,
+        "skyrimLiveMcp": {
+            "canSeeGameDirectly": False,
+            "why": "This MCP reads local files and Vortex state. It cannot see the live 3D scene or popups unless another bridge provides screenshots, OCR text, console FormIDs, or SKSE telemetry.",
+            "futureBridgeNeeds": [
+                "Screenshot/OCR input for popup text and visible UI.",
+                "SKSE plugin or console-log bridge for current cell, clicked reference FormID, base object, and active message/menu events.",
+                "A safe xEdit/SSEEdit integration for read-only cell and record lookup before any fix is attempted.",
+            ],
+        },
+        "notes": [
+            "This is a heuristic read-only triage. High-confidence candidates still need confirmation in xEdit or a cloned-profile test.",
+            "For misplaced objects, exact FormID evidence is much stronger than a natural-language description.",
+            "For popups, exact text is much stronger than saying 'annoying popup'.",
+        ],
+    }
 
 
 def knowledge_removal_candidates(
@@ -3293,6 +3639,12 @@ def bug_report_bundle(args: Dict[str, Any]) -> Dict[str, Any]:
         except Exception as exc:
             bundle["skyrimModdedPlayError"] = str(exc)
 
+    if any(args.get(key) for key in ("description", "location", "object", "popup_text", "extra_terms")):
+        try:
+            bundle["inGameIssue"] = in_game_issue_report(args)
+        except Exception as exc:
+            bundle["inGameIssueError"] = str(exc)
+
     if include_profiles:
         try:
             bundle["vortexProfiles"] = vortex_profile_report(args)
@@ -3503,6 +3855,35 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
             "additionalProperties": False,
         },
         mod_knowledge_report,
+    ),
+    "in_game_issue_report": (
+        "Read-only triage for in-game weirdness such as misplaced objects or annoying popups; searches staged mods for likely causes.",
+        {
+            "type": "object",
+            "properties": {
+                "description": {"type": "string"},
+                "location": {"type": "string"},
+                "object": {"type": "string"},
+                "popup_text": {"type": "string"},
+                "extra_terms": {"type": "string"},
+                "issue_kind": {"type": "string", "enum": ["placed_object", "popup", "general"]},
+                "vortex_appdata": {"type": "string"},
+                "vortex_exe": {"type": "string"},
+                "game_id": {"type": "string", "default": GAME_ID},
+                "profile_id": {"type": "string"},
+                "staging_dir": {"type": "string"},
+                "include_profile_state": {"type": "boolean", "default": True},
+                "max_mods": {"type": "integer", "default": 500},
+                "max_candidates": {"type": "integer", "default": 20},
+                "max_files_per_mod": {"type": "integer", "default": 3000},
+                "max_text_bytes": {"type": "integer", "default": 12000},
+                "max_plugin_bytes": {"type": "integer", "default": 5000000},
+                "max_evidence_per_mod": {"type": "integer", "default": 10},
+                "timeout_seconds": {"type": "integer", "default": 60},
+            },
+            "additionalProperties": False,
+        },
+        in_game_issue_report,
     ),
     "ini_report": (
         "Inspect Skyrim SE INI files and report mod-manager-friendly settings.",
@@ -3773,6 +4154,12 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "my_games_dir": {"type": "string"},
                 "local_appdata": {"type": "string"},
                 "profile_id": {"type": "string"},
+                "description": {"type": "string"},
+                "location": {"type": "string"},
+                "object": {"type": "string"},
+                "popup_text": {"type": "string"},
+                "extra_terms": {"type": "string"},
+                "issue_kind": {"type": "string", "enum": ["placed_object", "popup", "general"]},
                 "include_logs": {"type": "boolean", "default": True},
                 "include_vortex_profiles": {"type": "boolean", "default": True},
                 "include_vortex_deployment": {"type": "boolean", "default": True},
@@ -3998,6 +4385,12 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         "profile_id": parsed.profile_id,
         "backup_path": parsed.backup_path,
         "backup_dir": parsed.backup_dir,
+        "description": parsed.description,
+        "location": parsed.location,
+        "object": parsed.object,
+        "popup_text": parsed.popup_text,
+        "extra_terms": parsed.extra_terms,
+        "issue_kind": parsed.issue_kind,
     }
     for key, value in common.items():
         if value:
@@ -4096,6 +4489,12 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--profile-id", help="Override selected Vortex profile id.")
     parser.add_argument("--backup-path", help="Profile backup JSON path for restore tools, or explicit backup output path for write tools.")
     parser.add_argument("--backup-dir", help="Folder for automatic profile backups.")
+    parser.add_argument("--description", help="In-game issue description for in_game_issue_report.")
+    parser.add_argument("--location", help="In-game location for in_game_issue_report, such as 'Whiterun Bannered Mare'.")
+    parser.add_argument("--object", help="Problem object for in_game_issue_report, such as 'bed' or 'door'.")
+    parser.add_argument("--popup-text", help="Exact popup/notification text for in_game_issue_report.")
+    parser.add_argument("--extra-terms", help="Extra search terms for in_game_issue_report.")
+    parser.add_argument("--issue-kind", choices=["placed_object", "popup", "general"], help="Issue type for in_game_issue_report.")
     parser.add_argument("--max-mods", type=int, help="Maximum mods to scan for supported tools.")
     parser.add_argument("--hash-files", action="store_true", help="Hash files for stronger duplicate evidence. Slower.")
     parser.add_argument("--apply", action="store_true", help="Apply a write-capable tool. Most tools are dry-run without this.")

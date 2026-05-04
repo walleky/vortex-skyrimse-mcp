@@ -30,6 +30,7 @@ Attach:
 - whether Vortex was open or closed
 - whether the issue happened after installing a collection, changing profiles, updating SKSE, or deploying mods
 - the profile backup path if a profile write or restore was involved
+- for in-game object/popup issues, the location, object/FormID if known, exact popup text, and screenshots if possible
 
 ## Manual Bundle Tool
 
@@ -73,6 +74,7 @@ Use `zip_output=true` when you want one attachable file. The zip contains:
 - Vortex profile deployment report if available
 - plugin report
 - INI report
+- in-game issue report output if the bundle is given `description`, `location`, `object`, or `popup_text`
 - recent log file summaries and tails
 - a bug-report template
 - OpenClaw agent instructions

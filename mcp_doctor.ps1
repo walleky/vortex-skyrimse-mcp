@@ -215,6 +215,7 @@ $DirectPython = ("$($Python.Command) $($Python.Args -join ' ')").Trim()
 Write-Host "Direct CLI:"
 Write-Host "  $DirectPython `"$Server`" --tool validate_setup"
 Write-Host "  $DirectPython `"$Server`" --tool detect_environment"
+Write-Host "  $DirectPython `"$Server`" --tool in_game_issue_report --description `"bed outside tavern room`" --location `"Whiterun Bannered Mare`" --object `"bed`""
 Write-Host "  .\vortex_skyrimse_menu.ps1"
 Write-Host "  .\make_mod_knowledge.ps1"
 Write-Host "First prompt:"

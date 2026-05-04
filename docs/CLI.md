@@ -23,6 +23,18 @@ Generate the collection knowledge report:
 py -3 .\server.py --mod-knowledge
 ```
 
+Triage an in-game object problem:
+
+```powershell
+py -3 .\server.py --tool in_game_issue_report --description "bed outside tavern room" --location "Whiterun Bannered Mare" --object "bed"
+```
+
+Triage an annoying popup:
+
+```powershell
+py -3 .\server.py --tool in_game_issue_report --issue-kind popup --description "popup after loading a save" --popup-text "paste exact popup text here"
+```
+
 Or double-click:
 
 ```text
@@ -104,3 +116,5 @@ py -3 .\server.py --mod-knowledge --output-json .\last-tool-result.json
 Direct CLI mode uses the same tool implementations and safety rules as MCP mode. Read-only tools stay read-only. Write-capable tools still require explicit write arguments such as `dry_run=false` or `apply=true`.
 
 Profile write tools create backups before `--apply` by default. Use `--no-backup-before-apply` only for advanced recovery when you already have a known-good backup.
+
+`in_game_issue_report` is read-only. It searches for likely cause candidates but does not edit plugins, delete objects, or disable mods.

@@ -7,6 +7,10 @@ param(
   [string]$VortexExe = "",
   [string]$ProfileId = "",
   [string]$BackupPath = "",
+  [string]$IssueDescription = "",
+  [string]$IssueLocation = "",
+  [string]$IssueObject = "",
+  [string]$PopupText = "",
   [int]$MaxMods = 500,
   [switch]$HashFiles,
   [switch]$NoProfileState,
@@ -124,6 +128,7 @@ function Show-Actions {
   Write-Host "7. Bug report zip"
   Write-Host "8. Log status"
   Write-Host "9. List available tools"
+  Write-Host "10. In-game issue triage"
   Write-Host "Q. Quit"
 }
 
@@ -211,6 +216,44 @@ function Invoke-MenuAction {
     }
     { $_ -in @("9", "tools", "list") } {
       Invoke-Server @("--list-tools")
+      return
+    }
+    { $_ -in @("10", "ingame", "in-game", "issue", "triage") } {
+      $description = $IssueDescription
+      $location = $IssueLocation
+      $objectName = $IssueObject
+      $popup = $PopupText
+      if (!$description) {
+        if ($script:StartedWithAction) {
+          throw "Pass -IssueDescription with -Action ingame. Example: .\vortex_skyrimse_menu.ps1 -Action ingame -IssueDescription `"bed outside tavern room`" -IssueLocation `"Whiterun Bannered Mare`" -IssueObject `"bed`""
+        }
+        $description = Read-Host "Describe the in-game problem"
+      }
+      if (!$location -and !$script:StartedWithAction) {
+        $location = Read-Host "Location, if known (press Enter to skip)"
+      }
+      if (!$objectName -and !$script:StartedWithAction) {
+        $objectName = Read-Host "Object or thing, if known (press Enter to skip)"
+      }
+      if (!$popup -and !$script:StartedWithAction) {
+        $popup = Read-Host "Exact popup text, if any (press Enter to skip)"
+      }
+      $argsData = @{
+        description = $description
+      }
+      if ($location) {
+        $argsData.location = $location
+      }
+      if ($objectName) {
+        $argsData.object = $objectName
+      }
+      if ($popup) {
+        $argsData.popup_text = $popup
+      }
+      $argsFile = Write-JsonArgs "in-game-issue" $argsData
+      $out = Join-Path $script:ReportDir "in-game-issue-$stamp.json"
+      Invoke-Server (@("--tool", "in_game_issue_report", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Wrote in-game issue triage: $out" -ForegroundColor Green
       return
     }
     { $_ -in @("q", "quit", "exit") } {

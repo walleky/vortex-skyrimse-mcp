@@ -88,6 +88,14 @@ For a big collection knowledge map:
 Use the vortex-skyrimse MCP to run mod_knowledge_report. Write the Markdown report, summarize the top removal-review candidates, and do not apply changes.
 ```
 
+For something weird inside the game:
+
+```text
+Use in_game_issue_report to find likely mods causing this: there is a bed outside the tavern room in the Whiterun Bannered Mare. Do not apply changes.
+```
+
+For annoying popups, paste the exact popup text if you can.
+
 Before changing a Vortex profile:
 
 ```text

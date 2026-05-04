@@ -43,6 +43,7 @@ This project is intentionally a safety-first sidecar:
 - bug-report zip with recent MCP/Vortex CLI logs
 - profile deployment checks against Skyrim `Data` and `plugins.txt`
 - SKSE/audio/INI/missing-master diagnosis in one `skyrim_modded_play_report`
+- in-game issue triage for user-described misplaced objects and popups through `in_game_issue_report`
 - dry-run profile changes
 - automatic profile backups before profile writes
 - restore previews through `vortex_profile_restore_plan`
@@ -80,3 +81,5 @@ If the user has both tools:
 4. Use this project again to verify deployment and plugin state after changes.
 
 If the user wants the lowest-risk path, stay in this project and let Vortex itself handle deploy/install clicks.
+
+For true "see what Skyrim is showing" behavior, this project would need a separate live bridge: screenshot/OCR capture, SKSE telemetry, console-clicked FormIDs, or read-only xEdit/SSEEdit lookup. The current `in_game_issue_report` is file/state triage, not live vision.

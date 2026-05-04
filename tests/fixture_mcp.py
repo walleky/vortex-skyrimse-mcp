@@ -69,6 +69,11 @@ def main() -> int:
         write(staging / "Lighting Mod" / "scripts" / "shared.pex", "lighting")
         write(staging / "Lighting Mod" / "readme.txt", "Lighting tweaks")
         write(staging / "Readme Pack" / "readme.txt", "Just a note file for cleanup testing")
+        write(
+            staging / "Whiterun Tavern Overhaul" / "WhiterunTavern.esp",
+            plugin_bytes("Skyrim.esm") + b"Whiterun Bannered Mare tavern room bed furniture popup message",
+        )
+        write(staging / "Whiterun Tavern Overhaul" / "readme.txt", "Places a bed in the Whiterun Bannered Mare tavern room.")
         write(plugins_dir / "plugins.txt", "# comment\r\n*Skyrim.esm\r\n*MYMOD.ESP\r\n*MissingOnDisk.esp\r\n")
         write(my_games / "Skyrim.ini", "[Archive]\nbInvalidateOlderFiles=1\n")
         write(my_games / "SkyrimPrefs.ini", "[Launcher]\nbEnableFileSelection=1\n")
@@ -91,7 +96,7 @@ def main() -> int:
         assert setup["ready"] is True, setup
 
         inventory = server.inventory_mods({**base_args, "include_files": True})
-        assert inventory["modCount"] == 3, inventory
+        assert inventory["modCount"] == 4, inventory
 
         conflicts = server.analyze_conflicts(base_args)
         assert any(item["relativePath"] == "scripts/shared.pex" for item in conflicts["conflicts"]), conflicts
@@ -99,6 +104,19 @@ def main() -> int:
         plugins = server.plugin_report(base_args)
         assert "MissingOnDisk.esp" in plugins["missingEnabledPlugins"], plugins
         assert any(item["missingMaster"] == "MissingMaster.esm" for item in plugins["missingMasters"]), plugins
+
+        issue = server.in_game_issue_report(
+            {
+                **base_args,
+                "description": "There is a bed outside the tavern room and it is messing things up.",
+                "location": "Whiterun Bannered Mare",
+                "object": "bed",
+                "include_profile_state": False,
+            }
+        )
+        assert issue["candidateCount"] >= 1, issue
+        assert issue["candidates"][0]["mod"] == "Whiterun Tavern Overhaul", issue
+        assert issue["candidates"][0]["confidence"] == "high", issue
 
         knowledge_path = root / "knowledge.md"
         knowledge = server.mod_knowledge_report(
@@ -147,7 +165,7 @@ def main() -> int:
             check=True,
         )
         cli_payload = json.loads(cli_result.stdout)
-        assert cli_payload["modCount"] == 3, cli_payload
+        assert cli_payload["modCount"] == 4, cli_payload
         assert cli_knowledge_path.exists(), cli_payload
 
         bundle_path = root / "bundle.json"

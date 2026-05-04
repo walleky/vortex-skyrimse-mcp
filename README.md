@@ -18,6 +18,9 @@ an MCP client.
 - Inventory Vortex-staged Skyrim SE mods.
 - Read mod evidence: files, readmes, FOMOD XML, plugins, masters, BSA archives,
   SKSE DLL plugins, scripts, meshes, textures, UI files.
+- Triage in-game weirdness such as misplaced objects or annoying popups by
+  searching staged mods for location, object, plugin, readme, and popup-text
+  evidence.
 - Detect likely redundant mods:
   - duplicate plugin names
   - duplicate Nexus IDs when metadata is present
@@ -49,6 +52,7 @@ an MCP client.
 - [docs/CLI.md](docs/CLI.md): direct command-line mode without an MCP client.
 - [docs/LOCAL-MENU.md](docs/LOCAL-MENU.md): local no-hassle menu for report generation.
 - [docs/SAFETY-UNDO.md](docs/SAFETY-UNDO.md): backup, restore-preview, and dry-run rules.
+- [docs/IN-GAME-DIAGNOSIS.md](docs/IN-GAME-DIAGNOSIS.md): how to ask OpenClaw about misplaced objects, popups, FormIDs, and future live Skyrim bridging.
 - [docs/OPENCLAW-AGENT-GUIDE.md](docs/OPENCLAW-AGENT-GUIDE.md): how an OpenClaw agent should use the tools safely.
 - [docs/VORTEX-MCP-BRIDGE-COMPARISON.md](docs/VORTEX-MCP-BRIDGE-COMPARISON.md): what this project borrows from Vortex MCP Bridge and what stays out of scope.
 - [docs/LOGGING.md](docs/LOGGING.md): log folder, channels, and inspection commands.
@@ -205,6 +209,12 @@ For a large collection map:
 Use mod_knowledge_report to write a Markdown report explaining what each Skyrim SE mod appears to do, how it fits into the collection, and which mods are safe candidates to review for disabling. Do not apply changes.
 ```
 
+For an in-game object or popup:
+
+```text
+Use in_game_issue_report to find likely mods causing this: there is a bed outside the tavern room in the Whiterun Bannered Mare. Do not apply changes.
+```
+
 For INI fixes:
 
 ```text
@@ -227,6 +237,7 @@ Use apply_ini_fixes with dry_run=false and make_backup=true.
 - `plugin_report`
 - `mod_evidence`
 - `mod_knowledge_report`
+- `in_game_issue_report`
 - `ini_report`
 - `apply_ini_fixes`
 - `read_text_file`
@@ -276,7 +287,7 @@ If detection misses your setup, pass `skyrim_dir`, `staging_dir`,
 
 - `detect_environment`, `inventory_mods`, `analyze_conflicts`,
   `redundant_mod_report`, `plugin_report`, `mod_evidence`,
-  `mod_knowledge_report`, `ini_report`,
+  `mod_knowledge_report`, `in_game_issue_report`, `ini_report`,
   `read_text_file`, `vortex_cli_get`, `vortex_profile_report`,
   `vortex_profile_mods`, `vortex_compare_profiles`,
   `vortex_profile_deployment_report`, `skyrim_modded_play_report`,
@@ -300,6 +311,8 @@ If detection misses your setup, pass `skyrim_dir`, `staging_dir`,
   command-line length failures on big Nexus Collections.
 - `read_text_file` refuses to read outside detected Vortex/Skyrim roots unless
   `allow_any_path=true`.
+- `in_game_issue_report` is read-only and heuristic. It identifies candidates;
+  it does not edit plugins, delete mods, or remove placed objects.
 
 ## Vortex Profile Notes
 

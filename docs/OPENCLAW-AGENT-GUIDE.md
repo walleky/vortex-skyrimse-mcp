@@ -18,6 +18,7 @@ environment detection
   -> Vortex deployment into Skyrim Data
   -> plugins.txt enabled state
   -> SKSE/audio/INI health
+  -> in-game issue evidence
   -> conflicts/redundant mods
 ```
 
@@ -64,6 +65,14 @@ For "what does this whole collection do?" or "what can I remove?":
 ```text
 mod_knowledge_report
 ```
+
+For "why is this object here?", "which mod added this?", or annoying popups:
+
+```text
+in_game_issue_report
+```
+
+Ask the user for exact location, object name, popup text, and if possible the console-clicked FormID.
 
 For "make me a safe test profile":
 
@@ -127,6 +136,10 @@ Tell the user to enable plugins in Vortex's Plugins tab, then deploy.
 
 This usually means stale deployment or the wrong active profile.
 
+`in_game_issue_report returns weak candidates`
+
+Ask for stronger evidence: exact popup text, screenshot/OCR text, current cell/location, and console-clicked FormID/base object. Then rerun `in_game_issue_report`.
+
 ## Safe Write Rules
 
 Before `apply_ini_fixes dry_run=false`:
@@ -157,6 +170,14 @@ Before `vortex_profile_restore_plan apply=true`:
 - keep `disable_extra_mods=false` unless the user clearly wants extra currently enabled mods disabled
 - tell the user to close Vortex
 
+Before fixing an in-game object or popup:
+
+- run `in_game_issue_report`
+- explain that it is heuristic unless there is FormID or exact popup-text evidence
+- create a Vortex profile backup
+- prefer cloned-profile disable tests over deletion
+- do not edit plugin records or conflict rules automatically
+
 ## Good Final Answer Shape
 
 Use this order:
@@ -180,6 +201,16 @@ When the user has a massive Nexus Collection, call `mod_knowledge_report` before
 5. Mod Details for the specific mods you want to discuss.
 
 For unwanted mods, prefer this wording: "disable in a cloned profile and test" instead of "delete." Use `vortex_clone_profile apply=false` first if the user wants a safe experiment profile. Use `vortex_set_profile_mods apply=false` to preview exact disable operations, and only use `apply=true` after the user explicitly approves.
+
+## In-Game Issue Review
+
+For misplaced objects, ask the user to open the console, click the object, and provide the shown reference/base FormID and name. For popups, ask for exact text. Then run:
+
+```text
+in_game_issue_report with description, location, object, popup_text if available
+```
+
+If the top candidate has a Vortex mod id, preview disabling it only in a cloned profile. Tell the user to deploy and test the cloned profile before changing their main profile.
 
 ## Undo Flow
 

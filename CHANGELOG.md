@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.8
+
+- Adds `in_game_issue_report`, a read-only triage tool for misplaced objects, location-specific weirdness, and annoying popups.
+- The new tool searches staged mods for issue terms across mod names, plugin filenames, plugin strings, readmes, config files, file paths, and profile state when available.
+- Adds direct CLI/menu support for in-game issue triage.
+- Adds in-game diagnosis documentation, including how OpenClaw should use console FormIDs, exact popup text, cloned profiles, and future SKSE/screenshot bridge ideas.
+
 ## v0.2.7
 
 - Adds `validate_setup`, a one-shot setup check for OpenClaw with blockers and safe tool groups.
