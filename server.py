@@ -21,6 +21,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import time
 import traceback
 import uuid
 from pathlib import Path
@@ -33,13 +34,15 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.0"
+SERVER_VERSION = "0.2.2"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
 MAX_DEFAULT_TEXT_BYTES = 200_000
 MAX_DEFAULT_FILES = 40_000
 MAX_VORTEX_CLI_CHARS = 24_000
+LOG_ENV_VAR = "VORTEX_SKYRIMSE_MCP_LOG_DIR"
+LOG_TAIL_DEFAULT_BYTES = 80_000
 
 
 class ToolError(Exception):
@@ -54,10 +57,129 @@ def now_stamp() -> str:
     return _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 
+def iso_now() -> str:
+    return _dt.datetime.now().isoformat(timespec="milliseconds")
+
+
 def expand_path(value: Optional[str]) -> Optional[Path]:
     if not value:
         return None
     return Path(os.path.expandvars(os.path.expanduser(value))).resolve()
+
+
+def default_log_dir(override: Optional[str] = None) -> Path:
+    override_path = expand_path(override)
+    if override_path:
+        return override_path
+    env_path = os.environ.get(LOG_ENV_VAR)
+    if env_path:
+        return expand_path(env_path) or Path(env_path)
+    base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+    if base:
+        return (Path(base) / SERVER_NAME / "logs").resolve()
+    return (Path.home() / f".{SERVER_NAME}" / "logs").resolve()
+
+
+def compact_for_log(value: Any, max_string: int = 1200, max_items: int = 30, depth: int = 0) -> Any:
+    if depth > 4:
+        return "<max-depth>"
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, str):
+        return value if len(value) <= max_string else value[:max_string] + f"...<truncated {len(value) - max_string} chars>"
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    if isinstance(value, dict):
+        result: Dict[str, Any] = {}
+        for index, (key, item) in enumerate(value.items()):
+            if index >= max_items:
+                result["..."] = f"{len(value) - max_items} more keys"
+                break
+            result[str(key)] = compact_for_log(item, max_string, max_items, depth + 1)
+        return result
+    if isinstance(value, (list, tuple, set)):
+        seq = list(value)
+        result = [compact_for_log(item, max_string, max_items, depth + 1) for item in seq[:max_items]]
+        if len(seq) > max_items:
+            result.append(f"... {len(seq) - max_items} more items")
+        return result
+    return str(value)
+
+
+def summarize_result_for_log(value: Any) -> Dict[str, Any]:
+    if isinstance(value, dict):
+        summary: Dict[str, Any] = {
+            "type": "object",
+            "keys": list(value.keys())[:40],
+        }
+        for key in ("issues", "findings", "actions", "profiles", "mods", "conflicts"):
+            item = value.get(key)
+            if isinstance(item, list):
+                summary[f"{key}Count"] = len(item)
+            elif isinstance(item, dict):
+                summary[f"{key}Count"] = len(item)
+        return summary
+    if isinstance(value, list):
+        return {"type": "array", "count": len(value)}
+    return {"type": type(value).__name__}
+
+
+def log_event(channel: str, event: str, data: Optional[Dict[str, Any]] = None) -> None:
+    try:
+        log_dir = default_log_dir()
+        log_dir.mkdir(parents=True, exist_ok=True)
+        safe_channel = re.sub(r"[^a-zA-Z0-9_.-]+", "-", channel).strip("-") or "server"
+        log_path = log_dir / f"{safe_channel}-{_dt.datetime.now().strftime('%Y%m%d')}.jsonl"
+        entry: Dict[str, Any] = {
+            "ts": iso_now(),
+            "server": SERVER_NAME,
+            "version": SERVER_VERSION,
+            "pid": os.getpid(),
+            "channel": safe_channel,
+            "event": event,
+        }
+        if data:
+            entry["data"] = compact_for_log(data)
+        with log_path.open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+    except Exception as exc:  # pragma: no cover - logging must not break MCP stdio
+        eprint(f"{SERVER_NAME}: logging failed: {exc}")
+
+
+def tail_file_text(path: Path, max_bytes: int = LOG_TAIL_DEFAULT_BYTES) -> str:
+    data = path.read_bytes()
+    if len(data) > max_bytes:
+        data = data[-max_bytes:]
+    return data.decode("utf-8", errors="replace")
+
+
+def recent_log_files(log_dir: Path, max_files: int = 12) -> List[Path]:
+    if not log_dir.exists():
+        return []
+    files = [path for path in log_dir.glob("*.log") if path.is_file()]
+    files.extend(path for path in log_dir.glob("*.jsonl") if path.is_file())
+    files = sorted(set(files), key=lambda item: item.stat().st_mtime, reverse=True)
+    return files[:max_files]
+
+
+def log_file_summary(path: Path, include_tail: bool = False, max_tail_bytes: int = LOG_TAIL_DEFAULT_BYTES) -> Dict[str, Any]:
+    stat = path.stat()
+    result: Dict[str, Any] = {
+        "path": str(path),
+        "channel": log_channel_from_name(path.name),
+        "name": path.name,
+        "sizeBytes": stat.st_size,
+        "modifiedAt": _dt.datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+    }
+    if include_tail:
+        result["tail"] = tail_file_text(path, max_tail_bytes)
+    return result
+
+
+def log_channel_from_name(name: str) -> str:
+    stem = Path(name).stem
+    match = re.match(r"(.+)-\d{8}(?:-\d{6})?$", stem)
+    return match.group(1) if match else stem
 
 
 def path_exists(path: Optional[Path]) -> bool:
@@ -356,9 +478,23 @@ def run_vortex_cli(
 ) -> Dict[str, Any]:
     vortex_exe = find_vortex_exe(vortex_exe_override)
     if not vortex_exe:
+        log_event("vortex-cli", "missing_executable", {"override": vortex_exe_override})
         raise ToolError(
             "Vortex.exe was not found. Pass vortex_exe, or install Vortex in the normal per-user location."
         )
+    call_id = uuid.uuid4().hex[:10]
+    start = time.perf_counter()
+    log_event(
+        "vortex-cli",
+        "start",
+        {
+            "callId": call_id,
+            "vortex_exe": str(vortex_exe),
+            "argCount": len(cli_args),
+            "args": cli_args,
+            "timeoutSeconds": timeout_seconds,
+        },
+    )
     try:
         proc = subprocess.run(
             [str(vortex_exe), *cli_args],
@@ -368,10 +504,20 @@ def run_vortex_cli(
             check=False,
         )
     except subprocess.TimeoutExpired as exc:
+        log_event(
+            "vortex-cli",
+            "timeout",
+            {"callId": call_id, "durationMs": int((time.perf_counter() - start) * 1000), "timeoutSeconds": timeout_seconds},
+        )
         raise ToolError(
             f"Vortex CLI timed out after {timeout_seconds}s. Close Vortex and try again; the state database may be busy."
         ) from exc
     except OSError as exc:
+        log_event(
+            "vortex-cli",
+            "os_error",
+            {"callId": call_id, "durationMs": int((time.perf_counter() - start) * 1000), "error": str(exc)},
+        )
         raise ToolError(f"Could not run Vortex CLI at {vortex_exe}: {exc}") from exc
 
     result = {
@@ -381,6 +527,19 @@ def run_vortex_cli(
         "stdout": proc.stdout,
         "stderr": proc.stderr,
     }
+    log_event(
+        "vortex-cli",
+        "finish",
+        {
+            "callId": call_id,
+            "durationMs": int((time.perf_counter() - start) * 1000),
+            "returncode": proc.returncode,
+            "stdoutBytes": len(proc.stdout.encode("utf-8", errors="replace")),
+            "stderrBytes": len(proc.stderr.encode("utf-8", errors="replace")),
+            "stdoutPreview": proc.stdout[:2000],
+            "stderrPreview": proc.stderr[:2000],
+        },
+    )
     if proc.returncode != 0:
         stderr = proc.stderr.strip()
         stdout = proc.stdout.strip()
@@ -2133,6 +2292,130 @@ def write_report(args: Dict[str, Any]) -> Dict[str, Any]:
     return {"output_path": str(output_path), "sections": list(report.keys())}
 
 
+def log_status(args: Dict[str, Any]) -> Dict[str, Any]:
+    log_dir = default_log_dir(args.get("log_dir"))
+    max_files = int(args.get("max_files", 20))
+    files = recent_log_files(log_dir, max_files)
+    channels: Dict[str, int] = {}
+    for path in files:
+        channel = log_channel_from_name(path.name)
+        channels[channel] = channels.get(channel, 0) + 1
+    return {
+        "log_dir": str(log_dir),
+        "exists": log_dir.exists(),
+        "environmentVariable": LOG_ENV_VAR,
+        "channels": channels,
+        "files": [log_file_summary(path) for path in files],
+        "notes": [
+            "Logs are JSONL for server/tool/vortex-cli/support channels, plus plain .log transcripts from MCP Doctor.",
+            "Set VORTEX_SKYRIMSE_MCP_LOG_DIR to move logs to another folder.",
+        ],
+    }
+
+
+def bug_report_bundle(args: Dict[str, Any]) -> Dict[str, Any]:
+    output_path = expand_path(args.get("output_path"))
+    if not output_path:
+        docs = default_documents() or Path.cwd()
+        output_path = docs / f"vortex-skyrimse-mcp-bug-report-{now_stamp()}.json"
+    max_log_files = int(args.get("max_log_files", 12))
+    max_log_bytes = int(args.get("max_log_bytes", LOG_TAIL_DEFAULT_BYTES))
+    include_logs = bool(args.get("include_logs", True))
+    include_profiles = bool(args.get("include_vortex_profiles", True))
+    include_deployment = bool(args.get("include_vortex_deployment", True))
+    include_play_report = bool(args.get("include_play_report", True))
+    include_conflicts = bool(args.get("include_conflicts", False))
+    log_dir = default_log_dir(args.get("log_dir"))
+
+    bundle: Dict[str, Any] = {
+        "generatedAt": iso_now(),
+        "server": SERVER_NAME,
+        "version": SERVER_VERSION,
+        "output_path": str(output_path),
+        "log_dir": str(log_dir),
+        "privacyNote": "This bundle may include local Windows paths, mod names, plugin names, and recent MCP logs. Review before posting publicly.",
+        "bugReportTemplate": {
+            "summary": "What did you expect OpenClaw/Vortex/Skyrim to do, and what happened instead?",
+            "reproductionSteps": [
+                "What command, MCP tool, or OpenClaw prompt did you run?",
+                "Was Vortex open or closed?",
+                "Which Vortex profile was active?",
+                "Did you click Deploy Mods before launching Skyrim?",
+                "Did this happen after installing a collection, changing profiles, or updating SKSE?",
+            ],
+            "attach": [
+                "This JSON bundle",
+                "Screenshots of Vortex errors if any",
+                "The exact OpenClaw prompt that failed",
+            ],
+        },
+        "agentInstructions": [
+            "Start with findings/issues/errors before suggesting changes.",
+            "Do not apply INI or Vortex profile writes unless the user explicitly approves.",
+            "If Vortex profile or deployment sections failed, ask for explicit vortex_exe, skyrim_dir, staging_dir, or vortex_appdata paths.",
+            "If logs show a Vortex CLI database lock, tell the user to close Vortex and rerun the same tool.",
+        ],
+    }
+
+    try:
+        bundle["environment"] = detect_environment(args)
+    except Exception as exc:
+        bundle["environmentError"] = str(exc)
+
+    if include_play_report:
+        try:
+            play_args = {**args, "include_conflicts": include_conflicts}
+            bundle["skyrimModdedPlay"] = skyrim_modded_play_report(play_args)
+        except Exception as exc:
+            bundle["skyrimModdedPlayError"] = str(exc)
+
+    if include_profiles:
+        try:
+            bundle["vortexProfiles"] = vortex_profile_report(args)
+        except Exception as exc:
+            bundle["vortexProfilesError"] = str(exc)
+
+    if include_deployment:
+        try:
+            bundle["vortexProfileDeployment"] = vortex_profile_deployment_report(args)
+        except Exception as exc:
+            bundle["vortexProfileDeploymentError"] = str(exc)
+
+    try:
+        bundle["plugins"] = plugin_report(args)
+    except Exception as exc:
+        bundle["pluginsError"] = str(exc)
+
+    try:
+        bundle["ini"] = ini_report(args)
+    except Exception as exc:
+        bundle["iniError"] = str(exc)
+
+    if include_logs:
+        files = recent_log_files(log_dir, max_log_files)
+        bundle["logs"] = {
+            "status": log_status({"log_dir": str(log_dir), "max_files": max_log_files}),
+            "recentFiles": [log_file_summary(path, include_tail=True, max_tail_bytes=max_log_bytes) for path in files],
+        }
+
+    write_text(output_path, json.dumps(bundle, indent=2, ensure_ascii=False, default=str))
+    log_event(
+        "support",
+        "bug_report_bundle_written",
+        {"output_path": str(output_path), "sections": list(bundle.keys()), "include_logs": include_logs},
+    )
+    return {
+        "output_path": str(output_path),
+        "log_dir": str(log_dir),
+        "sections": list(bundle.keys()),
+        "nextSteps": [
+            "Send this JSON file to the maintainer or ask OpenClaw to read it.",
+            "Include what you clicked or prompted right before the failure.",
+            "Review the privacy note before posting publicly.",
+        ],
+    }
+
+
 TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str, Any]]]] = {
     "detect_environment": (
         "Find Steam, Skyrim SE, Vortex AppData, staging guesses, plugins.txt, SKSE, and basic problems.",
@@ -2418,6 +2701,48 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         },
         suggest_conflict_fixes,
     ),
+    "log_status": (
+        "Show MCP log folder, recent log files, and logging channels for bug reports.",
+        {
+            "type": "object",
+            "properties": {
+                "log_dir": {"type": "string"},
+                "max_files": {"type": "integer", "default": 20},
+            },
+            "additionalProperties": False,
+        },
+        log_status,
+    ),
+    "bug_report_bundle": (
+        "Write a bug-report JSON bundle with environment checks, play/deployment reports, and recent MCP logs.",
+        {
+            "type": "object",
+            "properties": {
+                "output_path": {"type": "string"},
+                "log_dir": {"type": "string"},
+                "vortex_appdata": {"type": "string"},
+                "vortex_exe": {"type": "string"},
+                "game_id": {"type": "string", "default": GAME_ID},
+                "skyrim_dir": {"type": "string"},
+                "staging_dir": {"type": "string"},
+                "my_games_dir": {"type": "string"},
+                "local_appdata": {"type": "string"},
+                "profile_id": {"type": "string"},
+                "include_logs": {"type": "boolean", "default": True},
+                "include_vortex_profiles": {"type": "boolean", "default": True},
+                "include_vortex_deployment": {"type": "boolean", "default": True},
+                "include_play_report": {"type": "boolean", "default": True},
+                "include_conflicts": {"type": "boolean", "default": False},
+                "max_log_files": {"type": "integer", "default": 12},
+                "max_log_bytes": {"type": "integer", "default": LOG_TAIL_DEFAULT_BYTES},
+                "max_mods": {"type": "integer", "default": 500},
+                "max_files_per_mod": {"type": "integer", "default": 3000},
+                "timeout_seconds": {"type": "integer", "default": 60},
+            },
+            "additionalProperties": False,
+        },
+        bug_report_bundle,
+    ),
     "write_report": (
         "Write a JSON diagnosis report to disk for OpenClaw or another agent to analyze.",
         {
@@ -2459,14 +2784,45 @@ def tool_list() -> List[Dict[str, Any]]:
 
 def handle_call(name: str, arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if name not in TOOLS:
+        log_event("tool", "unknown", {"tool": name, "args": arguments or {}})
         raise ToolError(f"Unknown tool: {name}")
     args = arguments or {}
     _description, _schema, func = TOOLS[name]
+    call_id = uuid.uuid4().hex[:10]
+    start = time.perf_counter()
+    log_event("tool", "start", {"callId": call_id, "tool": name, "args": args})
     try:
-        return json_content(func(args))
+        result = func(args)
+        log_event(
+            "tool",
+            "success",
+            {
+                "callId": call_id,
+                "tool": name,
+                "durationMs": int((time.perf_counter() - start) * 1000),
+                "result": summarize_result_for_log(result),
+            },
+        )
+        return json_content(result)
     except ToolError as exc:
+        log_event(
+            "tool",
+            "tool_error",
+            {"callId": call_id, "tool": name, "durationMs": int((time.perf_counter() - start) * 1000), "error": str(exc)},
+        )
         return json_content({"error": str(exc)}, is_error=True)
     except Exception as exc:
+        log_event(
+            "tool",
+            "exception",
+            {
+                "callId": call_id,
+                "tool": name,
+                "durationMs": int((time.perf_counter() - start) * 1000),
+                "error": str(exc),
+                "traceback": traceback.format_exc(limit=8),
+            },
+        )
         return json_content(
             {
                 "error": str(exc),
@@ -2503,6 +2859,7 @@ def handle_message(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
     try:
         if method == "initialize":
+            log_event("server", "initialize", {"clientInfo": params.get("clientInfo"), "protocolVersion": params.get("protocolVersion")})
             requested = params.get("protocolVersion") or PROTOCOL_VERSION
             return response(
                 msg_id,
@@ -2515,15 +2872,19 @@ def handle_message(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if method == "ping":
             return response(msg_id, {})
         if method == "tools/list":
+            log_event("server", "tools_list", {"count": len(TOOLS)})
             return response(msg_id, {"tools": tool_list()})
         if method == "tools/call":
             return response(msg_id, handle_call(params.get("name"), params.get("arguments")))
+        log_event("server", "unknown_method", {"method": method})
         return error_response(msg_id, -32601, f"Method not found: {method}")
     except Exception as exc:
+        log_event("server", "message_exception", {"method": method, "error": str(exc), "traceback": traceback.format_exc(limit=6)})
         return error_response(msg_id, -32603, str(exc))
 
 
 def serve_stdio() -> None:
+    log_event("server", "start", {"argv": sys.argv, "cwd": os.getcwd(), "transport": "stdio", "logDir": str(default_log_dir())})
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -2545,10 +2906,12 @@ def serve_stdio() -> None:
             elif replies:
                 send(replies[0])
         except json.JSONDecodeError as exc:
+            log_event("server", "parse_error", {"error": str(exc), "linePreview": line[:1000]})
             send(error_response(None, -32700, "Parse error.", str(exc)))
 
 
 def self_test() -> int:
+    log_event("server", "self_test", {"argv": sys.argv, "cwd": os.getcwd(), "logDir": str(default_log_dir())})
     env = detect_environment({})
     print(json.dumps({"server": SERVER_NAME, "version": SERVER_VERSION, "environment": env}, indent=2))
     return 0

@@ -31,7 +31,8 @@ Or run:
 
 MCP Doctor runs the server self-test, runs the MCP handshake smoke test, writes
 `openclaw.mcp.generated.json`, prints the OpenClaw registration command, and can
-open the OpenClaw config folder.
+open the OpenClaw config folder. It also writes a transcript log under the MCP
+log folder.
 
 To let it register the server through the OpenClaw CLI:
 
@@ -58,6 +59,16 @@ For redundant mods and conflicts:
 ```text
 Use the vortex-skyrimse MCP to find missing masters, likely redundant mods, and sensitive file conflicts. Do not apply changes yet.
 ```
+
+## Bug Reports
+
+If OpenClaw gets stuck or a tool fails:
+
+```text
+Use the vortex-skyrimse MCP to run log_status and bug_report_bundle. Then summarize the highest-risk findings and tell me where the bundle was written. Do not apply changes.
+```
+
+The bundle may include local paths and mod/plugin names, so review it before posting publicly.
 
 ## Safety Rules
 

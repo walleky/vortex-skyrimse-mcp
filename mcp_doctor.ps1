@@ -58,6 +58,20 @@ function Resolve-TildePath {
   return $Path
 }
 
+function Get-McpLogDir {
+  if ($env:VORTEX_SKYRIMSE_MCP_LOG_DIR) {
+    return Resolve-TildePath $env:VORTEX_SKYRIMSE_MCP_LOG_DIR
+  }
+  $base = $env:LOCALAPPDATA
+  if (!$base) {
+    $base = $env:APPDATA
+  }
+  if (!$base) {
+    $base = $env:USERPROFILE
+  }
+  return Join-Path $base "vortex-skyrimse-mcp\logs"
+}
+
 function Get-OpenClawConfigFolder {
   $openclaw = Get-Command openclaw -ErrorAction SilentlyContinue
   if ($openclaw) {
@@ -80,6 +94,29 @@ function Get-OpenClawConfigFolder {
   }
 
   return Join-Path $env:USERPROFILE ".openclaw"
+}
+
+$script:TranscriptStarted = $false
+$script:DoctorLogPath = $null
+$LogDir = Get-McpLogDir
+New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+$script:DoctorLogPath = Join-Path $LogDir ("doctor-{0}.log" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
+try {
+  Start-Transcript -Path $script:DoctorLogPath -Force | Out-Null
+  $script:TranscriptStarted = $true
+} catch {
+  Write-Host "Warning: could not start MCP Doctor transcript: $($_.Exception.Message)"
+}
+
+trap {
+  if ($script:TranscriptStarted) {
+    try {
+      Stop-Transcript | Out-Null
+      Write-Host "MCP Doctor log: $script:DoctorLogPath"
+    } catch {
+    }
+  }
+  throw
 }
 
 $Server = Join-Path $PSScriptRoot "server.py"
@@ -115,6 +152,8 @@ if (!$ConfigOut) {
 Write-Step "Vortex Skyrim SE MCP Doctor"
 Write-Host "Server: $Server"
 Write-Host "Python: $($Python.Command) $($Python.Args -join ' ')"
+Write-Host "Log folder: $LogDir"
+Write-Host "Doctor log: $script:DoctorLogPath"
 
 Write-Step "Self-test"
 $SelfTestArgs = @()
@@ -170,5 +209,15 @@ if ($OpenConfigFolder) {
 
 Write-Step "Done"
 Write-Host "Restart $ClientName after adding or changing MCP config."
+Write-Host "Logs:"
+Write-Host "  $LogDir"
 Write-Host "First prompt:"
 Write-Host "  Use the vortex-skyrimse MCP to detect my Skyrim SE/Vortex environment and list the highest-risk problems. Do not apply changes."
+Write-Host "Bug report prompt:"
+Write-Host "  Use the vortex-skyrimse MCP to run log_status and bug_report_bundle. Then summarize the highest-risk findings and tell me where the bundle was written. Do not apply changes."
+
+if ($script:TranscriptStarted) {
+  Stop-Transcript | Out-Null
+  $script:TranscriptStarted = $false
+  Write-Host "MCP Doctor log: $script:DoctorLogPath"
+}

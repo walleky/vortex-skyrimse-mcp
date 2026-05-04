@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.2.2
+
+- Adds central MCP file logging for server lifecycle, tool calls, Vortex CLI calls, and support bundle creation.
+- Adds `log_status` for OpenClaw-readable log discovery.
+- Adds `bug_report_bundle` for JSON bug reports with environment/play/deployment/plugin/INI checks plus recent log tails.
+- Adds architecture, OpenClaw agent, logging, and bug-reporting docs.
+- Adds a GitHub bug-report issue template.
+- MCP Doctor now writes a transcript log to the MCP log folder.
+
 ## v0.2.1
 
 - Adds MCP Doctor PowerShell and double-click CMD launchers.

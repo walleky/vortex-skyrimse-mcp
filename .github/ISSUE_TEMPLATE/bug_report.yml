@@ -1,0 +1,74 @@
+name: Bug report
+description: Report a Vortex Skyrim SE MCP bug with enough evidence to debug it.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, ask OpenClaw to run `log_status` and `bug_report_bundle`.
+        Review the bundle before posting publicly because it may include local paths and mod/plugin names.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: prompt
+    attributes:
+      label: OpenClaw prompt or MCP tool
+      description: Paste the prompt/tool call that failed.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Opened Vortex / closed Vortex
+        2. Asked OpenClaw ...
+        3. Ran tool ...
+        4. Saw ...
+    validations:
+      required: true
+  - type: dropdown
+    id: vortex-open
+    attributes:
+      label: Was Vortex open?
+      options:
+        - "No"
+        - "Yes"
+        - "Not sure"
+    validations:
+      required: true
+  - type: input
+    id: profile
+    attributes:
+      label: Active Vortex profile
+      description: If known.
+  - type: dropdown
+    id: recent-change
+    attributes:
+      label: Recent change
+      options:
+        - "Installed a collection"
+        - "Changed Vortex profiles"
+        - "Deployed mods"
+        - "Updated SKSE"
+        - "Updated Vortex"
+        - "Changed INI/settings"
+        - "Other / not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: bundle
+    attributes:
+      label: bug_report_bundle output
+      description: Attach the generated JSON file, or paste the highest-risk findings if you cannot attach it.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or screenshots
+      description: Include screenshots of Vortex/OpenClaw errors if helpful.

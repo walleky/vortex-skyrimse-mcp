@@ -33,6 +33,17 @@ JSON-RPC over stdin/stdout.
 - Enable or disable exact Vortex mod ids in a selected profile only when
   `apply=true`. This is dry-run by default and never deletes mods.
 - Write a JSON report that another agent can analyze.
+- Write MCP logs by area (`server`, `tool`, `vortex-cli`, `support`) and create
+  a bug-report bundle with recent log tails.
+
+## Documentation
+
+- [START-HERE.md](START-HERE.md): short install, first prompts, and MCP Doctor.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): code map and runtime flow.
+- [docs/OPENCLAW-AGENT-GUIDE.md](docs/OPENCLAW-AGENT-GUIDE.md): how an OpenClaw agent should use the tools safely.
+- [docs/LOGGING.md](docs/LOGGING.md): log folder, channels, and inspection commands.
+- [docs/BUG-REPORTING.md](docs/BUG-REPORTING.md): support bundle and issue-reporting guide.
+- [docs/ROADMAP.md](docs/ROADMAP.md): improvement notes and what not to automate yet.
 
 ## What It Will Not Do Automatically
 
@@ -181,6 +192,8 @@ Use apply_ini_fixes with dry_run=false and make_backup=true.
 - `vortex_set_profile_mods`
 - `skyrim_modded_play_report`
 - `suggest_conflict_fixes`
+- `log_status`
+- `bug_report_bundle`
 - `write_report`
 
 Every path-taking tool accepts explicit override paths, which helps if Vortex is
@@ -217,7 +230,8 @@ If detection misses your setup, pass `skyrim_dir`, `staging_dir`,
   `read_text_file`, `vortex_cli_get`, `vortex_profile_report`,
   `vortex_profile_mods`, `vortex_compare_profiles`,
   `vortex_profile_deployment_report`, `skyrim_modded_play_report`,
-  `suggest_conflict_fixes`, and `write_report` do not modify Vortex or Skyrim.
+  `suggest_conflict_fixes`, `log_status`, `bug_report_bundle`, and
+  `write_report` do not modify Vortex or Skyrim.
 - `apply_ini_fixes` can write INI files only when `dry_run=false`.
 - `apply_ini_fixes` creates backups by default.
 - `vortex_clone_profile` and `vortex_set_profile_mods` can write Vortex profile

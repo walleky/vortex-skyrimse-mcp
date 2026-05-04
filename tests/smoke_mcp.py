@@ -89,6 +89,8 @@ def main() -> int:
             assert "vortex_clone_profile" in names, names
             assert "vortex_set_profile_mods" in names, names
             assert "skyrim_modded_play_report" in names, names
+            assert "log_status" in names, names
+            assert "bug_report_bundle" in names, names
         if msg["id"] == 3:
             assert data["result"]["isError"] is False, data
     proc.kill()
