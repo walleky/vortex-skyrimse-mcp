@@ -54,6 +54,12 @@ For "what does this mod do?":
 mod_evidence
 ```
 
+For "what does this whole collection do?" or "what can I remove?":
+
+```text
+mod_knowledge_report
+```
+
 For "make me a safe test profile":
 
 ```text
@@ -147,3 +153,15 @@ Use this order:
 5. Whether anything was changed.
 
 Avoid telling the user to delete mods from a redundancy report. Say "candidate" unless hashes and plugin evidence are strong.
+
+## Large Collection Review
+
+When the user has a massive Nexus Collection, call `mod_knowledge_report` before recommending removals. Read the Markdown sections in this order:
+
+1. Removal Review Shortlist.
+2. Sensitive Conflict Examples.
+3. Plugin Master Problems.
+4. Mod Index.
+5. Mod Details for the specific mods you want to discuss.
+
+For unwanted mods, prefer this wording: "disable in a cloned profile and test" instead of "delete." Use `vortex_clone_profile apply=false` first if the user wants a safe experiment profile. Use `vortex_set_profile_mods apply=false` to preview exact disable operations, and only use `apply=true` after the user explicitly approves.

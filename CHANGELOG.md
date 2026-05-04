@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.4
+
+- Adds `mod_knowledge_report`, a read-only Markdown report for huge Skyrim SE collections.
+- The report infers each mod's likely role from staged files, plugins, FOMOD metadata, readme snippets, conflicts, duplicate evidence, and Vortex profile state when available.
+- Adds a removal-review shortlist that favors cloned-profile disable tests over dangerous deletes.
+- Adds documentation for how OpenClaw should use the mod knowledge report.
+- Adds installer and MCP Doctor prompts for generating the collection knowledge report.
+
 ## v0.2.3
 
 - Adds optional `zip_output` support to `bug_report_bundle` for one-file GitHub attachments.

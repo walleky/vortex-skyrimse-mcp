@@ -43,6 +43,7 @@ JSON-RPC over stdin/stdout.
 - [docs/OPENCLAW-AGENT-GUIDE.md](docs/OPENCLAW-AGENT-GUIDE.md): how an OpenClaw agent should use the tools safely.
 - [docs/LOGGING.md](docs/LOGGING.md): log folder, channels, and inspection commands.
 - [docs/BUG-REPORTING.md](docs/BUG-REPORTING.md): support bundle and issue-reporting guide.
+- [docs/MOD-KNOWLEDGE.md](docs/MOD-KNOWLEDGE.md): collection knowledge reports and safe removal review.
 - [docs/SAMPLE-BUG-BUNDLE.md](docs/SAMPLE-BUG-BUNDLE.md): sanitized example support bundle shape.
 - [docs/ROADMAP.md](docs/ROADMAP.md): improvement notes and what not to automate yet.
 
@@ -161,6 +162,12 @@ For a single no-hassle diagnosis:
 Use skyrim_modded_play_report to tell me why my modded Skyrim SE setup is not launching with the expected Vortex profile. Do not apply changes.
 ```
 
+For a large collection map:
+
+```text
+Use mod_knowledge_report to write a Markdown report explaining what each Skyrim SE mod appears to do, how it fits into the collection, and which mods are safe candidates to review for disabling. Do not apply changes.
+```
+
 For INI fixes:
 
 ```text
@@ -181,6 +188,7 @@ Use apply_ini_fixes with dry_run=false and make_backup=true.
 - `redundant_mod_report`
 - `plugin_report`
 - `mod_evidence`
+- `mod_knowledge_report`
 - `ini_report`
 - `apply_ini_fixes`
 - `read_text_file`
@@ -227,7 +235,8 @@ If detection misses your setup, pass `skyrim_dir`, `staging_dir`,
 ## Safety Model
 
 - `detect_environment`, `inventory_mods`, `analyze_conflicts`,
-  `redundant_mod_report`, `plugin_report`, `mod_evidence`, `ini_report`,
+  `redundant_mod_report`, `plugin_report`, `mod_evidence`,
+  `mod_knowledge_report`, `ini_report`,
   `read_text_file`, `vortex_cli_get`, `vortex_profile_report`,
   `vortex_profile_mods`, `vortex_compare_profiles`,
   `vortex_profile_deployment_report`, `skyrim_modded_play_report`,

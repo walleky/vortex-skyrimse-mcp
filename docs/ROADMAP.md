@@ -7,7 +7,7 @@ These are useful next steps, ordered by value and risk.
 1. Add richer Vortex collection detection if Vortex exposes collection state through stable CLI paths.
 2. Add more plugin metadata parsing for ESP/ESM headers beyond masters, such as plugin version and record counts.
 3. Add a safe "profile diff narrative" tool that explains profile differences in plain English.
-4. Add a "known risky mod categories" report for DLL plugins, animation frameworks, body/skeleton mods, UI replacers, and script-heavy mods.
+4. Add Nexus/Vortex collection manifest detection if stable local collection metadata is available.
 5. Add a synthetic Vortex profile fixture so profile/deployment behavior can be tested without a real Vortex install.
 
 ## What Not To Automate Yet
@@ -35,6 +35,7 @@ Those actions can break saves. Keep them as reports or dry-run plans until the e
 ## OpenClaw Experience Improvements
 
 - Teach OpenClaw to call `bug_report_bundle` automatically after any tool exception.
+- Teach OpenClaw to call `mod_knowledge_report` before suggesting collection cleanup.
 - Teach OpenClaw to read `docs/OPENCLAW-AGENT-GUIDE.md` before applying any profile or INI write.
 - Prefer one-shot `skyrim_modded_play_report` for first diagnosis, then narrower tools.
 - Keep final answers short and action-oriented for nontechnical users.

@@ -60,6 +60,12 @@ For redundant mods and conflicts:
 Use the vortex-skyrimse MCP to find missing masters, likely redundant mods, and sensitive file conflicts. Do not apply changes yet.
 ```
 
+For a big collection knowledge map:
+
+```text
+Use the vortex-skyrimse MCP to run mod_knowledge_report. Write the Markdown report, summarize the top removal-review candidates, and do not apply changes.
+```
+
 ## Bug Reports
 
 If OpenClaw gets stuck or a tool fails:

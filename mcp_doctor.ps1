@@ -213,6 +213,8 @@ Write-Host "Logs:"
 Write-Host "  $LogDir"
 Write-Host "First prompt:"
 Write-Host "  Use the vortex-skyrimse MCP to detect my Skyrim SE/Vortex environment and list the highest-risk problems. Do not apply changes."
+Write-Host "Collection knowledge prompt:"
+Write-Host "  Use the vortex-skyrimse MCP to run mod_knowledge_report. Summarize the top removal-review candidates. Do not apply changes."
 Write-Host "Bug report prompt:"
 Write-Host "  Use the vortex-skyrimse MCP to run log_status and bug_report_bundle with zip_output=true and redact_user_paths=true. Then summarize the highest-risk findings and tell me where the zip was written. Do not apply changes."
 

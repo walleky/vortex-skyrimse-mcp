@@ -25,6 +25,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - `tests/smoke_mcp.py`: verifies JSON-RPC initialize, tools/list, and a basic tools/call.
 - `tests/fixture_mcp.py`: synthetic Skyrim/Vortex fixture for plugin, staging, conflict, logging, and bug-report behavior.
 - `openclaw.mcp.example.json`: static example config.
+- `docs/MOD-KNOWLEDGE.md`: explains the collection knowledge report and safe removal-review flow.
 - `docs/SAMPLE-BUG-BUNDLE.md`: shortened sanitized support bundle example for agents and humans.
 
 ## server.py Code Map
@@ -32,12 +33,12 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - constants and helpers: server identity, path expansion, logging helpers, text IO.
 - Steam/Vortex path detection: `find_steam_root`, `steam_libraries`, `find_skyrim_dir`, `default_vortex_appdata`, `find_vortex_exe`.
 - Vortex CLI helpers: `run_vortex_cli`, `vortex_state_get`, `vortex_state_set`.
-- filesystem and mod inspection: `safe_walk`, `mod_summary`, `inventory_mods`, `analyze_conflicts`, `redundant_mod_report`.
+- filesystem and mod inspection: `safe_walk`, `mod_summary`, `inventory_mods`, `analyze_conflicts`, `redundant_mod_report`, `mod_knowledge_report`.
 - plugin/load-order checks: `parse_plugin_list`, `plugin_report`, `plugin_masters`.
 - INI checks and writes: `ini_report`, `apply_ini_fixes`.
 - profile tools: `vortex_profile_report`, `vortex_profile_mods`, `vortex_compare_profiles`, `vortex_clone_profile`, `vortex_set_profile_mods`.
 - play readiness: `skyrim_modded_play_report`, `suggest_conflict_fixes`.
-- support tools: `log_status`, `bug_report_bundle`, `write_report`.
+- support/report tools: `mod_knowledge_report`, `log_status`, `bug_report_bundle`, `write_report`.
 - MCP registration and loop: `TOOLS`, `tool_list`, `handle_call`, `handle_message`, `serve_stdio`.
 
 ## Safety Model

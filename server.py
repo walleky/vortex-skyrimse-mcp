@@ -35,7 +35,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.3"
+SERVER_VERSION = "0.2.4"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -1337,6 +1337,566 @@ def infer_mod_purpose(summary: Dict[str, Any]) -> List[str]:
     return hints
 
 
+GAMEPLAY_FILE_KINDS = {
+    "plugin",
+    "archive",
+    "skse_plugin",
+    "script",
+    "mesh",
+    "texture",
+    "interface",
+    "animation_tool",
+    "config",
+}
+
+
+def format_bytes(size: Any) -> str:
+    try:
+        value = float(size)
+    except (TypeError, ValueError):
+        return "unknown"
+    units = ["B", "KB", "MB", "GB"]
+    for unit in units:
+        if value < 1024 or unit == units[-1]:
+            return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} B"
+        value /= 1024
+    return f"{value:.1f} GB"
+
+
+def md_cell(value: Any) -> str:
+    text = "" if value is None else str(value)
+    return text.replace("\\", "\\\\").replace("\n", " ").replace("|", "\\|").strip()
+
+
+def md_bullets(values: List[str], prefix: str = "- ") -> List[str]:
+    return [f"{prefix}{value}" for value in values if value]
+
+
+def first_readme_lines(mod_dir: Path, readmes: List[str], max_lines: int, max_bytes: int) -> List[Dict[str, Any]]:
+    excerpts: List[Dict[str, Any]] = []
+    for rel in readmes[:3]:
+        path = mod_dir / rel
+        if not path.exists():
+            continue
+        try:
+            lines = []
+            for raw in read_text(path, max_bytes).splitlines():
+                line = raw.strip()
+                if not line:
+                    continue
+                if len(line) > 220:
+                    line = line[:217] + "..."
+                lines.append(line)
+                if len(lines) >= max_lines:
+                    break
+            if lines:
+                excerpts.append({"relativePath": rel, "lines": lines})
+        except Exception as exc:
+            excerpts.append({"relativePath": rel, "error": str(exc)})
+    return excerpts
+
+
+def infer_mod_knowledge(summary: Dict[str, Any]) -> Dict[str, Any]:
+    name = str(summary.get("name") or "")
+    lower_name = name.lower()
+    kinds = summary.get("kinds", {}) if isinstance(summary.get("kinds"), dict) else {}
+    categories: List[str] = []
+    risk_flags: List[str] = []
+
+    if summary.get("plugins"):
+        categories.append("load-order plugin")
+    if kinds.get("archive"):
+        categories.append("BSA/archive assets")
+    if kinds.get("skse_plugin"):
+        categories.append("SKSE native plugin")
+        risk_flags.append("runtime/DLL compatibility")
+    if kinds.get("script"):
+        categories.append("Papyrus scripts")
+        risk_flags.append("save-game/script state")
+    if kinds.get("interface"):
+        categories.append("UI/interface")
+        risk_flags.append("UI/MCM overwrite order")
+    if kinds.get("mesh") or kinds.get("texture"):
+        categories.append("visual assets")
+    if kinds.get("animation_tool") or any(token in lower_name for token in ("nemesis", "fnis", "animation", "behavior")):
+        categories.append("animation/behavior")
+        risk_flags.append("animation behavior generation")
+    if any(token in lower_name for token in ("skeleton", "xpmsse", "bodyslide", "cbbe", "body", "physics")):
+        categories.append("body/skeleton/physics")
+        risk_flags.append("body/skeleton dependency")
+    if kinds.get("config"):
+        categories.append("configuration")
+    if summary.get("metadata", {}).get("fomod"):
+        categories.append("FOMOD installer")
+    if any(token in lower_name for token in ("patch", "compat", "compatibility", "addon", "plugin")):
+        categories.append("patch/add-on candidate")
+
+    recognized = sum(int(kinds.get(kind, 0) or 0) for kind in GAMEPLAY_FILE_KINDS)
+    docs_only = recognized == 0
+    if docs_only:
+        role = "documentation or installer leftovers"
+        removal_risk = "low"
+    elif kinds.get("skse_plugin"):
+        role = "runtime extension"
+        removal_risk = "high"
+    elif kinds.get("script"):
+        role = "scripted gameplay/system mod"
+        removal_risk = "high"
+    elif summary.get("plugins"):
+        role = "load-order/content mod"
+        removal_risk = "high"
+    elif kinds.get("interface"):
+        role = "UI/interface mod"
+        removal_risk = "medium"
+    elif kinds.get("animation_tool"):
+        role = "animation tool/output"
+        removal_risk = "medium"
+    elif kinds.get("mesh") or kinds.get("texture"):
+        role = "visual replacer/assets"
+        removal_risk = "low-medium"
+    else:
+        role = "support/configuration files"
+        removal_risk = "medium"
+
+    return {
+        "role": role,
+        "categories": sorted(set(categories)) or ["unknown"],
+        "riskFlags": sorted(set(risk_flags)),
+        "recognizedGameFileCount": recognized,
+        "docsOnly": docs_only,
+        "removalRisk": removal_risk,
+        "purposeHints": infer_mod_purpose(summary),
+    }
+
+
+def profile_lookup_for_staging(args: Dict[str, Any], staging_dir: Optional[Path]) -> Dict[str, Any]:
+    if not bool(args.get("include_profile_state", True)):
+        return {"available": False, "modsByPath": {}, "error": None}
+    try:
+        snapshot = load_vortex_profile_state(args, include_mods=True)
+        profile_id, profile = require_profile(snapshot, args.get("profile_id"))
+        mod_state = profile.get("modState") if isinstance(profile.get("modState"), dict) else {}
+        by_path: Dict[str, Dict[str, Any]] = {}
+        for mod_id, entry in mod_state.items():
+            mod_id_str = str(mod_id)
+            mod_meta = summarize_vortex_mod(mod_id_str, snapshot["mods"])
+            mod_path = resolve_mod_staging_path(mod_id_str, snapshot["mods"].get(mod_id_str), staging_dir)
+            if not mod_path:
+                continue
+            try:
+                key = str(mod_path.resolve()).lower()
+            except OSError:
+                key = str(mod_path).lower()
+            by_path[key] = {
+                **mod_meta,
+                "enabled": profile_enabled(entry),
+                "enabledTime": profile_enabled_time(entry),
+                "enabledTimeIso": epoch_to_iso(profile_enabled_time(entry)),
+            }
+        return {
+            "available": True,
+            "profile": summarize_profile(profile_id, profile, snapshot["activeProfileId"]),
+            "modsByPath": by_path,
+            "error": None,
+        }
+    except Exception as exc:
+        return {"available": False, "modsByPath": {}, "error": str(exc)}
+
+
+def knowledge_removal_candidates(
+    rows: List[Dict[str, Any]],
+    redundancy: Optional[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    by_name = {str(row["summary"]["name"]): row for row in rows}
+    candidates: List[Dict[str, Any]] = []
+    seen: set[Tuple[str, str]] = set()
+
+    def add_candidate(mod_name: str, kind: str, confidence: str, reason: str, safer_action: str) -> None:
+        key = (mod_name, kind)
+        if key in seen:
+            return
+        seen.add(key)
+        row = by_name.get(mod_name)
+        profile = row.get("profile") if row else None
+        candidates.append(
+            {
+                "mod": mod_name,
+                "kind": kind,
+                "confidence": confidence,
+                "reason": reason,
+                "saferAction": safer_action,
+                "vortexModId": profile.get("id") if isinstance(profile, dict) else None,
+            }
+        )
+
+    if redundancy:
+        for item in redundancy.get("coveredMods", []):
+            mod_name = str(item.get("possiblyRedundant") or "")
+            if mod_name:
+                basis = str(item.get("basis") or "file coverage")
+                covered_by = str(item.get("coveredBy") or "another mod")
+                confidence = "high" if "hash" in basis else "medium"
+                add_candidate(
+                    mod_name,
+                    "covered duplicate",
+                    confidence,
+                    f"{basis}; files appear covered by {covered_by}.",
+                    "Disable it in a cloned Vortex profile first. Delete/uninstall only after a successful test load.",
+                )
+        for plugin, mods in (redundancy.get("duplicatePlugins") or {}).items():
+            for mod_name in mods:
+                add_candidate(
+                    str(mod_name),
+                    "duplicate plugin name",
+                    "medium",
+                    f"Shares plugin filename {plugin} with: {', '.join(str(m) for m in mods if m != mod_name)}.",
+                    "Keep only the intended variant after checking mod page instructions and load order.",
+                )
+        for nexus_id, mods in (redundancy.get("duplicateNexusIds") or {}).items():
+            for mod_name in mods:
+                add_candidate(
+                    str(mod_name),
+                    "same Nexus mod id",
+                    "medium",
+                    f"Shares Nexus mod id {nexus_id} with: {', '.join(str(m) for m in mods if m != mod_name)}.",
+                    "Review whether these are main file/update/optional variants before disabling anything.",
+                )
+
+    for row in rows:
+        name = str(row["summary"]["name"])
+        knowledge = row["knowledge"]
+        profile = row.get("profile")
+        if knowledge.get("docsOnly"):
+            add_candidate(
+                name,
+                "no recognized game files",
+                "high",
+                "No ESP/ESM/ESL, BSA, SKSE DLL, scripts, mesh, texture, interface, animation, or config files were detected.",
+                "Likely safe to remove from the staging folder after confirming it is not an installer support folder.",
+            )
+        if isinstance(profile, dict) and profile.get("enabled") is False:
+            add_candidate(
+                name,
+                "disabled in selected profile",
+                "medium",
+                "The selected Vortex profile records this mod as disabled.",
+                "Leave it alone unless you need disk cleanup; disabled mods should not affect the current profile.",
+            )
+
+    candidates.sort(key=lambda item: ({"high": 0, "medium": 1, "low": 2}.get(str(item["confidence"]), 3), item["mod"].lower()))
+    return candidates
+
+
+def render_mod_knowledge_markdown(
+    rows: List[Dict[str, Any]],
+    args: Dict[str, Any],
+    staging_dir: Path,
+    output_path: Path,
+    profile_lookup: Dict[str, Any],
+    conflicts: Optional[Dict[str, Any]],
+    redundancy: Optional[Dict[str, Any]],
+    plugins: Optional[Dict[str, Any]],
+    candidates: List[Dict[str, Any]],
+) -> str:
+    max_detail_mods = int(args.get("max_detail_mods", 120))
+    include_readmes = bool(args.get("include_readme_excerpts", True))
+    category_counts: Dict[str, int] = {}
+    high_risk = 0
+    for row in rows:
+        for category in row["knowledge"].get("categories", []):
+            category_counts[category] = category_counts.get(category, 0) + 1
+        if row["knowledge"].get("removalRisk") == "high":
+            high_risk += 1
+
+    lines = [
+        "# Skyrim SE Mod Knowledge Report",
+        "",
+        f"- Generated: {iso_now()}",
+        f"- Server: {SERVER_NAME} {SERVER_VERSION}",
+        f"- Staging folder: `{staging_dir}`",
+        f"- Output file: `{output_path}`",
+        f"- Mods scanned: {len(rows)}",
+        f"- Profile state: {'available' if profile_lookup.get('available') else 'not available'}",
+    ]
+    if profile_lookup.get("profile"):
+        profile = profile_lookup["profile"]
+        lines.append(f"- Selected profile: `{profile.get('name')}` (`{profile.get('id')}`)")
+    if profile_lookup.get("error"):
+        lines.append(f"- Profile note: {profile_lookup['error']}")
+    lines.extend(
+        [
+            "",
+            "## How This Report Knows Things",
+            "",
+            "This report is based on local evidence: staged files, plugin headers, FOMOD metadata, readme snippets, Vortex profile state when available, duplicate-file checks, and conflict overlaps. It does not download mod-page descriptions by itself.",
+            "",
+            "For a huge collection, use this as a map. OpenClaw should read the role, evidence, plugin masters, conflict notes, and removal review before suggesting changes.",
+            "",
+            "## Safe Removal Rule",
+            "",
+            "Do not delete mods just because they look unwanted. Clone the Vortex profile, disable candidate mods there, deploy, launch with SKSE, and test the save. Delete/uninstall only after the cloned-profile test works.",
+            "",
+            "## Collection Layers",
+            "",
+            "- Runtime layer: SKSE DLL plugins and SKSE scripts. Highest compatibility risk.",
+            "- Load-order layer: ESP/ESM/ESL plugins and BSA archives. Masters and plugin order matter.",
+            "- Script/gameplay layer: Papyrus scripts, quests, AI, perks, MCM systems. Removing mid-save can break saves.",
+            "- Interface layer: SkyUI/MCM/SWF files. Conflicts can hide menus or controls.",
+            "- Visual layer: meshes, textures, sounds, models. Usually easier to disable, but skeleton/body mods still matter.",
+            "- Patch layer: compatibility patches/add-ons. Usually depend on other mods staying installed.",
+            "",
+            "## Summary",
+            "",
+            f"- High removal-risk mods: {high_risk}",
+            f"- Conflict rows: {conflicts.get('conflictCount') if conflicts else 'not scanned'}",
+            f"- Redundancy candidates: {len(candidates)}",
+            "",
+            "| Category | Mods |",
+            "|---|---:|",
+        ]
+    )
+    for category, count in sorted(category_counts.items(), key=lambda item: (-item[1], item[0])):
+        lines.append(f"| {md_cell(category)} | {count} |")
+
+    lines.extend(["", "## Removal Review Shortlist", ""])
+    if candidates:
+        lines.extend(["| Mod | Evidence | Confidence | Safer action |", "|---|---|---|---|"])
+        for item in candidates[: int(args.get("max_removal_candidates", 80))]:
+            action = item["saferAction"]
+            if item.get("vortexModId"):
+                action += f" Vortex mod id: `{item['vortexModId']}`."
+            lines.append(
+                f"| {md_cell(item['mod'])} | {md_cell(item['kind'] + ': ' + item['reason'])} | {md_cell(item['confidence'])} | {md_cell(action)} |"
+            )
+    else:
+        lines.append("No strong removal candidates were found from local evidence. Use the mod index to choose unwanted cosmetic/content mods manually.")
+
+    lines.extend(["", "## Mod Index", ""])
+    lines.extend(["| Mod | Role | Active | Plugins | Risk | Conflicts | Evidence |", "|---|---|---|---:|---|---:|---|"])
+    for row in rows:
+        summary = row["summary"]
+        knowledge = row["knowledge"]
+        profile = row.get("profile")
+        active = "unknown"
+        if isinstance(profile, dict):
+            active = "yes" if profile.get("enabled") else "no"
+        evidence = ", ".join(knowledge.get("categories", []))
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    md_cell(summary.get("name")),
+                    md_cell(knowledge.get("role")),
+                    md_cell(active),
+                    md_cell(len(summary.get("plugins", []))),
+                    md_cell(knowledge.get("removalRisk")),
+                    md_cell(row.get("conflictCount", 0)),
+                    md_cell(evidence),
+                ]
+            )
+            + " |"
+        )
+
+    if conflicts:
+        sensitive = [
+            item
+            for item in conflicts.get("conflicts", [])
+            if item.get("kind") in {"script", "skse_plugin", "interface", "config", "plugin", "animation_tool"}
+        ]
+        lines.extend(["", "## Sensitive Conflict Examples", ""])
+        if sensitive:
+            for item in sensitive[:25]:
+                providers = ", ".join(str(provider.get("mod")) for provider in item.get("providers", []))
+                lines.append(f"- `{item.get('relativePath')}` ({item.get('kind')}): {providers}")
+        else:
+            lines.append("No sensitive conflict examples were found in the returned conflict window.")
+
+    if plugins:
+        missing_masters = plugins.get("missingMasters") or []
+        lines.extend(["", "## Plugin Master Problems", ""])
+        if missing_masters:
+            for item in missing_masters[:50]:
+                lines.append(f"- `{item.get('plugin')}` needs missing master `{item.get('missingMaster')}`.")
+        else:
+            lines.append("No missing masters were found in the scanned plugin headers.")
+
+    lines.extend(["", "## Mod Details", ""])
+    for index, row in enumerate(rows[:max_detail_mods], start=1):
+        summary = row["summary"]
+        knowledge = row["knowledge"]
+        profile = row.get("profile")
+        lines.extend(
+            [
+                f"### {index}. {summary.get('name')}",
+                "",
+                f"- Role: {knowledge.get('role')}",
+                f"- Categories: {', '.join(knowledge.get('categories', []))}",
+                f"- Removal risk: {knowledge.get('removalRisk')}",
+                f"- Size/files: {format_bytes(summary.get('totalBytes'))}, {summary.get('fileCount')} files",
+                f"- Staging path: `{summary.get('path')}`",
+            ]
+        )
+        if isinstance(profile, dict):
+            lines.append(f"- Vortex profile state: {'enabled' if profile.get('enabled') else 'disabled'}; id `{profile.get('id')}`")
+            if profile.get("nexusModId"):
+                lines.append(f"- Nexus ids: mod `{profile.get('nexusModId')}`, file `{profile.get('nexusFileId')}`")
+        if summary.get("plugins"):
+            lines.append("- Plugins:")
+            for rel, header in row.get("pluginHeaders", {}).items():
+                masters = ", ".join(header.get("masters", [])) or "none"
+                lines.append(f"  - `{Path(rel).name}` masters: {masters}")
+        if summary.get("sksePlugins"):
+            lines.append("- SKSE DLLs: " + ", ".join(f"`{Path(rel).name}`" for rel in summary.get("sksePlugins", [])[:8]))
+        if row.get("conflictExamples"):
+            lines.append("- Conflict examples:")
+            for item in row["conflictExamples"][:5]:
+                lines.append(f"  - `{item.get('relativePath')}` ({item.get('kind')}) with {', '.join(item.get('otherMods', []))}")
+        if knowledge.get("purposeHints"):
+            lines.extend(md_bullets(knowledge["purposeHints"]))
+        if include_readmes and row.get("readmeExcerpts"):
+            lines.append("- Readme evidence:")
+            for excerpt in row["readmeExcerpts"]:
+                lines.append(f"  - `{excerpt.get('relativePath')}`")
+                for line in excerpt.get("lines", []):
+                    lines.append(f"    - {line}")
+        lines.append("")
+
+    if len(rows) > max_detail_mods:
+        lines.append(f"_Details truncated after {max_detail_mods} mods. Increase `max_detail_mods` if you need the full list._")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def mod_knowledge_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    _vortex_appdata, _skyrim_dir, staging_dir, _my_games = get_context_paths(args)
+    if not staging_dir or not staging_dir.exists():
+        raise ToolError("Vortex staging folder was not found. Pass staging_dir explicitly.")
+    output_path = expand_path(args.get("output_path"))
+    if not output_path:
+        docs = default_documents() or Path.cwd()
+        output_path = docs / f"vortex-skyrimse-mod-knowledge-{now_stamp()}.md"
+
+    max_mods = int(args.get("max_mods", 500))
+    max_files_per_mod = int(args.get("max_files_per_mod", 3000))
+    include_readmes = bool(args.get("include_readme_excerpts", True))
+    readme_lines = int(args.get("max_readme_lines", 4))
+    readme_bytes = int(args.get("max_readme_bytes", 8000))
+    redact_user_paths = bool(args.get("redact_user_paths", True))
+
+    profile_lookup = profile_lookup_for_staging(args, staging_dir)
+    profile_by_path = profile_lookup.get("modsByPath") if isinstance(profile_lookup.get("modsByPath"), dict) else {}
+
+    conflicts = None
+    mod_conflicts: Dict[str, Dict[str, Any]] = {}
+    if bool(args.get("include_conflicts", True)):
+        try:
+            conflicts = analyze_conflicts(
+                {
+                    **args,
+                    "max_files": int(args.get("conflict_max_files_per_mod", max_files_per_mod)),
+                    "max_conflicts": int(args.get("max_conflicts", 500)),
+                    "hash_files": bool(args.get("hash_files", False)),
+                }
+            )
+            for item in conflicts.get("conflicts", []):
+                providers = item.get("providers", [])
+                provider_names = [str(provider.get("mod")) for provider in providers]
+                for provider in providers:
+                    mod_name = str(provider.get("mod"))
+                    stats = mod_conflicts.setdefault(mod_name, {"count": 0, "examples": []})
+                    stats["count"] += 1
+                    if len(stats["examples"]) < 8:
+                        stats["examples"].append(
+                            {
+                                "relativePath": item.get("relativePath"),
+                                "kind": item.get("kind"),
+                                "otherMods": [name for name in provider_names if name != mod_name],
+                            }
+                        )
+        except Exception as exc:
+            conflicts = {"error": str(exc), "conflicts": [], "conflictCount": "error"}
+
+    redundancy = None
+    if bool(args.get("include_redundancy", True)):
+        try:
+            redundancy = redundant_mod_report(
+                {
+                    **args,
+                    "max_mods": max_mods,
+                    "hash_files": bool(args.get("hash_files", False)),
+                }
+            )
+        except Exception as exc:
+            redundancy = {"error": str(exc), "coveredMods": [], "duplicatePlugins": {}, "duplicateNexusIds": {}}
+
+    plugins = None
+    if bool(args.get("include_plugin_report", True)):
+        try:
+            plugins = plugin_report(args)
+        except Exception as exc:
+            plugins = {"error": str(exc), "missingMasters": []}
+
+    rows: List[Dict[str, Any]] = []
+    mod_dirs = sorted([path for path in staging_dir.iterdir() if path.is_dir()], key=lambda path: path.name.lower())[:max_mods]
+    for mod_dir in mod_dirs:
+        summary = mod_summary(mod_dir, include_files=False, max_files=max_files_per_mod)
+        plugin_headers = {}
+        for rel in summary.get("plugins", []):
+            plugin_path = mod_dir / rel
+            if plugin_path.exists():
+                plugin_headers[rel] = plugin_masters(plugin_path)
+        try:
+            profile_key = str(mod_dir.resolve()).lower()
+        except OSError:
+            profile_key = str(mod_dir).lower()
+        knowledge = infer_mod_knowledge(summary)
+        conflict_stats = mod_conflicts.get(summary["name"], {"count": 0, "examples": []})
+        rows.append(
+            {
+                "summary": summary,
+                "knowledge": knowledge,
+                "pluginHeaders": plugin_headers,
+                "profile": profile_by_path.get(profile_key),
+                "conflictCount": conflict_stats.get("count", 0),
+                "conflictExamples": conflict_stats.get("examples", []),
+                "readmeExcerpts": first_readme_lines(mod_dir, summary.get("readmes", []), readme_lines, readme_bytes)
+                if include_readmes
+                else [],
+            }
+        )
+
+    candidates = knowledge_removal_candidates(rows, redundancy)
+    markdown = render_mod_knowledge_markdown(
+        rows,
+        args,
+        staging_dir,
+        output_path,
+        profile_lookup,
+        conflicts,
+        redundancy,
+        plugins,
+        candidates,
+    )
+    if redact_user_paths:
+        markdown = redact_text(markdown)
+    write_text(output_path, markdown)
+    return {
+        "output_path": str(output_path),
+        "staging_dir": str(staging_dir),
+        "modCount": len(rows),
+        "profileStateAvailable": bool(profile_lookup.get("available")),
+        "profileStateError": profile_lookup.get("error"),
+        "removalCandidateCount": len(candidates),
+        "conflictCount": conflicts.get("conflictCount") if isinstance(conflicts, dict) else None,
+        "redactedUserPaths": redact_user_paths,
+        "notes": [
+            "The Markdown report is evidence-based and read-only.",
+            "Disable candidate mods in a cloned profile before uninstalling or deleting anything.",
+            "The tool infers purpose from local files and metadata; it does not fetch Nexus page descriptions.",
+        ],
+    }
+
+
 INI_RECOMMENDATIONS = [
     {
         "file": "SkyrimCustom.ini",
@@ -2618,6 +3178,40 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
             "additionalProperties": False,
         },
         mod_evidence,
+    ),
+    "mod_knowledge_report": (
+        "Write a Markdown knowledge map for a large Skyrim SE mod collection: inferred roles, relationships, conflicts, and safe removal-review candidates.",
+        {
+            "type": "object",
+            "properties": {
+                "output_path": {"type": "string"},
+                "vortex_appdata": {"type": "string"},
+                "vortex_exe": {"type": "string"},
+                "game_id": {"type": "string", "default": GAME_ID},
+                "profile_id": {"type": "string"},
+                "skyrim_dir": {"type": "string"},
+                "staging_dir": {"type": "string"},
+                "local_appdata": {"type": "string"},
+                "include_profile_state": {"type": "boolean", "default": True},
+                "include_conflicts": {"type": "boolean", "default": True},
+                "include_redundancy": {"type": "boolean", "default": True},
+                "include_plugin_report": {"type": "boolean", "default": True},
+                "include_readme_excerpts": {"type": "boolean", "default": True},
+                "hash_files": {"type": "boolean", "default": False},
+                "redact_user_paths": {"type": "boolean", "default": True},
+                "max_mods": {"type": "integer", "default": 500},
+                "max_files_per_mod": {"type": "integer", "default": 3000},
+                "conflict_max_files_per_mod": {"type": "integer", "default": 3000},
+                "max_conflicts": {"type": "integer", "default": 500},
+                "max_detail_mods": {"type": "integer", "default": 120},
+                "max_removal_candidates": {"type": "integer", "default": 80},
+                "max_readme_lines": {"type": "integer", "default": 4},
+                "max_readme_bytes": {"type": "integer", "default": 8000},
+                "timeout_seconds": {"type": "integer", "default": 60},
+            },
+            "additionalProperties": False,
+        },
+        mod_knowledge_report,
     ),
     "ini_report": (
         "Inspect Skyrim SE INI files and report mod-manager-friendly settings.",

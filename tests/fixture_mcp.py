@@ -67,6 +67,7 @@ def main() -> int:
         write(staging / "Weather Mod" / "scripts" / "shared.pex", "weather")
         write(staging / "Lighting Mod" / "scripts" / "shared.pex", "lighting")
         write(staging / "Lighting Mod" / "readme.txt", "Lighting tweaks")
+        write(staging / "Readme Pack" / "readme.txt", "Just a note file for cleanup testing")
         write(plugins_dir / "plugins.txt", "# comment\r\n*Skyrim.esm\r\n*MYMOD.ESP\r\n*MissingOnDisk.esp\r\n")
         write(my_games / "Skyrim.ini", "[Archive]\nbInvalidateOlderFiles=1\n")
         write(my_games / "SkyrimPrefs.ini", "[Launcher]\nbEnableFileSelection=1\n")
@@ -87,7 +88,7 @@ def main() -> int:
         assert not [issue for issue in env["issues"] if "SkyrimSE.exe" in issue], env
 
         inventory = server.inventory_mods({**base_args, "include_files": True})
-        assert inventory["modCount"] == 2, inventory
+        assert inventory["modCount"] == 3, inventory
 
         conflicts = server.analyze_conflicts(base_args)
         assert any(item["relativePath"] == "scripts/shared.pex" for item in conflicts["conflicts"]), conflicts
@@ -95,6 +96,30 @@ def main() -> int:
         plugins = server.plugin_report(base_args)
         assert "MissingOnDisk.esp" in plugins["missingEnabledPlugins"], plugins
         assert any(item["missingMaster"] == "MissingMaster.esm" for item in plugins["missingMasters"]), plugins
+
+        knowledge_path = root / "knowledge.md"
+        knowledge = server.mod_knowledge_report(
+            {
+                **base_args,
+                "output_path": str(knowledge_path),
+                "include_profile_state": False,
+                "include_conflicts": True,
+                "include_redundancy": True,
+                "include_plugin_report": True,
+                "include_readme_excerpts": True,
+                "redact_user_paths": True,
+                "max_detail_mods": 10,
+            }
+        )
+        assert knowledge_path.exists(), knowledge
+        knowledge_text = knowledge_path.read_text(encoding="utf-8")
+        assert "Skyrim SE Mod Knowledge Report" in knowledge_text
+        assert "Weather Mod" in knowledge_text
+        assert "MissingMaster.esm" in knowledge_text
+        assert "scripts/shared.pex" in knowledge_text
+        assert "Readme Pack" in knowledge_text
+        assert str(root) not in knowledge_text
+        assert knowledge["removalCandidateCount"] >= 1, knowledge
 
         bundle_path = root / "bundle.json"
         bundle = server.bug_report_bundle(
