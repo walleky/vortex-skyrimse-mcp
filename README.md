@@ -67,6 +67,7 @@ an MCP client.
 ## Documentation
 
 - [START-HERE.md](START-HERE.md): short install, first prompts, and MCP Doctor.
+- [docs/WORKFLOW-EXAMPLES.md](docs/WORKFLOW-EXAMPLES.md): copy-paste examples for common OpenClaw and PowerShell workflows.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): code map and runtime flow.
 - [docs/CLI.md](docs/CLI.md): direct command-line mode without an MCP client.
 - [docs/LOCAL-MENU.md](docs/LOCAL-MENU.md): local no-hassle menu for report generation.

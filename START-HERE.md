@@ -64,6 +64,8 @@ To let it register the server through the OpenClaw CLI:
 
 ## First Prompts
 
+For complete examples, see [docs/WORKFLOW-EXAMPLES.md](docs/WORKFLOW-EXAMPLES.md).
+
 Start read-only:
 
 ```text
