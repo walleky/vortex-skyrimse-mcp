@@ -42,6 +42,8 @@ Or use the wrapper:
 
 You can also double-click `Make-Mod-Knowledge.cmd`.
 
+For a broader local menu, double-click `Vortex-SkyrimSE-Menu.cmd`.
+
 For slower but stronger duplicate evidence:
 
 ```text

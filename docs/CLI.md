@@ -25,8 +25,11 @@ py -3 .\server.py --mod-knowledge
 Or double-click:
 
 ```text
+Vortex-SkyrimSE-Menu.cmd
 Make-Mod-Knowledge.cmd
 ```
+
+`Vortex-SkyrimSE-Menu.cmd` opens a menu for the common report actions. `Make-Mod-Knowledge.cmd` goes straight to the collection knowledge report.
 
 ## Useful Mod Knowledge Options
 

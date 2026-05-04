@@ -31,6 +31,12 @@ Or run:
 
 ## No-OpenClaw Mod Map
 
+To open the local helper menu, double-click:
+
+```text
+Vortex-SkyrimSE-Menu.cmd
+```
+
 To make the Markdown collection report directly, double-click:
 
 ```text

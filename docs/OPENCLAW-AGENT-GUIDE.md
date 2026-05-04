@@ -2,7 +2,7 @@
 
 This guide is written for an OpenClaw agent that has access to the `vortex-skyrimse` MCP server.
 
-The same repo also has direct CLI mode. If MCP registration fails, tell the user they can still run `.\make_mod_knowledge.ps1` or `py -3 .\server.py --mod-knowledge` from the project folder.
+The same repo also has direct CLI mode. If MCP registration fails, tell the user they can still run `.\vortex_skyrimse_menu.ps1`, `.\make_mod_knowledge.ps1`, or `py -3 .\server.py --mod-knowledge` from the project folder.
 
 ## Default Posture
 

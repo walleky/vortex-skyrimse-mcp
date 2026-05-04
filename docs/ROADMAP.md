@@ -7,7 +7,7 @@ These are useful next steps, ordered by value and risk.
 1. Add richer Vortex collection detection if Vortex exposes collection state through stable CLI paths.
 2. Add more plugin metadata parsing for ESP/ESM headers beyond masters, such as plugin version and record counts.
 3. Add a safe "profile diff narrative" tool that explains profile differences in plain English.
-4. Add a small local UI around the CLI for users who do not want OpenClaw/MCP setup.
+4. Add a tiny local HTML report viewer for generated JSON/Markdown outputs.
 5. Add Nexus/Vortex collection manifest detection if stable local collection metadata is available.
 6. Add a synthetic Vortex profile fixture so profile/deployment behavior can be tested without a real Vortex install.
 

@@ -44,6 +44,7 @@ an MCP client.
 - [START-HERE.md](START-HERE.md): short install, first prompts, and MCP Doctor.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): code map and runtime flow.
 - [docs/CLI.md](docs/CLI.md): direct command-line mode without an MCP client.
+- [docs/LOCAL-MENU.md](docs/LOCAL-MENU.md): local no-hassle menu for report generation.
 - [docs/OPENCLAW-AGENT-GUIDE.md](docs/OPENCLAW-AGENT-GUIDE.md): how an OpenClaw agent should use the tools safely.
 - [docs/LOGGING.md](docs/LOGGING.md): log folder, channels, and inspection commands.
 - [docs/BUG-REPORTING.md](docs/BUG-REPORTING.md): support bundle and issue-reporting guide.
@@ -140,11 +141,13 @@ py -3 .\server.py --mod-knowledge
 Or double-click:
 
 ```text
+Vortex-SkyrimSE-Menu.cmd
 Make-Mod-Knowledge.cmd
 ```
 
-See [docs/CLI.md](docs/CLI.md) for options such as `--staging-dir`,
-`--hash-files`, and `--no-profile-state`.
+See [docs/LOCAL-MENU.md](docs/LOCAL-MENU.md) for the menu and
+[docs/CLI.md](docs/CLI.md) for options such as `--staging-dir`, `--hash-files`,
+and `--no-profile-state`.
 
 ## First OpenClaw Prompts
 

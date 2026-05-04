@@ -214,6 +214,7 @@ Write-Host "  $LogDir"
 $DirectPython = ("$($Python.Command) $($Python.Args -join ' ')").Trim()
 Write-Host "Direct CLI:"
 Write-Host "  $DirectPython `"$Server`" --tool detect_environment"
+Write-Host "  .\vortex_skyrimse_menu.ps1"
 Write-Host "  .\make_mod_knowledge.ps1"
 Write-Host "First prompt:"
 Write-Host "  Use the vortex-skyrimse MCP to detect my Skyrim SE/Vortex environment and list the highest-risk problems. Do not apply changes."

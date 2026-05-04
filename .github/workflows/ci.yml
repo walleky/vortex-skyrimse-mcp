@@ -39,6 +39,10 @@ jobs:
       - name: Run fixture tests
         run: python tests/fixture_mcp.py
 
+      - name: Check PowerShell helpers
+        shell: pwsh
+        run: .\tests\check_powershell.ps1
+
       - name: Run MCP Doctor
         shell: pwsh
         run: .\mcp_doctor.ps1 -ConfigOut .\doctor.generated.json

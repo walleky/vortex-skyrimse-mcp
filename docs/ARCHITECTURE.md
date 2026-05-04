@@ -30,8 +30,11 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - `MCP-Doctor.cmd`: double-click wrapper around `mcp_doctor.ps1`.
 - `make_mod_knowledge.ps1`: direct PowerShell wrapper for writing the Markdown collection knowledge report.
 - `Make-Mod-Knowledge.cmd`: double-click wrapper around `make_mod_knowledge.ps1`.
+- `vortex_skyrimse_menu.ps1`: local helper menu for common read-only diagnosis/report actions.
+- `Vortex-SkyrimSE-Menu.cmd`: double-click wrapper around `vortex_skyrimse_menu.ps1`.
 - `tests/smoke_mcp.py`: verifies JSON-RPC initialize, tools/list, and a basic tools/call.
 - `tests/fixture_mcp.py`: synthetic Skyrim/Vortex fixture for plugin, staging, conflict, logging, and bug-report behavior.
+- `tests/check_powershell.ps1`: parses PowerShell helpers and exercises the menu's noninteractive action list.
 - `openclaw.mcp.example.json`: static example config.
 - `docs/MOD-KNOWLEDGE.md`: explains the collection knowledge report and safe removal-review flow.
 - `docs/SAMPLE-BUG-BUNDLE.md`: shortened sanitized support bundle example for agents and humans.

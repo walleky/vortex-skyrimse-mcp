@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.6
+
+- Adds `vortex_skyrimse_menu.ps1`, a local helper menu for no-OpenClaw workflows.
+- Adds `Vortex-SkyrimSE-Menu.cmd` as a double-click wrapper for the helper menu.
+- Adds local menu documentation and PowerShell syntax checks in CI.
+- The menu writes environment, mod knowledge, play diagnosis, bug bundle, and log reports into a reports folder.
+
 ## v0.2.5
 
 - Adds direct CLI mode so tools can run without an MCP client.
