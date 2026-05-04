@@ -151,7 +151,9 @@ This usually means stale deployment or the wrong active profile.
 
 For popups, first rerun from the user's natural-language description if OpenClaw forgot to include it. If candidates are still weak, ask for screenshot/OCR text or exact popup text. For placed objects, ask for current cell/location and console-clicked FormID/base object. Then rerun `in_game_issue_report`.
 
-If the first pass is still too weak, rerun with `deep_scan_files=true`. Warn the user that it is slower on large collections.
+Read `diagnosticQuality` and `nextBestInputs` before asking the user for more information. If the first pass is still too weak, rerun with `scan_mode=deep` or `deep_scan_files=true`. Warn the user that it is slower on large collections.
+
+If `scan.timedOut=true`, explain that the result is partial. Increase `timeout_seconds`, lower `max_mods`, or ask for stronger evidence before blaming a mod.
 
 `safe_session_report` has `dryRunOnly=true`. It may write report files and a profile backup, but it should never deploy, disable, delete, sort, or edit mods.
 
@@ -224,6 +226,10 @@ For misplaced objects, ask the user to open the console, click the object, and p
 ```text
 in_game_issue_report with description, location, object, popup_text if available
 ```
+
+Default `scan_mode=balanced` is the preferred first pass. Use `scan_mode=quick`
+only when the collection is huge and the user needs a very fast rough check.
+Use `scan_mode=deep` only as a second pass.
 
 Include `form_id`, `cell`, and `base_object` when the user provides console evidence. If the top candidate has a Vortex mod id, preview disabling it only in a cloned profile. Tell the user to deploy and test the cloned profile before changing their main profile.
 

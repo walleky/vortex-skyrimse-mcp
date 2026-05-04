@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.12
+
+- Makes the default in-game issue scan more comprehensive with a new balanced first pass.
+- Balanced scans now inspect mod names, plugin names, readmes, plugin strings, important file paths, and a small number of relevant config/text files before asking for a slower deep scan.
+- Adds scan-mode output, diagnostic-quality output, next-best-input hints, and timeout/partial-scan reporting so OpenClaw can explain what happened instead of guessing.
+- Lets `safe_session_report` and bug bundles run in-game popup triage when `issue_kind=popup` is provided even without a typed popup message.
+
 ## v0.2.11
 
 - Improves popup triage so natural language like "annoying popup after loading a save" automatically uses popup mode without requiring exact popup text.

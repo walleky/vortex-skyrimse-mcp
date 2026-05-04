@@ -53,10 +53,19 @@ Triage an annoying popup:
 py -3 .\server.py --tool in_game_issue_report --description "annoying popup after loading a save"
 ```
 
+The default issue scan is balanced: it checks names, plugins, readmes, plugin
+strings, important file paths, and a small number of config/text files.
+
 Exact popup text is optional second-pass evidence:
 
 ```powershell
 py -3 .\server.py --tool in_game_issue_report --description "popup after loading a save" --popup-text "paste exact popup text here"
+```
+
+If the first result is weak, use the slower deep scan:
+
+```powershell
+py -3 .\server.py --tool in_game_issue_report --description "annoying popup after loading a save" --scan-mode deep
 ```
 
 Or double-click:

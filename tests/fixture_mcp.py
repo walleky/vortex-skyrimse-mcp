@@ -76,6 +76,7 @@ def main() -> int:
         write(staging / "Whiterun Tavern Overhaul" / "readme.txt", "Places a bed in the Whiterun Bannered Mare tavern room.")
         write(staging / "Popup UI Mod" / "interface" / "annoyingpopup.swf", "ui")
         write(staging / "Popup UI Mod" / "scripts" / "popupnotice.pex", "script")
+        write(staging / "Popup UI Mod" / "config" / "popup.json", '{"warning":"notification after loading a save"}')
         write(staging / "Popup UI Mod" / "readme.txt", "Shows a warning notification after loading a save. Configure the popup in MCM.")
         write(plugins_dir / "plugins.txt", "# comment\r\n*Skyrim.esm\r\n*MYMOD.ESP\r\n*MissingOnDisk.esp\r\n")
         write(my_games / "Skyrim.ini", "[Archive]\nbInvalidateOlderFiles=1\n")
@@ -150,8 +151,12 @@ def main() -> int:
         assert natural_popup["issue"]["popupTextProvided"] is False, natural_popup
         assert natural_popup["issue"]["popupTextRequired"] is False, natural_popup
         assert natural_popup["issue"]["naturalLanguagePopup"] is True, natural_popup
+        assert natural_popup["scan"]["mode"] == "balanced", natural_popup
+        assert natural_popup["diagnosticQuality"]["level"] in {"medium", "strong"}, natural_popup
         assert natural_popup["candidates"][0]["mod"] == "Popup UI Mod", natural_popup
         assert natural_popup["candidates"][0]["popupEvidenceMode"] == "natural_language", natural_popup
+        assert natural_popup["candidates"][0]["scannedPathCount"] > 0, natural_popup
+        assert any(item["source"].startswith("file path:") for item in natural_popup["candidates"][0]["evidence"]), natural_popup
 
         popup_kind_only = server.in_game_issue_report(
             {
@@ -162,6 +167,7 @@ def main() -> int:
         )
         assert popup_kind_only["issue"]["kind"] == "popup", popup_kind_only
         assert popup_kind_only["issue"]["popupTextRequired"] is False, popup_kind_only
+        assert popup_kind_only["scan"]["mode"] == "balanced", popup_kind_only
         assert popup_kind_only["candidateCount"] >= 1, popup_kind_only
 
         safe_md = root / "safe-session.md"

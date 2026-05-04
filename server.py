@@ -36,7 +36,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.11"
+SERVER_VERSION = "0.2.12"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -1649,6 +1649,12 @@ POPUP_SUPPORT_TERMS = {
 }
 
 
+ISSUE_SCAN_MODES = {"quick", "balanced", "deep"}
+ISSUE_TEXT_SUFFIXES = {".txt", ".md", ".ini", ".json", ".xml", ".toml"}
+PATH_SCAN_KINDS = {"interface", "script", "skse_plugin", "config", "fomod", "plugin", "animation_tool"}
+WEAK_POPUP_PATH_TERMS = {"after", "loading", "save"}
+
+
 def tokenize_issue_terms(*values: Optional[str]) -> List[str]:
     terms: set[str] = set()
     joined = " ".join(str(value or "") for value in values).lower()
@@ -1673,6 +1679,22 @@ def tokenize_issue_terms(*values: Optional[str]) -> List[str]:
 def matched_issue_terms(text: str, terms: Iterable[str]) -> List[str]:
     lower = text.lower()
     return sorted({term for term in terms if term and term in lower})
+
+
+def issue_scan_mode(args: Dict[str, Any]) -> str:
+    if bool(args.get("deep_scan_files", False)):
+        return "deep"
+    raw = str(args.get("scan_mode") or args.get("scanMode") or "balanced").strip().lower()
+    return raw if raw in ISSUE_SCAN_MODES else "balanced"
+
+
+def meaningful_issue_hits(hits: Iterable[str], issue_kind: str) -> bool:
+    hit_set = set(hits)
+    if not hit_set:
+        return False
+    if issue_kind == "popup" and hit_set <= WEAK_POPUP_PATH_TERMS:
+        return False
+    return True
 
 
 def add_issue_evidence(
@@ -1851,13 +1873,18 @@ def scan_mod_for_issue(
     max_plugin_bytes = int(args.get("max_plugin_bytes", 5_000_000))
     max_plugin_strings = int(args.get("max_plugin_strings", 2500))
     max_evidence = int(args.get("max_evidence_per_mod", 10))
-    deep_scan_files = bool(args.get("deep_scan_files", False))
+    scan_mode = issue_scan_mode(args)
+    path_scan_enabled = scan_mode in {"balanced", "deep"}
+    deep_scan_files = scan_mode == "deep"
+    balanced_text_limit = max(0, int(args.get("balanced_text_files_per_mod", 8)))
     evidence: List[Dict[str, Any]] = []
     matched: set[str] = set()
     score = 0
     plugin_location_hit = False
     plugin_object_hit = False
     popup_text_hit = False
+    file_path_score = 0
+    balanced_text_count = 0
     popup_text = str(args.get("popup_text") or "").strip()
     issue_kind = infer_issue_kind(args, terms)
     natural_popup = natural_language_popup_mode(args, terms)
@@ -1903,7 +1930,6 @@ def scan_mod_for_issue(
                 evidence.append(item)
                 matched.update(item.get("matchedTerms", []))
 
-    text_suffixes = {".txt", ".md", ".ini", ".json", ".xml"}
     scanned_files = int(summary.get("fileCount", 0) or 0)
     scanned_plugins = 0
     for plugin in summary.get("plugins", []):
@@ -1929,16 +1955,40 @@ def scan_mod_for_issue(
                 if pop_hits:
                     score += 8
 
-    if deep_scan_files:
-        for file_path in safe_walk(mod_dir, max_files):
-            rel = rel_to(file_path, mod_dir)
+    file_rels = list(summary.get("files", []) or [])
+    if not file_rels and path_scan_enabled:
+        file_rels = [rel_to(file_path, mod_dir) for file_path in safe_walk(mod_dir, max_files)]
+    text_scan_rels: List[str] = []
+    if path_scan_enabled:
+        for rel in file_rels[:max_files]:
             kind = classify_file(rel)
-            path_hits = score_hits(f"file path: {rel}", rel, terms, 1)
-            if kind != "plugin" and file_path.suffix.lower() in text_suffixes and len(evidence) < max_evidence:
-                text = read_file_head(file_path, max_text_bytes)
-                score_hits(f"text file: {rel}", text, terms, 2)
-            if path_hits and kind in {"interface", "script", "skse_plugin"}:
-                score += 2
+            if kind in PATH_SCAN_KINDS or natural_popup:
+                path_hits = score_hits(f"file path: {rel}", rel, terms, 1)
+                if meaningful_issue_hits(path_hits, issue_kind):
+                    bonus = 3 if kind in {"interface", "script", "skse_plugin"} else 1
+                    score += bonus
+                    file_path_score += len(path_hits) + bonus
+                    if Path(rel).suffix.lower() in ISSUE_TEXT_SUFFIXES and kind != "plugin":
+                        text_scan_rels.append(rel)
+            if (
+                scan_mode == "balanced"
+                and len(text_scan_rels) < balanced_text_limit
+                and Path(rel).suffix.lower() in ISSUE_TEXT_SUFFIXES
+                and kind in {"config", "fomod"}
+            ):
+                text_scan_rels.append(rel)
+
+        if deep_scan_files:
+            text_scan_rels = [
+                rel for rel in file_rels[:max_files] if Path(rel).suffix.lower() in ISSUE_TEXT_SUFFIXES and classify_file(rel) != "plugin"
+            ]
+        else:
+            text_scan_rels = list(dict.fromkeys(text_scan_rels))[:balanced_text_limit]
+        for rel in text_scan_rels:
+            text = read_file_head(mod_dir / rel, max_text_bytes)
+            if text:
+                balanced_text_count += 1
+                score_hits(f"text/config file: {rel}", text, terms, 2)
 
     if score <= 0:
         return None
@@ -1984,11 +2034,61 @@ def scan_mod_for_issue(
         "evidence": evidence,
         "likelyReason": likely_reason,
         "scannedFilesApprox": scanned_files,
+        "scannedPathCount": len(file_rels[:max_files]) if path_scan_enabled else 0,
         "scannedPluginCount": scanned_plugins,
+        "balancedTextFileCount": balanced_text_count,
+        "scanMode": scan_mode,
         "deepScanFiles": deep_scan_files,
         "popupEvidenceMode": "natural_language" if natural_popup else "exact_text" if popup_text else None,
         "popupCapabilityScore": popup_capability_score,
+        "filePathScore": file_path_score,
     }
+
+
+def issue_diagnostic_quality(issue_kind: str, candidates: List[Dict[str, Any]], popup_text: str, form_id: str, timed_out: bool) -> Dict[str, Any]:
+    if timed_out:
+        return {
+            "level": "partial",
+            "reason": "The scan hit its time budget before every mod was checked.",
+            "missingEvidence": ["more scan time"],
+        }
+    if not candidates:
+        missing = ["deep scan"]
+        if issue_kind == "popup" and not popup_text:
+            missing.append("screenshot/OCR or exact popup text")
+        if issue_kind == "placed_object" and not form_id:
+            missing.append("console-clicked FormID")
+        return {"level": "weak", "reason": "No candidate mods matched the first scan.", "missingEvidence": missing}
+    top = candidates[0]
+    confidence = str(top.get("confidence") or "low")
+    if confidence == "high":
+        return {"level": "strong", "reason": "The top candidate has high-confidence local evidence.", "missingEvidence": []}
+    if confidence == "medium":
+        missing = []
+        if issue_kind == "popup" and not popup_text:
+            missing.append("screenshot/OCR or exact popup text")
+        if issue_kind == "placed_object" and not form_id:
+            missing.append("console-clicked FormID")
+        return {"level": "medium", "reason": "The top candidate has useful but not definitive local evidence.", "missingEvidence": missing}
+    return {
+        "level": "weak",
+        "reason": "Only weak filename/readme/path evidence was found.",
+        "missingEvidence": ["deep scan", "stronger in-game evidence"],
+    }
+
+
+def issue_next_best_inputs(issue_kind: str, popup_text: str, form_id: str, candidates: List[Dict[str, Any]]) -> List[str]:
+    inputs: List[str] = []
+    if issue_kind == "popup" and not popup_text:
+        inputs.append("A screenshot/OCR or exact popup text, if the first candidates are weak.")
+        inputs.append("When the popup appears: main menu, load save, combat, sleep, fast travel, MCM, or startup.")
+    if issue_kind == "placed_object" and not form_id:
+        inputs.append("Open the console, click the object, and provide the reference/base FormID and object name.")
+    if not candidates:
+        inputs.append("Run again with scan_mode=deep or deep_scan_files=true for a slower text/config pass.")
+    elif str(candidates[0].get("confidence")) != "high":
+        inputs.append("Run a cloned-profile disable test for one candidate at a time after making a profile backup.")
+    return inputs
 
 
 def in_game_issue_report(args: Dict[str, Any]) -> Dict[str, Any]:
@@ -2016,6 +2116,9 @@ def in_game_issue_report(args: Dict[str, Any]) -> Dict[str, Any]:
     object_terms = tokenize_issue_terms(problem_object, base_object)
     popup_terms = tokenize_issue_terms(popup_text, description if infer_issue_kind(args, terms) == "popup" else "")
     issue_kind = infer_issue_kind(args, terms)
+    scan_mode = issue_scan_mode(args)
+    timeout_seconds = max(1, int(args.get("timeout_seconds", 60)))
+    deadline = time.perf_counter() + timeout_seconds
 
     max_mods = int(args.get("max_mods", 500))
     max_candidates = int(args.get("max_candidates", 20))
@@ -2030,8 +2133,18 @@ def in_game_issue_report(args: Dict[str, Any]) -> Dict[str, Any]:
 
     candidates: List[Dict[str, Any]] = []
     mod_dirs = [p for p in sorted(staging_dir.iterdir(), key=lambda p: p.name.lower()) if p.is_dir()][:max_mods]
+    timed_out = False
+    scanned_mod_count = 0
     for mod_dir in mod_dirs:
-        summary = mod_summary(mod_dir, include_files=False, max_files=int(args.get("max_files_per_mod", 3000)))
+        if time.perf_counter() >= deadline:
+            timed_out = True
+            break
+        scanned_mod_count += 1
+        summary = mod_summary(
+            mod_dir,
+            include_files=scan_mode in {"balanced", "deep"},
+            max_files=int(args.get("max_files_per_mod", 3000)),
+        )
         try:
             key = str(mod_dir.resolve()).lower()
         except OSError:
@@ -2068,8 +2181,13 @@ def in_game_issue_report(args: Dict[str, Any]) -> Dict[str, Any]:
         if popup_text:
             recommended_actions.insert(1, "Use the exact popup text result first; it is the strongest popup evidence this tool can read.")
         else:
-            recommended_actions.insert(1, "No exact popup text is required for this first pass. If candidates are weak, a screenshot/OCR text can make the next scan stronger.")
+            recommended_actions.insert(1, "The first scan is balanced: it checks names, plugins, readmes, useful file paths, and a small number of config/text files. No exact popup text is required.")
         recommended_actions.append("Check the candidate mod's MCM/settings before disabling it, because many popups are configurable notifications.")
+    if timed_out:
+        recommended_actions.insert(0, "The scan hit its time budget and returned partial results. Increase timeout_seconds or lower max_mods if needed.")
+    if not candidates:
+        recommended_actions.insert(0, "No candidates were found in the first scan. Rerun with scan_mode=deep or deep_scan_files=true for a slower pass.")
+    diagnostic_quality = issue_diagnostic_quality(issue_kind, candidates, popup_text, form_id, timed_out)
 
     return {
         "issue": {
@@ -2088,7 +2206,26 @@ def in_game_issue_report(args: Dict[str, Any]) -> Dict[str, Any]:
         "staging_dir": str(staging_dir),
         "searchedTerms": terms,
         "profileState": profile_state_summary,
-        "scannedModCount": len(mod_dirs),
+        "scannedModCount": scanned_mod_count,
+        "availableModCount": len(mod_dirs),
+        "scan": {
+            "mode": scan_mode,
+            "defaultMode": "balanced",
+            "timedOut": timed_out,
+            "timeoutSeconds": timeout_seconds,
+            "firstScanIncludes": [
+                "mod names",
+                "plugin filenames",
+                "readmes",
+                "plugin strings",
+                "important file paths",
+                "limited config/text files",
+                "Vortex profile state when available",
+            ],
+            "deepScanHint": "Use scan_mode=deep or deep_scan_files=true to read more text/config files if the first scan is weak.",
+        },
+        "diagnosticQuality": diagnostic_quality,
+        "nextBestInputs": issue_next_best_inputs(issue_kind, popup_text, form_id, candidates),
         "candidateCount": len(candidates),
         "candidates": candidates[:max_candidates],
         "truncated": len(candidates) > max_candidates,
@@ -3752,6 +3889,24 @@ def safe_session_findings(sections: Dict[str, Any]) -> List[Dict[str, Any]]:
                 findings.append(item)
     issue = sections.get("inGameIssue")
     if isinstance(issue, dict):
+        scan = issue.get("scan") if isinstance(issue.get("scan"), dict) else {}
+        if scan.get("timedOut"):
+            add_finding(
+                findings,
+                "medium",
+                "in_game_issue_scan_partial",
+                "The in-game issue scan hit its time budget and returned partial results.",
+                "Increase timeout_seconds, lower max_mods, or provide stronger evidence before changing mods.",
+            )
+        quality = issue.get("diagnosticQuality") if isinstance(issue.get("diagnosticQuality"), dict) else {}
+        if quality.get("level") == "weak":
+            add_finding(
+                findings,
+                "low",
+                "in_game_issue_evidence_weak",
+                str(quality.get("reason") or "The in-game issue evidence is weak."),
+                "Use nextBestInputs from the report, or rerun with scan_mode=deep before testing candidates.",
+            )
         candidates = issue.get("candidates", [])
         if candidates:
             top = candidates[0]
@@ -3839,6 +3994,12 @@ def safe_session_markdown(session: Dict[str, Any]) -> str:
     issue = sections.get("inGameIssue")
     if isinstance(issue, dict):
         lines.extend(["", "## In-Game Issue Candidates", ""])
+        scan = issue.get("scan") if isinstance(issue.get("scan"), dict) else {}
+        if scan:
+            lines.append(f"- Scan mode: {scan.get('mode')} (timed out: {scan.get('timedOut')})")
+        quality = issue.get("diagnosticQuality") if isinstance(issue.get("diagnosticQuality"), dict) else {}
+        if quality:
+            lines.append(f"- Diagnostic quality: {quality.get('level')} - {quality.get('reason')}")
         candidates = issue.get("candidates", [])
         if candidates:
             for candidate in candidates[:10]:
@@ -3896,7 +4057,7 @@ def safe_session_report(args: Dict[str, Any]) -> Dict[str, Any]:
     if include_play_report:
         play_args = {**args, "include_conflicts": bool(args.get("include_conflicts", False))}
         collect_section(sections, "skyrimModdedPlay", skyrim_modded_play_report, play_args)
-    if any(args.get(key) for key in ("description", "location", "object", "form_id", "cell", "base_object", "popup_text", "extra_terms")):
+    if any(args.get(key) for key in ("description", "location", "object", "form_id", "cell", "base_object", "popup_text", "extra_terms", "issue_kind")):
         collect_section(sections, "inGameIssue", in_game_issue_report, args)
     if include_logs:
         collect_section(sections, "logStatus", log_status, {"log_dir": args.get("log_dir"), "max_files": args.get("max_log_files", 12)})
@@ -4096,7 +4257,7 @@ def bug_report_bundle(args: Dict[str, Any]) -> Dict[str, Any]:
         except Exception as exc:
             bundle["skyrimModdedPlayError"] = str(exc)
 
-    if any(args.get(key) for key in ("description", "location", "object", "form_id", "cell", "base_object", "popup_text", "extra_terms")):
+    if any(args.get(key) for key in ("description", "location", "object", "form_id", "cell", "base_object", "popup_text", "extra_terms", "issue_kind")):
         try:
             bundle["inGameIssue"] = in_game_issue_report(args)
         except Exception as exc:
@@ -4340,6 +4501,8 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "max_plugin_bytes": {"type": "integer", "default": 5000000},
                 "max_plugin_strings": {"type": "integer", "default": 2500},
                 "max_evidence_per_mod": {"type": "integer", "default": 10},
+                "scan_mode": {"type": "string", "enum": ["quick", "balanced", "deep"], "default": "balanced"},
+                "balanced_text_files_per_mod": {"type": "integer", "default": 8},
                 "deep_scan_files": {"type": "boolean", "default": False},
                 "timeout_seconds": {"type": "integer", "default": 60},
             },
@@ -4381,6 +4544,8 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "popup_text": {"type": "string"},
                 "extra_terms": {"type": "string"},
                 "issue_kind": {"type": "string", "enum": ["placed_object", "popup", "general"]},
+                "scan_mode": {"type": "string", "enum": ["quick", "balanced", "deep"], "default": "balanced"},
+                "balanced_text_files_per_mod": {"type": "integer", "default": 8},
                 "deep_scan_files": {"type": "boolean", "default": False},
                 "hash_files": {"type": "boolean", "default": False},
                 "max_mods": {"type": "integer", "default": 500},
@@ -4676,6 +4841,8 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "max_plugin_bytes": {"type": "integer", "default": 5000000},
                 "max_plugin_strings": {"type": "integer", "default": 2500},
                 "max_evidence_per_mod": {"type": "integer", "default": 10},
+                "scan_mode": {"type": "string", "enum": ["quick", "balanced", "deep"], "default": "balanced"},
+                "balanced_text_files_per_mod": {"type": "integer", "default": 8},
                 "deep_scan_files": {"type": "boolean", "default": False},
                 "include_logs": {"type": "boolean", "default": True},
                 "include_vortex_profiles": {"type": "boolean", "default": True},
@@ -4913,6 +5080,7 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         "popup_text": parsed.popup_text,
         "extra_terms": parsed.extra_terms,
         "issue_kind": parsed.issue_kind,
+        "scan_mode": parsed.scan_mode,
     }
     for key, value in common.items():
         if value:
@@ -4921,6 +5089,8 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["max_mods"] = parsed.max_mods
     if parsed.max_log_files is not None:
         tool_args["max_log_files"] = parsed.max_log_files
+    if parsed.balanced_text_files_per_mod is not None:
+        tool_args["balanced_text_files_per_mod"] = parsed.balanced_text_files_per_mod
     if parsed.hash_files:
         tool_args["hash_files"] = True
     if parsed.no_profile_state:
@@ -5033,8 +5203,10 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--popup-text", help="Exact popup/notification text for in_game_issue_report.")
     parser.add_argument("--extra-terms", help="Extra search terms for in_game_issue_report.")
     parser.add_argument("--issue-kind", choices=["placed_object", "popup", "general"], help="Issue type for in_game_issue_report.")
+    parser.add_argument("--scan-mode", choices=["quick", "balanced", "deep"], help="Issue scan mode. balanced is the default first scan.")
     parser.add_argument("--max-mods", type=int, help="Maximum mods to scan for supported tools.")
     parser.add_argument("--max-log-files", type=int, help="Maximum recent log files for support reports.")
+    parser.add_argument("--balanced-text-files-per-mod", type=int, help="For balanced issue scans, max config/text files to read per mod.")
     parser.add_argument("--hash-files", action="store_true", help="Hash files for stronger duplicate evidence. Slower.")
     parser.add_argument("--apply", action="store_true", help="Apply a write-capable tool. Most tools are dry-run without this.")
     parser.add_argument("--allow-running-vortex", action="store_true", help="Allow Vortex profile writes while Vortex.exe is running.")

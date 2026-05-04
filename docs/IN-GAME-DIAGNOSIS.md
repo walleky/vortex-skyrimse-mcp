@@ -45,7 +45,8 @@ The tool searches staged mods for:
 - plugin filenames
 - readable plugin strings
 - readmes and config files
-- file paths
+- important file paths
+- a small number of relevant config/text files in the first pass
 - UI/interface, script, SKSE, FOMOD, and MCM-style popup evidence
 - Vortex profile enabled/disabled state when available
 
@@ -79,11 +80,18 @@ You can pass that evidence directly:
 
 The report includes a rough FormID/load-order hint when `plugins.txt` is available.
 
-## Performance
+## Scan Modes
 
-The default scan is meant to stay usable on large collections. It checks mod names, plugin names, readable plugin strings, and readmes.
+The default scan mode is `balanced`. It is meant to be more useful on the first
+try without crawling every text/config file in a large collection.
 
-Use `deep_scan_files=true` only when the first pass is weak. Deep scan also checks extra file paths and text/config files, so it can be slower.
+- `quick`: names, plugins, readmes, and plugin strings.
+- `balanced`: quick scan plus important file paths and a small number of relevant config/text files.
+- `deep`: slower scan that reads more text/config files.
+
+Use `scan_mode=deep` or `deep_scan_files=true` only when the first pass is weak.
+The result includes `diagnosticQuality`, `nextBestInputs`, and timeout/partial
+scan status so OpenClaw can explain what evidence is missing.
 
 ## Safe Fix Flow
 
@@ -92,7 +100,7 @@ OpenClaw should not delete mods or edit records automatically.
 Safer path:
 
 1. Run `safe_session_report` with the issue details.
-2. If needed, run `in_game_issue_report` again with `deep_scan_files=true`.
+2. If needed, run `in_game_issue_report` again with `scan_mode=deep`.
 3. Confirm a profile backup exists, or run `vortex_profile_backup`.
 4. Inspect the top candidate in xEdit/SSEEdit if available.
 5. Clone the Vortex profile.

@@ -15,6 +15,11 @@ It writes two files:
 - `in_game_issue_report`: only when you pass a problem description, location, object, optional popup text, or FormID.
 - `log_status`: recent MCP logs and channels.
 
+In-game issue triage uses the balanced first scan by default. That means it
+checks local names, plugins, readmes, plugin strings, important file paths, and
+a small number of relevant config/text files before suggesting a slower deep
+scan.
+
 ## What It Does Not Do
 
 It does not deploy mods, disable mods, delete mods, edit plugins, write conflict rules, sort load order, or launch Skyrim. It is a report and optional profile backup only.
@@ -50,6 +55,9 @@ For popups, a plain description is enough:
 ```powershell
 .\vortex_skyrimse_menu.ps1 -Action safe -IssueDescription "annoying popup after loading a save"
 ```
+
+If the report says the evidence is weak, rerun the narrower tool with
+`scan_mode=deep` or provide screenshot/OCR text.
 
 ## Direct CLI
 

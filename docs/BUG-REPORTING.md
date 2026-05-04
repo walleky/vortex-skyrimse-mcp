@@ -86,6 +86,9 @@ Use `zip_output=true` when you want one attachable file. The zip contains:
 - a bug-report template
 - OpenClaw agent instructions
 
+For in-game issue reports, start with `diagnosticQuality`, `scan.timedOut`, and
+`nextBestInputs` before asking the user for more details.
+
 ## Privacy Warning
 
 With `redact_user_paths=true`, normal user profile paths are replaced before the files are written. The bundle may still include mod names, plugin names, custom non-user paths, and recent logs. Review it before posting publicly.

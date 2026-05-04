@@ -20,7 +20,8 @@ an MCP client.
   SKSE DLL plugins, scripts, meshes, textures, UI files.
 - Triage in-game weirdness such as misplaced objects or annoying popups by
   searching staged mods for location, object, plugin, readme, popup wording,
-  UI/script/MCM evidence, and optional exact popup text.
+  important file paths, limited config/text evidence, UI/script/MCM evidence,
+  and optional exact popup text.
 - Detect likely redundant mods:
   - duplicate plugin names
   - duplicate Nexus IDs when metadata is present
@@ -326,8 +327,9 @@ If detection misses your setup, pass `skyrim_dir`, `staging_dir`,
   `allow_any_path=true`.
 - `in_game_issue_report` is read-only and heuristic. It identifies candidates;
   it does not edit plugins, delete mods, or remove placed objects.
-- `in_game_issue_report` keeps the default scan lighter for large collections;
-  use `deep_scan_files=true` only for slower second-pass searches.
+- `in_game_issue_report` defaults to `scan_mode=balanced`: a broader first pass
+  that still avoids reading every text/config file. Use `scan_mode=deep` or
+  `deep_scan_files=true` only for slower second-pass searches.
 
 ## Vortex Profile Notes
 
