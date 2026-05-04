@@ -10,6 +10,9 @@ param(
   [string]$IssueDescription = "",
   [string]$IssueLocation = "",
   [string]$IssueObject = "",
+  [string]$FormId = "",
+  [string]$Cell = "",
+  [string]$BaseObject = "",
   [string]$PopupText = "",
   [int]$MaxMods = 500,
   [switch]$HashFiles,
@@ -222,6 +225,9 @@ function Invoke-MenuAction {
       $description = $IssueDescription
       $location = $IssueLocation
       $objectName = $IssueObject
+      $formId = $FormId
+      $cellName = $Cell
+      $baseObjectName = $BaseObject
       $popup = $PopupText
       if (!$description) {
         if ($script:StartedWithAction) {
@@ -238,6 +244,9 @@ function Invoke-MenuAction {
       if (!$popup -and !$script:StartedWithAction) {
         $popup = Read-Host "Exact popup text, if any (press Enter to skip)"
       }
+      if (!$formId -and !$script:StartedWithAction) {
+        $formId = Read-Host "Console-clicked FormID, if any (press Enter to skip)"
+      }
       $argsData = @{
         description = $description
       }
@@ -246,6 +255,15 @@ function Invoke-MenuAction {
       }
       if ($objectName) {
         $argsData.object = $objectName
+      }
+      if ($formId) {
+        $argsData.form_id = $formId
+      }
+      if ($cellName) {
+        $argsData.cell = $cellName
+      }
+      if ($baseObjectName) {
+        $argsData.base_object = $baseObjectName
       }
       if ($popup) {
         $argsData.popup_text = $popup

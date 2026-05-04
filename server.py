@@ -36,7 +36,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.8"
+SERVER_VERSION = "0.2.9"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -1643,6 +1643,22 @@ def add_issue_evidence(
     return hits
 
 
+def exact_text_excerpt(text: str, needle: str, radius: int = 90) -> str:
+    lower = text.lower()
+    index = lower.find(needle.lower())
+    if index < 0:
+        preview = re.sub(r"\s+", " ", text).strip()
+        return preview[:180] + ("..." if len(preview) > 180 else "")
+    start = max(0, index - radius)
+    end = min(len(text), index + len(needle) + radius)
+    excerpt = re.sub(r"\s+", " ", text[start:end]).strip()
+    if start > 0:
+        excerpt = "..." + excerpt
+    if end < len(text):
+        excerpt += "..."
+    return excerpt
+
+
 def read_file_head(path: Path, max_bytes: int) -> str:
     try:
         with path.open("rb") as handle:
@@ -1679,6 +1695,49 @@ def extract_plugin_strings(path: Path, max_bytes: int = 5_000_000, max_strings: 
     return strings
 
 
+def normalize_form_id(raw: Optional[str]) -> Optional[str]:
+    if not raw:
+        return None
+    value = re.sub(r"[^0-9A-Fa-f]", "", str(raw))
+    if len(value) < 6:
+        return None
+    if len(value) > 8:
+        value = value[-8:]
+    return value.upper()
+
+
+def form_id_load_order_hint(args: Dict[str, Any], form_id: Optional[str]) -> Optional[Dict[str, Any]]:
+    normalized = normalize_form_id(form_id)
+    if not normalized or len(normalized) < 8:
+        return None
+    prefix = normalized[:2]
+    hint: Dict[str, Any] = {
+        "formId": normalized,
+        "loadOrderPrefix": prefix,
+        "pluginName": None,
+        "confidence": "low",
+        "notes": [
+            "This is a helper hint, not proof. ESL/light plugins and runtime-created references can make FormID prefixes harder to map.",
+        ],
+    }
+    if prefix == "FE":
+        hint["notes"].append("FE usually indicates an ESL/light plugin range; use xEdit or an in-game ref lookup for the exact plugin.")
+        return hint
+    local = expand_path(args.get("local_appdata")) or default_local_appdata()
+    state = plugin_state_paths(local)
+    plugins_txt = parse_plugin_list(Path(state["plugins_txt"]) if state["plugins_txt"] else None)
+    enabled_entries = [entry for entry in plugins_txt.get("entries", []) if entry.get("enabled")]
+    try:
+        index = int(prefix, 16)
+    except ValueError:
+        return hint
+    hint["loadOrderIndexDecimal"] = index
+    if 0 <= index < len(enabled_entries):
+        hint["pluginName"] = enabled_entries[index].get("name")
+        hint["confidence"] = "medium"
+    return hint
+
+
 def infer_issue_kind(args: Dict[str, Any], terms: List[str]) -> str:
     explicit = str(args.get("issue_kind") or "").strip().lower()
     if explicit in {"placed_object", "popup", "ui_popup", "general"}:
@@ -1703,16 +1762,35 @@ def scan_mod_for_issue(
     max_files = int(args.get("max_files_per_mod", 3000))
     max_text_bytes = int(args.get("max_text_bytes", 12000))
     max_plugin_bytes = int(args.get("max_plugin_bytes", 5_000_000))
+    max_plugin_strings = int(args.get("max_plugin_strings", 2500))
     max_evidence = int(args.get("max_evidence_per_mod", 10))
+    deep_scan_files = bool(args.get("deep_scan_files", False))
     evidence: List[Dict[str, Any]] = []
     matched: set[str] = set()
     score = 0
     plugin_location_hit = False
     plugin_object_hit = False
     popup_text_hit = False
+    popup_text = str(args.get("popup_text") or "").strip()
+
+    def note_exact_popup(source: str, text: str) -> None:
+        nonlocal popup_text_hit, score
+        if not popup_text or popup_text.lower() not in text.lower():
+            return
+        popup_text_hit = True
+        score += 25
+        if len(evidence) < max_evidence:
+            evidence.append(
+                {
+                    "source": source,
+                    "matchedTerms": ["exact popup text"],
+                    "preview": exact_text_excerpt(text, popup_text),
+                }
+            )
 
     def score_hits(source: str, text: str, search_terms: Iterable[str], weight: int) -> List[str]:
         nonlocal score
+        note_exact_popup(source, text)
         hits = add_issue_evidence(evidence, matched, source, text, search_terms, max_evidence)
         if hits:
             score += weight * len(hits)
@@ -1727,44 +1805,41 @@ def scan_mod_for_issue(
             score_hits(f"readme: {readme}", read_file_head(path, max_text_bytes), terms, 3)
 
     text_suffixes = {".txt", ".md", ".ini", ".json", ".xml"}
-    scanned_files = 0
-    for file_path in safe_walk(mod_dir, max_files):
-        scanned_files += 1
-        rel = rel_to(file_path, mod_dir)
-        kind = classify_file(rel)
-        path_hits = score_hits(f"file path: {rel}", rel, terms, 1)
-        if kind == "plugin":
-            strings = extract_plugin_strings(file_path, max_plugin_bytes)
-            for text in strings:
-                hits = score_hits(f"plugin strings: {rel}", text, terms, 4)
-                if hits:
-                    loc_hits = matched_issue_terms(text, location_terms)
-                    obj_hits = matched_issue_terms(text, object_terms)
-                    pop_hits = matched_issue_terms(text, popup_terms)
-                    plugin_location_hit = plugin_location_hit or bool(loc_hits)
-                    plugin_object_hit = plugin_object_hit or bool(obj_hits)
-                    if loc_hits and obj_hits:
-                        score += 18
-                    elif loc_hits:
-                        score += 6
-                    elif obj_hits:
-                        score += 4
-                    if pop_hits:
-                        score += 8
-        elif file_path.suffix.lower() in text_suffixes and len(evidence) < max_evidence:
-            text = read_file_head(file_path, max_text_bytes)
-            score_hits(f"text file: {rel}", text, terms, 2)
-        if path_hits and kind in {"interface", "script", "skse_plugin"}:
-            score += 2
+    scanned_files = int(summary.get("fileCount", 0) or 0)
+    scanned_plugins = 0
+    for plugin in summary.get("plugins", []):
+        plugin_path = mod_dir / plugin
+        if not plugin_path.exists():
+            continue
+        scanned_plugins += 1
+        strings = extract_plugin_strings(plugin_path, max_plugin_bytes, max_plugin_strings)
+        for text in strings:
+            hits = score_hits(f"plugin strings: {plugin}", text, terms, 4)
+            if hits:
+                loc_hits = matched_issue_terms(text, location_terms)
+                obj_hits = matched_issue_terms(text, object_terms)
+                pop_hits = matched_issue_terms(text, popup_terms)
+                plugin_location_hit = plugin_location_hit or bool(loc_hits)
+                plugin_object_hit = plugin_object_hit or bool(obj_hits)
+                if loc_hits and obj_hits:
+                    score += 18
+                elif loc_hits:
+                    score += 6
+                elif obj_hits:
+                    score += 4
+                if pop_hits:
+                    score += 8
 
-    popup_text = str(args.get("popup_text") or "").strip()
-    if popup_text:
-        popup_lower = popup_text.lower()
-        for item in evidence:
-            if popup_lower and popup_lower in str(item.get("preview", "")).lower():
-                popup_text_hit = True
-                score += 25
-                break
+    if deep_scan_files:
+        for file_path in safe_walk(mod_dir, max_files):
+            rel = rel_to(file_path, mod_dir)
+            kind = classify_file(rel)
+            path_hits = score_hits(f"file path: {rel}", rel, terms, 1)
+            if kind != "plugin" and file_path.suffix.lower() in text_suffixes and len(evidence) < max_evidence:
+                text = read_file_head(file_path, max_text_bytes)
+                score_hits(f"text file: {rel}", text, terms, 2)
+            if path_hits and kind in {"interface", "script", "skse_plugin"}:
+                score += 2
 
     if score <= 0:
         return None
@@ -1808,6 +1883,8 @@ def scan_mod_for_issue(
         "evidence": evidence,
         "likelyReason": likely_reason,
         "scannedFilesApprox": scanned_files,
+        "scannedPluginCount": scanned_plugins,
+        "deepScanFiles": deep_scan_files,
     }
 
 
@@ -1820,11 +1897,18 @@ def in_game_issue_report(args: Dict[str, Any]) -> Dict[str, Any]:
     location = str(args.get("location") or "").strip()
     problem_object = str(args.get("object") or "").strip()
     popup_text = str(args.get("popup_text") or "").strip()
-    terms = tokenize_issue_terms(description, location, problem_object, popup_text, args.get("extra_terms"))
+    form_id = str(args.get("form_id") or "").strip()
+    cell = str(args.get("cell") or "").strip()
+    base_object = str(args.get("base_object") or "").strip()
+    terms = tokenize_issue_terms(description, location, problem_object, popup_text, cell, base_object, args.get("extra_terms"))
+    if not terms and popup_text:
+        terms = [popup_text.lower()]
+    elif not terms and form_id:
+        terms = [normalize_form_id(form_id) or form_id]
     if not terms:
         raise ToolError("Pass description, location, object, popup_text, or extra_terms so the tool has something to search for.")
     location_terms = tokenize_issue_terms(location)
-    object_terms = tokenize_issue_terms(problem_object)
+    object_terms = tokenize_issue_terms(problem_object, base_object)
     popup_terms = tokenize_issue_terms(popup_text, description if infer_issue_kind(args, terms) == "popup" else "")
     issue_kind = infer_issue_kind(args, terms)
 
@@ -1832,6 +1916,12 @@ def in_game_issue_report(args: Dict[str, Any]) -> Dict[str, Any]:
     max_candidates = int(args.get("max_candidates", 20))
     profile_lookup = profile_lookup_for_staging(args, staging_dir)
     mods_by_path = profile_lookup.get("modsByPath", {}) if isinstance(profile_lookup.get("modsByPath"), dict) else {}
+    profile_state_summary = {
+        "available": bool(profile_lookup.get("available")),
+        "profile": profile_lookup.get("profile"),
+        "error": profile_lookup.get("error"),
+        "mappedModCount": len(mods_by_path),
+    }
 
     candidates: List[Dict[str, Any]] = []
     mod_dirs = [p for p in sorted(staging_dir.iterdir(), key=lambda p: p.name.lower()) if p.is_dir()][:max_mods]
@@ -1879,11 +1969,15 @@ def in_game_issue_report(args: Dict[str, Any]) -> Dict[str, Any]:
             "description": description,
             "location": location,
             "object": problem_object,
+            "cell": cell,
+            "baseObject": base_object,
+            "formId": normalize_form_id(form_id),
             "popupTextProvided": bool(popup_text),
         },
+        "formIdHint": form_id_load_order_hint(args, form_id),
         "staging_dir": str(staging_dir),
         "searchedTerms": terms,
-        "profileState": profile_lookup,
+        "profileState": profile_state_summary,
         "scannedModCount": len(mod_dirs),
         "candidateCount": len(candidates),
         "candidates": candidates[:max_candidates],
@@ -3639,7 +3733,7 @@ def bug_report_bundle(args: Dict[str, Any]) -> Dict[str, Any]:
         except Exception as exc:
             bundle["skyrimModdedPlayError"] = str(exc)
 
-    if any(args.get(key) for key in ("description", "location", "object", "popup_text", "extra_terms")):
+    if any(args.get(key) for key in ("description", "location", "object", "form_id", "cell", "base_object", "popup_text", "extra_terms")):
         try:
             bundle["inGameIssue"] = in_game_issue_report(args)
         except Exception as exc:
@@ -3864,6 +3958,9 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "description": {"type": "string"},
                 "location": {"type": "string"},
                 "object": {"type": "string"},
+                "form_id": {"type": "string"},
+                "cell": {"type": "string"},
+                "base_object": {"type": "string"},
                 "popup_text": {"type": "string"},
                 "extra_terms": {"type": "string"},
                 "issue_kind": {"type": "string", "enum": ["placed_object", "popup", "general"]},
@@ -3878,7 +3975,9 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "max_files_per_mod": {"type": "integer", "default": 3000},
                 "max_text_bytes": {"type": "integer", "default": 12000},
                 "max_plugin_bytes": {"type": "integer", "default": 5000000},
+                "max_plugin_strings": {"type": "integer", "default": 2500},
                 "max_evidence_per_mod": {"type": "integer", "default": 10},
+                "deep_scan_files": {"type": "boolean", "default": False},
                 "timeout_seconds": {"type": "integer", "default": 60},
             },
             "additionalProperties": False,
@@ -4157,9 +4256,17 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "description": {"type": "string"},
                 "location": {"type": "string"},
                 "object": {"type": "string"},
+                "form_id": {"type": "string"},
+                "cell": {"type": "string"},
+                "base_object": {"type": "string"},
                 "popup_text": {"type": "string"},
                 "extra_terms": {"type": "string"},
                 "issue_kind": {"type": "string", "enum": ["placed_object", "popup", "general"]},
+                "max_text_bytes": {"type": "integer", "default": 12000},
+                "max_plugin_bytes": {"type": "integer", "default": 5000000},
+                "max_plugin_strings": {"type": "integer", "default": 2500},
+                "max_evidence_per_mod": {"type": "integer", "default": 10},
+                "deep_scan_files": {"type": "boolean", "default": False},
                 "include_logs": {"type": "boolean", "default": True},
                 "include_vortex_profiles": {"type": "boolean", "default": True},
                 "include_vortex_deployment": {"type": "boolean", "default": True},
@@ -4388,6 +4495,9 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         "description": parsed.description,
         "location": parsed.location,
         "object": parsed.object,
+        "form_id": parsed.form_id,
+        "cell": parsed.cell,
+        "base_object": parsed.base_object,
         "popup_text": parsed.popup_text,
         "extra_terms": parsed.extra_terms,
         "issue_kind": parsed.issue_kind,
@@ -4419,6 +4529,8 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["backup_before_apply"] = False
     if parsed.no_mod_metadata:
         tool_args["include_mod_metadata"] = False
+    if parsed.deep_scan_files:
+        tool_args["deep_scan_files"] = True
     return tool_args
 
 
@@ -4492,6 +4604,9 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--description", help="In-game issue description for in_game_issue_report.")
     parser.add_argument("--location", help="In-game location for in_game_issue_report, such as 'Whiterun Bannered Mare'.")
     parser.add_argument("--object", help="Problem object for in_game_issue_report, such as 'bed' or 'door'.")
+    parser.add_argument("--form-id", help="Console-clicked reference/base FormID for in_game_issue_report.")
+    parser.add_argument("--cell", help="Current cell/location id or name for in_game_issue_report.")
+    parser.add_argument("--base-object", help="Console-clicked base object name/id for in_game_issue_report.")
     parser.add_argument("--popup-text", help="Exact popup/notification text for in_game_issue_report.")
     parser.add_argument("--extra-terms", help="Extra search terms for in_game_issue_report.")
     parser.add_argument("--issue-kind", choices=["placed_object", "popup", "general"], help="Issue type for in_game_issue_report.")
@@ -4507,6 +4622,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--no-readme-excerpts", action="store_true", help="Skip readme snippets for mod knowledge reports.")
     parser.add_argument("--no-backup-before-apply", action="store_true", help="Do not write an automatic profile backup before apply=true.")
     parser.add_argument("--no-mod-metadata", action="store_true", help="For profile backup, omit Vortex mod metadata.")
+    parser.add_argument("--deep-scan-files", action="store_true", help="For in_game_issue_report, scan extra file paths and text/config files. Slower.")
 
     parsed = parser.parse_args(argv)
     if parsed.self_test:

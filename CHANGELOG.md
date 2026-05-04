@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.9
+
+- Tightens `in_game_issue_report` for large collections by avoiding the extra full file-path/text scan unless `deep_scan_files=true`.
+- Keeps in-game issue output smaller by summarizing profile lookup state instead of returning the full internal mod path map.
+- Adds optional `form_id`, `cell`, and `base_object` evidence fields plus a rough FormID load-order hint.
+- Improves exact popup-text matching so a full popup phrase can be detected even when it appears inside a longer plugin string.
+
 ## v0.2.8
 
 - Adds `in_game_issue_report`, a read-only triage tool for misplaced objects, location-specific weirdness, and annoying popups.

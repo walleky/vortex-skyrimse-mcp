@@ -111,12 +111,30 @@ def main() -> int:
                 "description": "There is a bed outside the tavern room and it is messing things up.",
                 "location": "Whiterun Bannered Mare",
                 "object": "bed",
+                "form_id": "0100ABCD",
+                "base_object": "CommonBed01",
+                "cell": "WhiterunBanneredMare",
                 "include_profile_state": False,
             }
         )
         assert issue["candidateCount"] >= 1, issue
         assert issue["candidates"][0]["mod"] == "Whiterun Tavern Overhaul", issue
         assert issue["candidates"][0]["confidence"] == "high", issue
+        assert issue["profileState"]["mappedModCount"] == 0, issue
+        assert "modsByPath" not in issue["profileState"], issue
+        assert issue["formIdHint"]["pluginName"] == "MYMOD.ESP", issue
+
+        popup_issue = server.in_game_issue_report(
+            {
+                **base_args,
+                "description": "popup after loading a save",
+                "popup_text": "Bannered Mare tavern room bed furniture popup message",
+                "issue_kind": "popup",
+                "include_profile_state": False,
+            }
+        )
+        assert popup_issue["candidates"][0]["mod"] == "Whiterun Tavern Overhaul", popup_issue
+        assert popup_issue["candidates"][0]["confidence"] == "high", popup_issue
 
         knowledge_path = root / "knowledge.md"
         knowledge = server.mod_knowledge_report(

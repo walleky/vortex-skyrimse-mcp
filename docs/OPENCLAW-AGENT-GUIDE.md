@@ -140,6 +140,8 @@ This usually means stale deployment or the wrong active profile.
 
 Ask for stronger evidence: exact popup text, screenshot/OCR text, current cell/location, and console-clicked FormID/base object. Then rerun `in_game_issue_report`.
 
+If the first pass is still too weak, rerun with `deep_scan_files=true`. Warn the user that it is slower on large collections.
+
 ## Safe Write Rules
 
 Before `apply_ini_fixes dry_run=false`:
@@ -210,7 +212,7 @@ For misplaced objects, ask the user to open the console, click the object, and p
 in_game_issue_report with description, location, object, popup_text if available
 ```
 
-If the top candidate has a Vortex mod id, preview disabling it only in a cloned profile. Tell the user to deploy and test the cloned profile before changing their main profile.
+Include `form_id`, `cell`, and `base_object` when the user provides console evidence. If the top candidate has a Vortex mod id, preview disabling it only in a cloned profile. Tell the user to deploy and test the cloned profile before changing their main profile.
 
 ## Undo Flow
 

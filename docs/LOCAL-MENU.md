@@ -48,7 +48,7 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action validate
 .\vortex_skyrimse_menu.ps1 -Action backup
 .\vortex_skyrimse_menu.ps1 -Action restore -BackupPath "C:\path\profile-backup.json"
-.\vortex_skyrimse_menu.ps1 -Action ingame -IssueDescription "bed outside tavern room" -IssueLocation "Whiterun Bannered Mare" -IssueObject "bed"
+.\vortex_skyrimse_menu.ps1 -Action ingame -IssueDescription "bed outside tavern room" -IssueLocation "Whiterun Bannered Mare" -IssueObject "bed" -FormId "1200ABCD"
 ```
 
 Custom paths:

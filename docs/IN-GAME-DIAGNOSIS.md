@@ -58,6 +58,27 @@ In Skyrim:
 
 The first two hex digits of many FormIDs often point to the plugin's load-order slot. That is not perfect for ESL/light plugins, but it is still useful evidence. OpenClaw should combine it with `plugins.txt`, load order, and this report.
 
+You can pass that evidence directly:
+
+```json
+{
+  "description": "Bad bed placement",
+  "location": "Whiterun Bannered Mare",
+  "object": "bed",
+  "form_id": "1200ABCD",
+  "base_object": "CommonBed01",
+  "cell": "WhiterunBanneredMare"
+}
+```
+
+The report includes a rough FormID/load-order hint when `plugins.txt` is available.
+
+## Performance
+
+The default scan is meant to stay usable on large collections. It checks mod names, plugin names, readable plugin strings, and readmes.
+
+Use `deep_scan_files=true` only when the first pass is weak. Deep scan also checks extra file paths and text/config files, so it can be slower.
+
 ## Safe Fix Flow
 
 OpenClaw should not delete mods or edit records automatically.

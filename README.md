@@ -215,6 +215,8 @@ For an in-game object or popup:
 Use in_game_issue_report to find likely mods causing this: there is a bed outside the tavern room in the Whiterun Bannered Mare. Do not apply changes.
 ```
 
+If you can open Skyrim's console, click the bad object and include the shown FormID/base object. That makes the report much stronger.
+
 For INI fixes:
 
 ```text
@@ -313,6 +315,8 @@ If detection misses your setup, pass `skyrim_dir`, `staging_dir`,
   `allow_any_path=true`.
 - `in_game_issue_report` is read-only and heuristic. It identifies candidates;
   it does not edit plugins, delete mods, or remove placed objects.
+- `in_game_issue_report` keeps the default scan lighter for large collections;
+  use `deep_scan_files=true` only for slower second-pass searches.
 
 ## Vortex Profile Notes
 

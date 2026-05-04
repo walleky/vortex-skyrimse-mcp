@@ -29,6 +29,12 @@ Triage an in-game object problem:
 py -3 .\server.py --tool in_game_issue_report --description "bed outside tavern room" --location "Whiterun Bannered Mare" --object "bed"
 ```
 
+With stronger console evidence:
+
+```powershell
+py -3 .\server.py --tool in_game_issue_report --description "bad bed placement" --location "Whiterun Bannered Mare" --object "bed" --form-id "1200ABCD" --base-object "CommonBed01"
+```
+
 Triage an annoying popup:
 
 ```powershell
@@ -118,3 +124,5 @@ Direct CLI mode uses the same tool implementations and safety rules as MCP mode.
 Profile write tools create backups before `--apply` by default. Use `--no-backup-before-apply` only for advanced recovery when you already have a known-good backup.
 
 `in_game_issue_report` is read-only. It searches for likely cause candidates but does not edit plugins, delete objects, or disable mods.
+
+By default it scans mod names, plugin names, plugin strings, and readmes. Add `--deep-scan-files` only when you need slower file-path/config scanning.
