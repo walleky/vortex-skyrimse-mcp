@@ -67,7 +67,7 @@ To let it register the server through the OpenClaw CLI:
 Start read-only:
 
 ```text
-Use the vortex-skyrimse MCP to detect my Skyrim SE/Vortex environment and list the highest-risk problems. Do not apply changes.
+Use the vortex-skyrimse MCP to run validate_setup, then detect my Skyrim SE/Vortex environment and list the highest-risk problems. Do not apply changes.
 ```
 
 Then check whether Vortex's active profile is really deployed:
@@ -88,6 +88,12 @@ For a big collection knowledge map:
 Use the vortex-skyrimse MCP to run mod_knowledge_report. Write the Markdown report, summarize the top removal-review candidates, and do not apply changes.
 ```
 
+Before changing a Vortex profile:
+
+```text
+Use vortex_profile_backup with include_all_profiles=true and tell me where the backup was written. Then show any requested profile change as a dry run first.
+```
+
 ## Bug Reports
 
 If OpenClaw gets stuck or a tool fails:
@@ -103,6 +109,8 @@ The bundle redacts normal user profile paths by default, but it may still includ
 - Most tools are read-only.
 - `apply_ini_fixes` writes only when `dry_run=false`.
 - `vortex_clone_profile` and `vortex_set_profile_mods` write only when `apply=true`.
+- Profile write tools create a profile backup before `apply=true` by default.
+- `vortex_profile_restore_plan` previews undo actions by default.
 - Close Vortex before profile writes.
 - Reopen Vortex afterward, pick the intended profile, then deploy mods before launching Skyrim.
 

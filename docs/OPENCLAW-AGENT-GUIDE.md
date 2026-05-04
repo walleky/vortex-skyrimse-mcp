@@ -8,6 +8,8 @@ The same repo also has direct CLI mode. If MCP registration fails, tell the user
 
 Start read-only. Do not apply INI fixes or Vortex profile writes unless the user explicitly asks you to apply changes.
 
+First call `validate_setup`. If it returns blockers, explain those blockers before running write-capable tools.
+
 When the user says mods are not working, first decide which layer is failing:
 
 ```text
@@ -24,6 +26,7 @@ environment detection
 For a broad first pass:
 
 ```text
+validate_setup
 detect_environment
 skyrim_modded_play_report
 ```
@@ -65,6 +68,7 @@ mod_knowledge_report
 For "make me a safe test profile":
 
 ```text
+vortex_profile_backup with include_all_profiles=true
 vortex_clone_profile with apply=false
 ```
 
@@ -133,16 +137,25 @@ Before `apply_ini_fixes dry_run=false`:
 
 Before `vortex_clone_profile apply=true`:
 
+- call `vortex_profile_backup` first, or confirm the dry-run result already shows a `backupPath`
 - show the dry-run plan
 - tell the user to close Vortex
 - give the new profile name/id
 
 Before `vortex_set_profile_mods apply=true`:
 
+- call `vortex_profile_backup` first, or confirm the dry-run result already shows a `backupPath`
 - call `vortex_profile_mods` first
 - use exact mod ids
 - do not guess ids from display names
 - tell the user to deploy mods afterward
+
+Before `vortex_profile_restore_plan apply=true`:
+
+- run the same tool with `apply=false`
+- explain the planned change count
+- keep `disable_extra_mods=false` unless the user clearly wants extra currently enabled mods disabled
+- tell the user to close Vortex
 
 ## Good Final Answer Shape
 
@@ -167,3 +180,13 @@ When the user has a massive Nexus Collection, call `mod_knowledge_report` before
 5. Mod Details for the specific mods you want to discuss.
 
 For unwanted mods, prefer this wording: "disable in a cloned profile and test" instead of "delete." Use `vortex_clone_profile apply=false` first if the user wants a safe experiment profile. Use `vortex_set_profile_mods apply=false` to preview exact disable operations, and only use `apply=true` after the user explicitly approves.
+
+## Undo Flow
+
+If a profile change makes things worse:
+
+```text
+vortex_profile_restore_plan with backup_path=<backup file> and apply=false
+```
+
+Read the preview. If it looks correct and the user approves, tell the user to close Vortex and rerun with `apply=true`. Reopen Vortex afterward and deploy mods.

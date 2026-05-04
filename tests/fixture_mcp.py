@@ -87,6 +87,8 @@ def main() -> int:
         env = server.detect_environment(base_args)
         assert env["skse_installed"] is True, env
         assert not [issue for issue in env["issues"] if "SkyrimSE.exe" in issue], env
+        setup = server.validate_setup(base_args)
+        assert setup["ready"] is True, setup
 
         inventory = server.inventory_mods({**base_args, "include_files": True})
         assert inventory["modCount"] == 3, inventory
@@ -171,6 +173,7 @@ def main() -> int:
         assert str(root) not in payload_text
         payload = json.loads(payload_text)
         assert payload["redactedUserPaths"] is True
+        assert payload["setupValidation"]["ready"] is True
         assert "logs" in payload
 
         with zipfile.ZipFile(bundle["zip_path"]) as archive:

@@ -14,6 +14,7 @@ an MCP client.
 
 - Find Steam, Skyrim SE, Vortex AppData, Vortex staging folders, `plugins.txt`,
   `loadorder.txt`, SKSE, and common missing-path problems.
+- Validate the whole setup in one call for OpenClaw with `validate_setup`.
 - Inventory Vortex-staged Skyrim SE mods.
 - Read mod evidence: files, readmes, FOMOD XML, plugins, masters, BSA archives,
   SKSE DLL plugins, scripts, meshes, textures, UI files.
@@ -28,6 +29,8 @@ an MCP client.
 - Read Vortex profiles through Vortex's own CLI, show the active-profile guess,
   list enabled/disabled mods per profile, compare profiles, and clone a profile
   for safer testing.
+- Write Vortex profile backups and preview restore/undo plans before changing a
+  profile.
 - Check whether plugins from the selected Vortex profile appear in Skyrim
   `Data` and are enabled in `plugins.txt`.
 - Produce a one-shot modded play report that combines environment, SKSE, audio
@@ -45,7 +48,9 @@ an MCP client.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): code map and runtime flow.
 - [docs/CLI.md](docs/CLI.md): direct command-line mode without an MCP client.
 - [docs/LOCAL-MENU.md](docs/LOCAL-MENU.md): local no-hassle menu for report generation.
+- [docs/SAFETY-UNDO.md](docs/SAFETY-UNDO.md): backup, restore-preview, and dry-run rules.
 - [docs/OPENCLAW-AGENT-GUIDE.md](docs/OPENCLAW-AGENT-GUIDE.md): how an OpenClaw agent should use the tools safely.
+- [docs/VORTEX-MCP-BRIDGE-COMPARISON.md](docs/VORTEX-MCP-BRIDGE-COMPARISON.md): what this project borrows from Vortex MCP Bridge and what stays out of scope.
 - [docs/LOGGING.md](docs/LOGGING.md): log folder, channels, and inspection commands.
 - [docs/BUG-REPORTING.md](docs/BUG-REPORTING.md): support bundle and issue-reporting guide.
 - [docs/MOD-KNOWLEDGE.md](docs/MOD-KNOWLEDGE.md): collection knowledge reports and safe removal review.
@@ -135,6 +140,7 @@ You can run tools without OpenClaw:
 
 ```powershell
 py -3 .\server.py --tool detect_environment
+py -3 .\server.py --tool validate_setup
 py -3 .\server.py --mod-knowledge
 ```
 
@@ -154,7 +160,7 @@ and `--no-profile-state`.
 Try:
 
 ```text
-Use the vortex-skyrimse MCP to detect my Skyrim SE/Vortex environment and list the highest-risk problems.
+Use the vortex-skyrimse MCP to run validate_setup, then detect my Skyrim SE/Vortex environment and list the highest-risk problems. Do not apply changes.
 ```
 
 Then:
@@ -167,6 +173,12 @@ For profiles:
 
 ```text
 Use the vortex-skyrimse MCP to list my Skyrim SE Vortex profiles, identify the active one, and show enabled mods on that profile.
+```
+
+Before any profile experiment:
+
+```text
+Use vortex_profile_backup with include_all_profiles=true and tell me where the backup was written. Do not apply other changes.
 ```
 
 To make a safer test profile:
@@ -208,6 +220,7 @@ Use apply_ini_fixes with dry_run=false and make_backup=true.
 ## Tools
 
 - `detect_environment`
+- `validate_setup`
 - `inventory_mods`
 - `analyze_conflicts`
 - `redundant_mod_report`
@@ -222,6 +235,8 @@ Use apply_ini_fixes with dry_run=false and make_backup=true.
 - `vortex_profile_mods`
 - `vortex_compare_profiles`
 - `vortex_profile_deployment_report`
+- `vortex_profile_backup`
+- `vortex_profile_restore_plan`
 - `vortex_clone_profile`
 - `vortex_set_profile_mods`
 - `skyrim_modded_play_report`
@@ -271,6 +286,10 @@ If detection misses your setup, pass `skyrim_dir`, `staging_dir`,
 - `apply_ini_fixes` creates backups by default.
 - `vortex_clone_profile` and `vortex_set_profile_mods` can write Vortex profile
   state only when `apply=true`.
+- `vortex_clone_profile` and `vortex_set_profile_mods` write a profile backup
+  before `apply=true` unless `backup_before_apply=false`.
+- `vortex_profile_restore_plan` previews restore actions by default and writes
+  only when `apply=true`.
 - Close Vortex before profile writes. Reopen Vortex afterward, select the wanted
   profile, then deploy mods before launching Skyrim.
 - The write tools refuse `apply=true` while `Vortex.exe` is running unless
@@ -291,11 +310,16 @@ you approve them.
 
 If OpenClaw wants to experiment, the safer flow is:
 
-1. Run `vortex_profile_report`.
-2. Run `vortex_clone_profile` with `apply=false`.
-3. Close Vortex.
-4. Run `vortex_clone_profile` with `apply=true`.
-5. Reopen Vortex, enable the new profile, deploy mods, and test Skyrim.
+1. Run `validate_setup`.
+2. Run `vortex_profile_report`.
+3. Run `vortex_profile_backup` with `include_all_profiles=true`.
+4. Run `vortex_clone_profile` with `apply=false`.
+5. Close Vortex.
+6. Run `vortex_clone_profile` with `apply=true`.
+7. Reopen Vortex, enable the new profile, deploy mods, and test Skyrim.
+
+If the test goes wrong, run `vortex_profile_restore_plan` with the backup path
+and `apply=false` first. Only use `apply=true` after reading the plan.
 
 For exact mod toggles, run `vortex_profile_mods` first and copy the exact `id`
 values into `vortex_set_profile_mods`. Do not guess mod ids.
@@ -339,3 +363,5 @@ Sources used for protocol behavior:
   https://modelcontextprotocol.io/specification/2025-06-18/server/tools
 - Vortex profiles are documented as separate mod lists/settings/saves:
   https://github.com/Nexus-Mods/Vortex/wiki/MODDINGWIKI-Users-General-Setting-up-Profiles
+- Public Vortex MCP Bridge listing used for feature comparison:
+  https://www.nexusmods.com/site/mods/1743

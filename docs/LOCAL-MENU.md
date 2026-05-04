@@ -16,12 +16,15 @@ Vortex-SkyrimSE-Menu.cmd
 
 ## Menu Actions
 
-1. Environment diagnosis
-2. Mod knowledge Markdown report
-3. Modded play diagnosis
-4. Bug report zip
-5. Log status
-6. List available tools
+1. Validate setup
+2. Create Vortex profile backup
+3. Preview restore from backup
+4. Environment diagnosis
+5. Mod knowledge Markdown report
+6. Modded play diagnosis
+7. Bug report zip
+8. Log status
+9. List available tools
 
 Reports are written to:
 
@@ -41,6 +44,9 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action knowledge
 .\vortex_skyrimse_menu.ps1 -Action bug
 .\vortex_skyrimse_menu.ps1 -Action play
+.\vortex_skyrimse_menu.ps1 -Action validate
+.\vortex_skyrimse_menu.ps1 -Action backup
+.\vortex_skyrimse_menu.ps1 -Action restore -BackupPath "C:\path\profile-backup.json"
 ```
 
 Custom paths:
@@ -63,4 +69,6 @@ If Vortex profile state is slow or locked:
 
 ## Safety
 
-The menu runs read-only report actions. It does not delete mods, change Vortex profiles, sort load order, or write INI fixes.
+The menu runs read-only report actions plus profile backup and restore preview. It does not delete mods, sort load order, write INI fixes, or apply restore plans.
+
+The backup action writes a JSON backup file. The restore action previews what would be restored; it does not change Vortex.

@@ -34,6 +34,24 @@ def main() -> int:
     assert any(change["path"] == r"persistent.profiles.clone.modState.mod\.with\.dot" for change in changes)
     batches = mcp_server.batched_state_changes(changes, max_chars=200)
     assert batches and sum(len(batch) for batch in batches) == len(changes)
+    snapshot = {
+        "gameId": "skyrimse",
+        "activeProfileId": "source",
+        "profiles": {"source": clone},
+        "mods": {"mod.with.dot": {"name": "Example Mod"}},
+    }
+    backup = mcp_server.build_profile_backup(snapshot, {"source": clone}, include_mod_metadata=True)
+    assert backup["schema"] == "vortex-skyrimse-profile-backup-v1", backup
+    assert backup["profiles"]["source"]["name"] == "Safe Clone", backup
+    restore_changes = mcp_server.restore_profile_changes(
+        "source",
+        {"name": "Original", "modState": {"keep": {"enabled": True}}},
+        {"name": "Changed", "modState": {"keep": {"enabled": False}, "extra": {"enabled": True}}},
+        disable_extra_mods=True,
+    )
+    assert any(change["path"] == "persistent.profiles.source.name" for change in restore_changes), restore_changes
+    assert any(change["path"] == "persistent.profiles.source.modState.keep" for change in restore_changes), restore_changes
+    assert any(change["path"] == "persistent.profiles.source.modState.extra.enabled" for change in restore_changes), restore_changes
     findings = []
     mcp_server.add_finding(findings, "low", "later", "later", "later")
     mcp_server.add_finding(findings, "critical", "first", "first", "first")
@@ -48,7 +66,10 @@ def main() -> int:
     listed_json = json.loads(listed.stdout)
     listed_names = [tool["name"] for tool in listed_json["tools"]]
     assert "detect_environment" in listed_names, listed_names
+    assert "validate_setup" in listed_names, listed_names
     assert "mod_knowledge_report" in listed_names, listed_names
+    assert "vortex_profile_backup" in listed_names, listed_names
+    assert "vortex_profile_restore_plan" in listed_names, listed_names
 
     direct = subprocess.run(
         [sys.executable, str(server), "--tool", "detect_environment"],
@@ -101,11 +122,14 @@ def main() -> int:
         if msg["id"] == 2:
             names = [tool["name"] for tool in data["result"]["tools"]]
             assert "detect_environment" in names, names
+            assert "validate_setup" in names, names
             assert "analyze_conflicts" in names, names
             assert "apply_ini_fixes" in names, names
             assert "vortex_profile_report" in names, names
             assert "vortex_profile_mods" in names, names
             assert "vortex_profile_deployment_report" in names, names
+            assert "vortex_profile_backup" in names, names
+            assert "vortex_profile_restore_plan" in names, names
             assert "vortex_clone_profile" in names, names
             assert "vortex_set_profile_mods" in names, names
             assert "skyrim_modded_play_report" in names, names

@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.2.7
+
+- Adds `validate_setup`, a one-shot setup check for OpenClaw with blockers and safe tool groups.
+- Adds `vortex_profile_backup` and `vortex_profile_restore_plan` for profile backups and dry-run restore previews.
+- `vortex_clone_profile` and `vortex_set_profile_mods` now write a profile backup before `apply=true` by default.
+- Updates the local helper menu with setup validation, profile backup, and restore preview actions.
+- Adds safety/undo documentation and a Vortex MCP Bridge comparison document.
+- Bug-report bundles now include setup validation results.
+
 ## v0.2.6
 
 - Adds `vortex_skyrimse_menu.ps1`, a local helper menu for no-OpenClaw workflows.

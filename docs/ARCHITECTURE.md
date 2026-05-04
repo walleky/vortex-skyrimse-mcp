@@ -30,7 +30,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - `MCP-Doctor.cmd`: double-click wrapper around `mcp_doctor.ps1`.
 - `make_mod_knowledge.ps1`: direct PowerShell wrapper for writing the Markdown collection knowledge report.
 - `Make-Mod-Knowledge.cmd`: double-click wrapper around `make_mod_knowledge.ps1`.
-- `vortex_skyrimse_menu.ps1`: local helper menu for common read-only diagnosis/report actions.
+- `vortex_skyrimse_menu.ps1`: local helper menu for common diagnosis/report actions plus profile backup and restore preview.
 - `Vortex-SkyrimSE-Menu.cmd`: double-click wrapper around `vortex_skyrimse_menu.ps1`.
 - `tests/smoke_mcp.py`: verifies JSON-RPC initialize, tools/list, and a basic tools/call.
 - `tests/fixture_mcp.py`: synthetic Skyrim/Vortex fixture for plugin, staging, conflict, logging, and bug-report behavior.
@@ -47,7 +47,8 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - filesystem and mod inspection: `safe_walk`, `mod_summary`, `inventory_mods`, `analyze_conflicts`, `redundant_mod_report`, `mod_knowledge_report`.
 - plugin/load-order checks: `parse_plugin_list`, `plugin_report`, `plugin_masters`.
 - INI checks and writes: `ini_report`, `apply_ini_fixes`.
-- profile tools: `vortex_profile_report`, `vortex_profile_mods`, `vortex_compare_profiles`, `vortex_clone_profile`, `vortex_set_profile_mods`.
+- setup validation: `validate_setup`.
+- profile tools: `vortex_profile_report`, `vortex_profile_mods`, `vortex_compare_profiles`, `vortex_profile_deployment_report`, `vortex_profile_backup`, `vortex_profile_restore_plan`, `vortex_clone_profile`, `vortex_set_profile_mods`.
 - play readiness: `skyrim_modded_play_report`, `suggest_conflict_fixes`.
 - support/report tools: `mod_knowledge_report`, `log_status`, `bug_report_bundle`, `write_report`.
 - MCP registration, CLI, and loop: `TOOLS`, `tool_list`, `handle_call`, `cli_main`, `handle_message`, `serve_stdio`.
@@ -59,6 +60,8 @@ Most tools are read-only. The write tools are narrow and opt-in:
 - `apply_ini_fixes` writes only when `dry_run=false`.
 - `vortex_clone_profile` writes only when `apply=true`.
 - `vortex_set_profile_mods` writes only when `apply=true`.
+- `vortex_clone_profile` and `vortex_set_profile_mods` write a profile backup before `apply=true` unless `backup_before_apply=false`.
+- `vortex_profile_restore_plan` writes only when `apply=true` and previews by default.
 - Vortex profile writes refuse to run while `Vortex.exe` is open unless `allow_running_vortex=true`.
 - Profile writes use `Vortex.exe --set`, not direct database edits.
 
@@ -87,12 +90,28 @@ Writes follow the same idea in reverse:
 
 ```text
 vortex_clone_profile or vortex_set_profile_mods
+  -> optionally write profile backup JSON
   -> create exact state changes
   -> split into safe CLI batches
   -> Vortex.exe --set path=value
 ```
 
 Large collection profiles can have many mods, so writes are batched to avoid Windows command length failures.
+
+Undo flow:
+
+```text
+vortex_profile_backup
+  -> load_vortex_profile_state
+  -> write JSON backup
+
+vortex_profile_restore_plan
+  -> load backup JSON
+  -> load current Vortex profile state
+  -> compare backed-up state to current state
+  -> preview exact state changes
+  -> optionally Vortex.exe --set path=value when apply=true
+```
 
 ## Bug Report Flow
 

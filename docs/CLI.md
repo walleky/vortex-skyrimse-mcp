@@ -13,6 +13,7 @@ py -3 .\server.py --list-tools
 Detect the local setup:
 
 ```powershell
+py -3 .\server.py --tool validate_setup
 py -3 .\server.py --tool detect_environment
 ```
 
@@ -51,6 +52,22 @@ py -3 .\server.py --mod-knowledge --no-profile-state
 
 Use this when Vortex CLI is slow, locked, or unavailable. The report will still inspect staged files, conflicts, plugins, readmes, and duplicate evidence.
 
+## Profile Backup And Restore Preview
+
+Create a profile backup before experiments:
+
+```powershell
+py -3 .\server.py --tool vortex_profile_backup --include-all-profiles --backup-path .\profile-backup.json
+```
+
+Preview restoring from that backup:
+
+```powershell
+py -3 .\server.py --tool vortex_profile_restore_plan --backup-path .\profile-backup.json
+```
+
+That preview does not change Vortex. Applying a restore requires `--apply`, and Vortex should be closed first.
+
 ## JSON Arguments
 
 For advanced calls, pass tool arguments as JSON:
@@ -85,3 +102,5 @@ py -3 .\server.py --mod-knowledge --output-json .\last-tool-result.json
 ## Safety
 
 Direct CLI mode uses the same tool implementations and safety rules as MCP mode. Read-only tools stay read-only. Write-capable tools still require explicit write arguments such as `dry_run=false` or `apply=true`.
+
+Profile write tools create backups before `--apply` by default. Use `--no-backup-before-apply` only for advanced recovery when you already have a known-good backup.

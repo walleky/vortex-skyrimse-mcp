@@ -36,7 +36,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.6"
+SERVER_VERSION = "0.2.7"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -861,6 +861,62 @@ def detect_environment(args: Dict[str, Any]) -> Dict[str, Any]:
         "my_games_dir": str(my_games) if my_games else None,
         "plugin_state": paths,
         "issues": issues,
+    }
+
+
+def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
+    environment = detect_environment(args)
+    tool_groups = {
+        "alwaysAvailable": [
+            "detect_environment",
+            "validate_setup",
+            "inventory_mods",
+            "analyze_conflicts",
+            "redundant_mod_report",
+            "plugin_report",
+            "ini_report",
+            "mod_knowledge_report",
+            "bug_report_bundle",
+        ],
+        "vortexCliRequired": [
+            "vortex_profile_report",
+            "vortex_profile_mods",
+            "vortex_compare_profiles",
+            "vortex_profile_deployment_report",
+            "vortex_profile_backup",
+            "vortex_profile_restore_plan",
+            "vortex_clone_profile",
+            "vortex_set_profile_mods",
+        ],
+        "writeCapableDryRunFirst": [
+            "apply_ini_fixes",
+            "vortex_clone_profile",
+            "vortex_set_profile_mods",
+            "vortex_profile_restore_plan",
+        ],
+    }
+    blockers = []
+    if environment.get("vortex_exe") is None:
+        blockers.append("Vortex CLI tools need Vortex.exe. Pass vortex_exe if detection missed it.")
+    if environment.get("skyrim_dir") is None:
+        blockers.append("Skyrim SE path was not detected. Pass skyrim_dir for plugin/deployment checks.")
+    if environment.get("staging_dir") is None or not Path(str(environment.get("staging_dir"))).exists():
+        blockers.append("Vortex staging folder was not detected. Pass staging_dir for mod inventory/conflict reports.")
+    if not environment.get("skse_installed"):
+        blockers.append("SKSE was not detected beside SkyrimSE.exe.")
+    return {
+        "server": SERVER_NAME,
+        "version": SERVER_VERSION,
+        "environment": environment,
+        "ready": len(blockers) == 0,
+        "blockers": blockers,
+        "toolGroups": tool_groups,
+        "safetyDefaults": [
+            "Profile writes are dry-run unless apply=true.",
+            "Profile writes refuse to run while Vortex.exe is open unless allow_running_vortex=true.",
+            "vortex_set_profile_mods and vortex_clone_profile write a profile backup before apply=true by default.",
+            "Use vortex_profile_restore_plan with apply=false first to preview undo/restore actions.",
+        ],
     }
 
 
@@ -2229,6 +2285,199 @@ def require_profile(snapshot: Dict[str, Any], profile_id: Optional[str]) -> Tupl
     return selected, profiles[selected]
 
 
+def default_backup_dir(args: Dict[str, Any]) -> Path:
+    explicit = expand_path(args.get("backup_dir"))
+    if explicit:
+        return explicit
+    docs = default_documents() or Path.cwd()
+    return docs / "vortex-skyrimse-mcp-reports" / "profile-backups"
+
+
+def selected_backup_profiles(snapshot: Dict[str, Any], profile_id: Optional[str], include_all_profiles: bool) -> Dict[str, Any]:
+    if include_all_profiles:
+        return {
+            str(profile_id): profile
+            for profile_id, profile in snapshot["profiles"].items()
+            if isinstance(profile, dict)
+        }
+    selected_id, selected = require_profile(snapshot, profile_id)
+    return {selected_id: selected}
+
+
+def build_profile_backup(
+    snapshot: Dict[str, Any],
+    profiles: Dict[str, Any],
+    include_mod_metadata: bool = True,
+) -> Dict[str, Any]:
+    return {
+        "schema": "vortex-skyrimse-profile-backup-v1",
+        "generatedAt": iso_now(),
+        "server": SERVER_NAME,
+        "version": SERVER_VERSION,
+        "gameId": snapshot["gameId"],
+        "activeProfileId": snapshot.get("activeProfileId"),
+        "profileCount": len(profiles),
+        "profiles": json.loads(json.dumps(profiles, default=str)),
+        "mods": json.loads(json.dumps(snapshot.get("mods", {}), default=str)) if include_mod_metadata else {},
+        "notes": [
+            "This file is for vortex_profile_restore_plan.",
+            "Restore previews are dry-run by default; use apply=true only after reading the planned changes.",
+            "Close Vortex before applying a restore plan.",
+        ],
+    }
+
+
+def write_profile_backup_file(snapshot: Dict[str, Any], profiles: Dict[str, Any], args: Dict[str, Any]) -> Path:
+    output_path = expand_path(args.get("output_path"))
+    if not output_path:
+        profile_part = "all-profiles" if len(profiles) != 1 else next(iter(profiles.keys()))
+        safe_profile_part = re.sub(r"[^A-Za-z0-9_.-]+", "_", profile_part)[:80] or "profile"
+        output_path = default_backup_dir(args) / f"vortex-profile-backup-{safe_profile_part}-{now_stamp()}.json"
+    backup = build_profile_backup(snapshot, profiles, bool(args.get("include_mod_metadata", True)))
+    write_text(output_path, json.dumps(backup, indent=2, ensure_ascii=False, default=str))
+    log_event("support", "vortex_profile_backup_written", {"output_path": str(output_path), "profileIds": list(profiles.keys())})
+    return output_path
+
+
+def write_backup_before_apply(snapshot: Dict[str, Any], profiles: Dict[str, Any], args: Dict[str, Any], reason: str) -> Optional[str]:
+    if not bool(args.get("backup_before_apply", True)):
+        return None
+    backup_args = {**args}
+    backup_args.pop("output_path", None)
+    if args.get("backup_path"):
+        backup_args["output_path"] = args.get("backup_path")
+    output_path = write_profile_backup_file(snapshot, profiles, backup_args)
+    log_event(
+        "support",
+        "vortex_profile_backup_before_apply",
+        {"output_path": str(output_path), "profileIds": list(profiles.keys()), "reason": reason},
+    )
+    return str(output_path)
+
+
+def vortex_profile_backup(args: Dict[str, Any]) -> Dict[str, Any]:
+    include_all_profiles = bool(args.get("include_all_profiles", False))
+    snapshot = load_vortex_profile_state(args, include_mods=bool(args.get("include_mod_metadata", True)))
+    profiles = selected_backup_profiles(snapshot, args.get("profile_id"), include_all_profiles)
+    backup_args = {**args}
+    if args.get("backup_path") and not args.get("output_path"):
+        backup_args["output_path"] = args.get("backup_path")
+    output_path = write_profile_backup_file(snapshot, profiles, backup_args)
+    return {
+        "output_path": str(output_path),
+        "gameId": snapshot["gameId"],
+        "activeProfileId": snapshot.get("activeProfileId"),
+        "profileIds": list(profiles.keys()),
+        "profileCount": len(profiles),
+        "vortex_exe": snapshot["vortex_exe"],
+        "nextSteps": [
+            "Keep this file if you are about to test profile changes.",
+            "Use vortex_profile_restore_plan with apply=false to preview undo actions.",
+            "Use apply=true only after you confirm the plan and close Vortex.",
+        ],
+    }
+
+
+def load_profile_backup(path_value: Optional[str]) -> Dict[str, Any]:
+    path = expand_path(path_value)
+    if not path or not path.exists() or not path.is_file():
+        raise ToolError("backup_path must point to an existing profile backup JSON file.")
+    data = json.loads(read_text(path, 10_000_000))
+    if not isinstance(data, dict) or data.get("schema") != "vortex-skyrimse-profile-backup-v1":
+        raise ToolError("backup_path is not a vortex-skyrimse profile backup file.")
+    profiles = data.get("profiles")
+    if not isinstance(profiles, dict) or not profiles:
+        raise ToolError("profile backup does not contain any profiles.")
+    data["_backupPath"] = str(path)
+    return data
+
+
+def restore_profile_changes(
+    profile_id: str,
+    backup_profile: Dict[str, Any],
+    current_profile: Dict[str, Any],
+    disable_extra_mods: bool = False,
+) -> List[Dict[str, Any]]:
+    changes: List[Dict[str, Any]] = []
+    for key, value in backup_profile.items():
+        if key == "modState":
+            continue
+        if current_profile.get(key) != value:
+            changes.append({"path": state_path("persistent", "profiles", profile_id, key), "value": value})
+
+    backup_mod_state = backup_profile.get("modState") if isinstance(backup_profile.get("modState"), dict) else {}
+    current_mod_state = current_profile.get("modState") if isinstance(current_profile.get("modState"), dict) else {}
+    for mod_id, backup_entry in sorted(backup_mod_state.items(), key=lambda item: str(item[0]).lower()):
+        current_entry = current_mod_state.get(mod_id)
+        if current_entry != backup_entry:
+            changes.append({"path": state_path("persistent", "profiles", profile_id, "modState", mod_id), "value": backup_entry})
+
+    if disable_extra_mods:
+        for mod_id, current_entry in sorted(current_mod_state.items(), key=lambda item: str(item[0]).lower()):
+            if mod_id in backup_mod_state or not profile_enabled(current_entry):
+                continue
+            changes.append({"path": state_path("persistent", "profiles", profile_id, "modState", mod_id, "enabled"), "value": False})
+    return changes
+
+
+def vortex_profile_restore_plan(args: Dict[str, Any]) -> Dict[str, Any]:
+    backup = load_profile_backup(args.get("backup_path"))
+    backup_profiles = backup["profiles"]
+    profile_id = str(args.get("profile_id") or backup.get("activeProfileId") or "")
+    if not profile_id:
+        if len(backup_profiles) == 1:
+            profile_id = next(iter(backup_profiles.keys()))
+        else:
+            raise ToolError("backup contains multiple profiles; pass profile_id.")
+    if profile_id not in backup_profiles:
+        raise ToolError(f"profile_id '{profile_id}' is not present in this backup.")
+    backup_profile = backup_profiles[profile_id]
+    if not isinstance(backup_profile, dict):
+        raise ToolError("backup profile payload is not an object.")
+
+    restore_args = {**args, "game_id": args.get("game_id") or backup.get("gameId") or GAME_ID}
+    snapshot = load_vortex_profile_state(restore_args, include_mods=False)
+    if profile_id not in snapshot["profiles"]:
+        raise ToolError(f"Current Vortex state does not contain profile '{profile_id}'.")
+    current_profile = snapshot["profiles"][profile_id]
+    extra_profiles = sorted(str(item) for item in snapshot["profiles"].keys() if str(item) not in backup_profiles)
+    changes = restore_profile_changes(
+        profile_id,
+        backup_profile,
+        current_profile,
+        bool(args.get("disable_extra_mods", False)),
+    )
+    apply_changes = bool(args.get("apply", False))
+    apply_result = None
+    if apply_changes and changes:
+        apply_result = vortex_state_set(
+            changes,
+            args.get("vortex_exe"),
+            int(args.get("timeout_seconds", 60)),
+            bool(args.get("allow_running_vortex", False)),
+        )
+    return {
+        "dryRun": not apply_changes,
+        "backup_path": backup["_backupPath"],
+        "gameId": snapshot["gameId"],
+        "profile": summarize_profile(profile_id, current_profile, snapshot["activeProfileId"]),
+        "backupGeneratedAt": backup.get("generatedAt"),
+        "disableExtraMods": bool(args.get("disable_extra_mods", False)),
+        "extraProfilesNotInBackup": extra_profiles,
+        **change_plan_preview(changes, int(args.get("max_plan_preview", 100))),
+        "applied": bool(apply_result),
+        "applyBatches": apply_result.get("batchCount") if apply_result else None,
+        "vortex_exe": apply_result["vortex_exe"] if apply_result else snapshot["vortex_exe"],
+        "notes": [
+            "This restores backed-up profile fields and mod enabled-state records through Vortex's CLI.",
+            "Dry-run is the default. Read plannedChanges before apply=true.",
+            "Close Vortex before apply=true so Vortex does not overwrite or lock profile state.",
+            "Extra profiles that are not in the backup are reported but not removed automatically.",
+            "After applying a restore plan, open Vortex and deploy mods before launching Skyrim.",
+        ],
+    }
+
+
 def vortex_profile_report(args: Dict[str, Any]) -> Dict[str, Any]:
     snapshot = load_vortex_profile_state(args, include_mods=False)
     summaries = [
@@ -2524,7 +2773,14 @@ def vortex_clone_profile(args: Dict[str, Any]) -> Dict[str, Any]:
     apply_changes = bool(args.get("apply", False))
     cloned, changes = clone_profile_changes(new_id, new_name, source, make_active)
     apply_result = None
+    backup_path = None
     if apply_changes:
+        backup_path = write_backup_before_apply(
+            snapshot,
+            selected_backup_profiles(snapshot, None, True),
+            args,
+            "vortex_clone_profile",
+        )
         apply_result = vortex_state_set(
             changes,
             args.get("vortex_exe"),
@@ -2537,11 +2793,14 @@ def vortex_clone_profile(args: Dict[str, Any]) -> Dict[str, Any]:
         "sourceProfile": summarize_profile(source_id, source, snapshot["activeProfileId"]),
         "newProfile": summarize_profile(new_id, cloned, new_id if make_active else snapshot["activeProfileId"]),
         **change_plan_preview(changes, int(args.get("max_plan_preview", 50))),
+        "backupBeforeApply": bool(args.get("backup_before_apply", True)),
+        "backupPath": backup_path,
         "applied": bool(apply_result),
         "applyBatches": apply_result.get("batchCount") if apply_result else None,
         "vortex_exe": apply_result["vortex_exe"] if apply_result else snapshot["vortex_exe"],
         "notes": [
             "Use apply=true only with Vortex closed. By default this tool refuses writes while Vortex.exe is running.",
+            "When apply=true, this writes a Vortex profile backup first unless backup_before_apply=false.",
             "The clone copies enabled/disabled mod state in chunked CLI writes so large collections avoid Windows command-length failures.",
             "Deploy mods in Vortex after activating or changing a profile.",
         ],
@@ -2580,7 +2839,14 @@ def vortex_set_profile_mods(args: Dict[str, Any]) -> Dict[str, Any]:
 
     apply_changes = bool(args.get("apply", False))
     apply_result = None
+    backup_path = None
     if apply_changes:
+        backup_path = write_backup_before_apply(
+            snapshot,
+            {profile_id: profile},
+            args,
+            "vortex_set_profile_mods",
+        )
         apply_result = vortex_state_set(
             changes,
             args.get("vortex_exe"),
@@ -2595,12 +2861,15 @@ def vortex_set_profile_mods(args: Dict[str, Any]) -> Dict[str, Any]:
         "disableModIds": disable_ids,
         "unknownModIds": unknown_ids,
         **change_plan_preview(changes, int(args.get("max_plan_preview", 50))),
+        "backupBeforeApply": bool(args.get("backup_before_apply", True)),
+        "backupPath": backup_path,
         "applied": bool(apply_result),
         "applyBatches": apply_result.get("batchCount") if apply_result else None,
         "vortex_exe": apply_result["vortex_exe"] if apply_result else snapshot["vortex_exe"],
         "notes": [
             "This only changes Vortex profile state. It does not delete mods.",
             "Close Vortex before apply=true. By default this tool refuses writes while Vortex.exe is running.",
+            "When apply=true, this writes a Vortex profile backup first unless backup_before_apply=false.",
             "Open Vortex afterward, switch to the profile if needed, and deploy mods before launching Skyrim.",
         ],
     }
@@ -3008,6 +3277,11 @@ def bug_report_bundle(args: Dict[str, Any]) -> Dict[str, Any]:
     }
 
     try:
+        bundle["setupValidation"] = validate_setup(args)
+    except Exception as exc:
+        bundle["setupValidationError"] = str(exc)
+
+    try:
         bundle["environment"] = detect_environment(args)
     except Exception as exc:
         bundle["environmentError"] = str(exc)
@@ -3107,6 +3381,22 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
             "additionalProperties": False,
         },
         detect_environment,
+    ),
+    "validate_setup": (
+        "One-shot setup check for OpenClaw: detected paths, blockers, available tool groups, and safe next steps.",
+        {
+            "type": "object",
+            "properties": {
+                "vortex_appdata": {"type": "string"},
+                "vortex_exe": {"type": "string"},
+                "skyrim_dir": {"type": "string"},
+                "staging_dir": {"type": "string"},
+                "my_games_dir": {"type": "string"},
+                "local_appdata": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        validate_setup,
     ),
     "inventory_mods": (
         "Inventory staged Vortex Skyrim SE mods, file kinds, plugins, archives, SKSE DLLs, readmes, and metadata.",
@@ -3335,6 +3625,45 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         },
         vortex_profile_deployment_report,
     ),
+    "vortex_profile_backup": (
+        "Write a JSON backup of the active or selected Vortex Skyrim SE profile for later restore previews.",
+        {
+            "type": "object",
+            "properties": {
+                "output_path": {"type": "string"},
+                "backup_path": {"type": "string"},
+                "backup_dir": {"type": "string"},
+                "profile_id": {"type": "string"},
+                "include_all_profiles": {"type": "boolean", "default": False},
+                "include_mod_metadata": {"type": "boolean", "default": True},
+                "game_id": {"type": "string", "default": GAME_ID},
+                "vortex_exe": {"type": "string"},
+                "timeout_seconds": {"type": "integer", "default": 60},
+            },
+            "additionalProperties": False,
+        },
+        vortex_profile_backup,
+    ),
+    "vortex_profile_restore_plan": (
+        "Preview or apply a profile restore from a vortex_profile_backup JSON file. Dry-run by default.",
+        {
+            "type": "object",
+            "properties": {
+                "backup_path": {"type": "string"},
+                "profile_id": {"type": "string"},
+                "disable_extra_mods": {"type": "boolean", "default": False},
+                "apply": {"type": "boolean", "default": False},
+                "allow_running_vortex": {"type": "boolean", "default": False},
+                "max_plan_preview": {"type": "integer", "default": 100},
+                "game_id": {"type": "string", "default": GAME_ID},
+                "vortex_exe": {"type": "string"},
+                "timeout_seconds": {"type": "integer", "default": 60},
+            },
+            "required": ["backup_path"],
+            "additionalProperties": False,
+        },
+        vortex_profile_restore_plan,
+    ),
     "vortex_clone_profile": (
         "Clone a Vortex profile for safer experimentation. Dry-run by default; use apply=true with Vortex closed.",
         {
@@ -3346,6 +3675,9 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "make_active": {"type": "boolean", "default": False},
                 "apply": {"type": "boolean", "default": False},
                 "allow_running_vortex": {"type": "boolean", "default": False},
+                "backup_before_apply": {"type": "boolean", "default": True},
+                "backup_path": {"type": "string"},
+                "backup_dir": {"type": "string"},
                 "max_plan_preview": {"type": "integer", "default": 50},
                 "game_id": {"type": "string", "default": GAME_ID},
                 "vortex_exe": {"type": "string"},
@@ -3366,6 +3698,9 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "allow_unknown_mod_ids": {"type": "boolean", "default": False},
                 "apply": {"type": "boolean", "default": False},
                 "allow_running_vortex": {"type": "boolean", "default": False},
+                "backup_before_apply": {"type": "boolean", "default": True},
+                "backup_path": {"type": "string"},
+                "backup_dir": {"type": "string"},
                 "max_plan_preview": {"type": "integer", "default": 50},
                 "game_id": {"type": "string", "default": GAME_ID},
                 "vortex_exe": {"type": "string"},
@@ -3424,7 +3759,7 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         log_status,
     ),
     "bug_report_bundle": (
-        "Write a bug-report JSON bundle with environment checks, play/deployment reports, and recent MCP logs.",
+        "Write a bug-report JSON bundle with setup validation, environment checks, play/deployment reports, and recent MCP logs.",
         {
             "type": "object",
             "properties": {
@@ -3661,6 +3996,8 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         "local_appdata": parsed.local_appdata,
         "my_games_dir": parsed.my_games_dir,
         "profile_id": parsed.profile_id,
+        "backup_path": parsed.backup_path,
+        "backup_dir": parsed.backup_dir,
     }
     for key, value in common.items():
         if value:
@@ -3677,6 +4014,18 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["include_redundancy"] = False
     if parsed.no_readme_excerpts:
         tool_args["include_readme_excerpts"] = False
+    if parsed.apply:
+        tool_args["apply"] = True
+    if parsed.allow_running_vortex:
+        tool_args["allow_running_vortex"] = True
+    if parsed.include_all_profiles:
+        tool_args["include_all_profiles"] = True
+    if parsed.disable_extra_mods:
+        tool_args["disable_extra_mods"] = True
+    if parsed.no_backup_before_apply:
+        tool_args["backup_before_apply"] = False
+    if parsed.no_mod_metadata:
+        tool_args["include_mod_metadata"] = False
     return tool_args
 
 
@@ -3745,12 +4094,20 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--local-appdata", help="Override LocalAppData path.")
     parser.add_argument("--my-games-dir", help="Override Documents/My Games/Skyrim Special Edition path.")
     parser.add_argument("--profile-id", help="Override selected Vortex profile id.")
+    parser.add_argument("--backup-path", help="Profile backup JSON path for restore tools, or explicit backup output path for write tools.")
+    parser.add_argument("--backup-dir", help="Folder for automatic profile backups.")
     parser.add_argument("--max-mods", type=int, help="Maximum mods to scan for supported tools.")
     parser.add_argument("--hash-files", action="store_true", help="Hash files for stronger duplicate evidence. Slower.")
+    parser.add_argument("--apply", action="store_true", help="Apply a write-capable tool. Most tools are dry-run without this.")
+    parser.add_argument("--allow-running-vortex", action="store_true", help="Allow Vortex profile writes while Vortex.exe is running.")
+    parser.add_argument("--include-all-profiles", action="store_true", help="For profile backup, include every detected Skyrim SE profile.")
+    parser.add_argument("--disable-extra-mods", action="store_true", help="For profile restore, disable currently enabled mods that were not in the backup.")
     parser.add_argument("--no-profile-state", action="store_true", help="Do not call Vortex CLI for profile state.")
     parser.add_argument("--no-conflicts", action="store_true", help="Skip conflict scanning for supported tools.")
     parser.add_argument("--no-redundancy", action="store_true", help="Skip redundancy scanning for supported tools.")
     parser.add_argument("--no-readme-excerpts", action="store_true", help="Skip readme snippets for mod knowledge reports.")
+    parser.add_argument("--no-backup-before-apply", action="store_true", help="Do not write an automatic profile backup before apply=true.")
+    parser.add_argument("--no-mod-metadata", action="store_true", help="For profile backup, omit Vortex mod metadata.")
 
     parsed = parser.parse_args(argv)
     if parsed.self_test:

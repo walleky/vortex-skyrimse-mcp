@@ -73,7 +73,7 @@ Safer flow:
 5. Test the same save and a new game.
 6. Only uninstall/delete after the cloned-profile test works.
 
-The MCP can help preview exact profile changes with `vortex_set_profile_mods apply=false`. Use `apply=true` only after the user explicitly approves and Vortex is closed.
+The MCP can help preview exact profile changes with `vortex_set_profile_mods apply=false`. Use `apply=true` only after the user explicitly approves and Vortex is closed. Profile writes create a backup by default, but for big collection cleanup you should still run `vortex_profile_backup` first so the backup path is easy to find.
 
 ## Risk Meaning
 

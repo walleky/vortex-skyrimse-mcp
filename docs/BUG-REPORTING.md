@@ -29,6 +29,7 @@ Attach:
 - a screenshot of the Vortex error, if there was one
 - whether Vortex was open or closed
 - whether the issue happened after installing a collection, changing profiles, updating SKSE, or deploying mods
+- the profile backup path if a profile write or restore was involved
 
 ## Manual Bundle Tool
 
@@ -65,6 +66,7 @@ Use `zip_output=true` when you want one attachable file. The zip contains:
 ## What The Bundle Contains
 
 - server name/version
+- setup validation blockers
 - environment detection
 - modded play report
 - Vortex profile report if available
@@ -111,6 +113,7 @@ Start with:
 - `vortexProfilesError`
 - recent `tool_error` or `exception` log events
 - recent `vortex-cli` nonzero return codes or timeouts
+- `backupPath` fields from any profile write result
 
 Common next actions:
 
