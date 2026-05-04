@@ -7,6 +7,7 @@
 - Adds fixture-based tests for fake Skyrim/Vortex staging, plugin checks, conflicts, logs, redacted bundles, and zip output.
 - Adds a sanitized sample bug bundle document.
 - Updates quick-start, installer, Doctor, and agent docs to prefer zipped redacted bug reports.
+- Updates CI to Node 24-compatible GitHub Actions and read-only repository permissions.
 - `detect_environment` now accepts `local_appdata` for portable tests and custom setups.
 
 ## v0.2.2
