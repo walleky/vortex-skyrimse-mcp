@@ -26,6 +26,8 @@ an MCP client.
 - Read recent Skyrim/Papyrus/SKSE/crash logs, detect config and popup-style
   errors such as "file was not configured properly", and map referenced files
   back to staged Vortex mods when possible.
+- Group repeated runtime log errors into issue patterns, warn when logs look
+  stale, and validate candidate config files before proposing a patch.
 - Detect likely redundant mods:
   - duplicate plugin names
   - duplicate Nexus IDs when metadata is present
@@ -44,6 +46,10 @@ an MCP client.
 - Patch exact text in staged config/text files with `apply_config_text_patch`.
   It is dry-run by default, restricted to detected Vortex/Skyrim roots, and
   creates backups when writing.
+- Validate config files with `config_file_report` before patching: JSON/XML/INI,
+  loose key/value configs, TOML parse status, top-level structure, common
+  "not configured" clues, and exact-text patch suggestions for obvious
+  `configured=false` style values.
 - Read Vortex profiles through Vortex's own CLI, show the active-profile guess,
   list enabled/disabled mods per profile, compare profiles, and clone a profile
   for safer testing.

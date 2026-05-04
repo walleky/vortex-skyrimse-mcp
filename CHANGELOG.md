@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.2.18
+
+- Adds `config_file_report`, a read-only config validator for JSON, XML, INI, loose key/value configs, TOML, YAML/plain text summaries, parse errors, and likely unconfigured placeholder values.
+- Adds exact-text patch suggestions for obvious `configured=false` style settings, still requiring `apply_config_text_patch` dry-run/approval before anything writes.
+- Adds runtime log issue grouping so repeated Papyrus/SKSE/crash spam is summarized into root-cause patterns before OpenClaw reads individual lines.
+- Adds runtime log freshness warnings so stale logs are not mistaken for the current reproduced popup.
+- Validates runtime log `configCandidates` automatically and surfaces config health findings in safe-session/diagnostics reports.
+- Adds local menu action 19 for config file validation and expands tests/docs for the new workflow.
+
 ## v0.2.17
 
 - Adds `skyrim_runtime_log_report` for recent Papyrus/SKSE/crash log scanning, high-signal error detection, and staged-file matching.

@@ -137,7 +137,7 @@ With optional xEdit or collection context:
 - audio archive presence
 - SKSE plugin/file evidence
 - in-game issue candidates when a description is provided
-- Skyrim runtime log findings and config candidates from Papyrus/SKSE/crash logs
+- Skyrim runtime log issue groups, freshness status, findings, and config candidates from Papyrus/SKSE/crash logs
 - read-only xEdit/SSEEdit target hints when requested or a FormID/plugin is provided
 - Vortex collection-like state when requested
 - local scan-cache status
@@ -154,7 +154,7 @@ Read in this order:
 4. `sections.setupValidation`
 5. `sections.skyrimModdedPlay`
 6. `sections.inGameIssue`, if present
-7. `sections.skyrimRuntimeLogs`
+7. `sections.skyrimRuntimeLogs.issueGroups`, `freshLogStatus`, `configCandidates`, and any `suggestedTextPatches`
 8. `sections.xeditDiagnostics`, if present
 9. `sections.vortexCollection`, if present
 10. `sections.nexusUpdateReport`, if present

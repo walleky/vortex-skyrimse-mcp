@@ -72,6 +72,7 @@ def main() -> int:
     assert "mod_knowledge_report" in listed_names, listed_names
     assert "in_game_issue_report" in listed_names, listed_names
     assert "skyrim_runtime_log_report" in listed_names, listed_names
+    assert "config_file_report" in listed_names, listed_names
     assert "safe_session_report" in listed_names, listed_names
     assert "skyrim_diagnostics_report" in listed_names, listed_names
     assert "scan_cache_status" in listed_names, listed_names
@@ -87,6 +88,8 @@ def main() -> int:
     assert "response_mode" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
     assert "include_runtime_logs" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
     assert "max_log_bytes_per_file" in listed_by_name["skyrim_runtime_log_report"]["inputSchema"]["properties"], listed_by_name
+    assert "fresh_log_hours" in listed_by_name["skyrim_runtime_log_report"]["inputSchema"]["properties"], listed_by_name
+    assert "path" in listed_by_name["config_file_report"]["inputSchema"]["properties"], listed_by_name
     assert "include_nexus_metadata" in listed_by_name["skyrim_diagnostics_report"]["inputSchema"]["properties"], listed_by_name
     assert "scan_cache_dir" in listed_by_name["mod_knowledge_report"]["inputSchema"]["properties"], listed_by_name
     assert "include_xedit_report" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
@@ -158,6 +161,7 @@ def main() -> int:
             assert "analyze_conflicts" in names, names
             assert "in_game_issue_report" in names, names
             assert "skyrim_runtime_log_report" in names, names
+            assert "config_file_report" in names, names
             assert "safe_session_report" in names, names
             assert "skyrim_diagnostics_report" in names, names
             assert "scan_cache_status" in names, names

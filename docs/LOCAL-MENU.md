@@ -34,6 +34,7 @@ Vortex-SkyrimSE-Menu.cmd
 16. Collection manifest match
 17. Workflow guide
 18. Skyrim runtime logs
+19. Config file validator
 
 Reports are written to:
 
@@ -67,6 +68,7 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action collection-match -CollectionManifestPath "C:\path\collection.json"
 .\vortex_skyrimse_menu.ps1 -Action workflow -Problem "mods downloaded but not working"
 .\vortex_skyrimse_menu.ps1 -Action runtime -IssueDescription "popup says file was not configured properly"
+.\vortex_skyrimse_menu.ps1 -Action config -ConfigPath "C:\path\to\config\popup.json"
 ```
 
 Custom paths:
@@ -107,4 +109,4 @@ Optional xEdit and collection context:
 
 The menu runs read-only report actions plus profile backup and restore preview. It does not delete mods, sort load order, write INI fixes, edit plugins, install collections, or apply restore plans.
 
-The safe session and diagnostics actions write Markdown and JSON reports and try to include a profile backup unless `-NoProfileBackup` is passed. They include Skyrim runtime log scanning by default unless `-NoRuntimeLogs` is passed. The backup action writes a JSON backup file. The restore action previews what would be restored; it does not change Vortex. The in-game issue action searches for likely mod candidates; it does not fix records automatically. The runtime log action is read-only and points OpenClaw at config candidates when logs reference them.
+The safe session and diagnostics actions write Markdown and JSON reports and try to include a profile backup unless `-NoProfileBackup` is passed. They include Skyrim runtime log scanning by default unless `-NoRuntimeLogs` is passed. The backup action writes a JSON backup file. The restore action previews what would be restored; it does not change Vortex. The in-game issue action searches for likely mod candidates; it does not fix records automatically. The runtime log action is read-only and points OpenClaw at config candidates when logs reference them. The config validator is read-only and checks parse/health clues before any patch.

@@ -107,8 +107,13 @@ py -3 .\server.py --runtime-logs --description "popup says file was not configur
 If the report returns `configCandidates`, read the exact file:
 
 ```powershell
+py -3 .\server.py --tool config_file_report --path "C:\path\to\config\popup.json"
 py -3 .\server.py --tool read_text_file --path "C:\path\to\config\popup.json"
 ```
+
+`config_file_report` is read-only. Check `healthFindings` and
+`suggestedTextPatches`; the suggestions are exact old/new text for a dry-run
+patch, not permission to write.
 
 Preview an exact config patch:
 

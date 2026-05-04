@@ -89,7 +89,7 @@ Use `zip_output=true` when you want one attachable file. The zip contains:
 - scan-cache status
 - optional xEdit/SSEEdit target hints when requested or FormID/plugin evidence is supplied
 - optional Vortex collection state when requested
-- Skyrim runtime log findings and config candidates when enabled
+- Skyrim runtime log issue groups, freshness status, findings, and config candidates when enabled
 - modded play report
 - Vortex profile report if available
 - Vortex profile deployment report if available
@@ -141,7 +141,7 @@ Start with:
 - recent `vortex-cli` nonzero return codes or timeouts
 - `nexusUpdateReport` errors, stale mods, missing source metadata, or lookup-limit skips
 - `xeditDiagnostics` target hints for FormID/plugin issues
-- `skyrimRuntimeLogs.findings` and `skyrimRuntimeLogs.configCandidates` for popup/config/crash issues
+- `skyrimRuntimeLogs.issueGroups`, `freshLogStatus`, `configCandidates`, and any `suggestedTextPatches` for popup/config/crash issues
 - `vortexCollection` collection-state context for collection drift
 - `backupPath` fields from any profile write result
 

@@ -140,7 +140,7 @@ Start with:
 3. `sections.setupValidation.blockers`
 4. `sections.skyrimModdedPlay.findings`
 5. `sections.inGameIssue.candidates`
-6. `sections.skyrimRuntimeLogs.findings` and `sections.skyrimRuntimeLogs.configCandidates`
+6. `sections.skyrimRuntimeLogs.issueGroups`, `freshLogStatus`, `configCandidates`, and any `suggestedTextPatches`
 7. `sections.xeditDiagnostics`, if present
 8. `sections.vortexCollection`, if present
 9. `sections.logStatus`

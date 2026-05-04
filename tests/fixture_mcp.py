@@ -78,8 +78,9 @@ def main() -> int:
         write(staging / "Whiterun Tavern Overhaul" / "readme.txt", "Places a bed in the Whiterun Bannered Mare tavern room.")
         write(staging / "Popup UI Mod" / "interface" / "annoyingpopup.swf", "ui")
         write(staging / "Popup UI Mod" / "scripts" / "popupnotice.pex", "script")
-        write(staging / "Popup UI Mod" / "config" / "popup.json", '{"warning":"notification after loading a save"}')
+        write(staging / "Popup UI Mod" / "config" / "popup.json", '{"warning":"notification after loading a save","configured":false}')
         write(staging / "Popup UI Mod" / "config" / "broken.ini", "[Popup]\nconfigured=false\n")
+        write(staging / "Popup UI Mod" / "config" / "bad.json", '{"warning":')
         write(staging / "Popup UI Mod" / "SKSE" / "Plugins" / "PopupDll.dll", "dll")
         write(staging / "Popup UI Mod" / "readme.txt", "Shows a warning notification after loading a save. Configure the popup in MCM.")
         write(plugins_dir / "plugins.txt", "# comment\r\n*Skyrim.esm\r\n*MYMOD.ESP\r\n*MissingOnDisk.esp\r\n")
@@ -380,7 +381,10 @@ def main() -> int:
             }
         )
         assert runtime_logs["available"] is True, runtime_logs
+        assert runtime_logs["freshLogStatus"]["fresh"] is True, runtime_logs
         assert runtime_logs["findingCount"] >= 1, runtime_logs
+        assert runtime_logs["issueGroupCount"] >= 1, runtime_logs
+        assert any(group["code"] == "config_not_configured" for group in runtime_logs["issueGroups"]), runtime_logs
         assert any("configured properly" in item["line"] for item in runtime_logs["findings"]), runtime_logs
         assert any(
             match["mod"] == "Popup UI Mod"
@@ -388,6 +392,26 @@ def main() -> int:
             for match in item.get("stagedMatches", [])
         ), runtime_logs
         assert any(candidate["relativePath"] == "config/popup.json" for candidate in runtime_logs["configCandidates"]), runtime_logs
+        popup_candidate = next(candidate for candidate in runtime_logs["configCandidates"] if candidate["relativePath"] == "config/popup.json")
+        assert popup_candidate["validation"]["valid"] is True, runtime_logs
+        assert any(item["code"] == "configured_flag_false" for item in popup_candidate["validation"]["healthFindings"]), runtime_logs
+        assert popup_candidate["validation"]["suggestedTextPatchCount"] >= 1, runtime_logs
+
+        config_report = server.config_file_report({**base_args, "path": str(staging / "Popup UI Mod" / "config" / "popup.json")})
+        assert config_report["valid"] is True, config_report
+        assert config_report["summary"]["topLevelKeyCount"] == 2, config_report
+        assert any(item["code"] == "configured_flag_false" for item in config_report["healthFindings"]), config_report
+        assert config_report["suggestedTextPatches"][0]["oldText"] == '"configured":false', config_report
+        assert config_report["suggestedTextPatches"][0]["newText"] == '"configured":true', config_report
+
+        loose_ini = server.config_file_report({**base_args, "path": str(staging / "Lighting Mod" / "meta.ini")})
+        assert loose_ini["valid"] is True, loose_ini
+        assert loose_ini["format"] == "loose-key-value", loose_ini
+        assert loose_ini["summary"]["keyValueCount"] == 3, loose_ini
+
+        bad_config = server.config_file_report({**base_args, "path": str(staging / "Popup UI Mod" / "config" / "bad.json")})
+        assert bad_config["valid"] is False, bad_config
+        assert any(item["code"] == "config_parse_failed" for item in bad_config["healthFindings"]), bad_config
 
         config_path = staging / "Popup UI Mod" / "config" / "broken.ini"
         patch_dry = server.apply_config_text_patch(

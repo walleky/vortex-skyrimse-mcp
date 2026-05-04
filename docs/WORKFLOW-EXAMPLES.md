@@ -172,6 +172,9 @@ in_game_issue_report
 
 What to look for:
 
+- runtime `issueGroups`
+- `freshLogStatus`
+- config candidates, validation health findings, and `suggestedTextPatches`
 - `issue.kind=popup`
 - UI/interface, script, SKSE, config, FOMOD, and MCM evidence
 - `diagnosticQuality`
@@ -185,8 +188,9 @@ mods.
 
 If the popup says a file was not configured properly, read
 `skyrim_runtime_log_report.configCandidates` first. OpenClaw should use
-`read_text_file` on the candidate, then propose `apply_config_text_patch` as a
-dry run only when the old/new text is exact.
+`config_file_report` and then `read_text_file` on the candidate if needed. If
+`suggestedTextPatches` gives exact old/new text and the change matches the mod's
+instructions, propose `apply_config_text_patch` as a dry run only.
 
 ## Workflow 5: Large Collection Review
 

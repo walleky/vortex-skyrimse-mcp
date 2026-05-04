@@ -37,3 +37,6 @@ if (($MenuOutput -join "`n") -notmatch "Workflow guide") {
 if (($MenuOutput -join "`n") -notmatch "Skyrim runtime logs") {
   throw "Menu did not list the Skyrim runtime logs action."
 }
+if (($MenuOutput -join "`n") -notmatch "Config file validator") {
+  throw "Menu did not list the config file validator action."
+}

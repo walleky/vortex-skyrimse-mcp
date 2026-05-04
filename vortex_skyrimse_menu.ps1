@@ -17,6 +17,7 @@ param(
   [string]$XeditExe = "",
   [string]$PluginName = "",
   [string]$CollectionManifestPath = "",
+  [string]$ConfigPath = "",
   [string]$Problem = "",
   [string]$WorkflowKey = "",
   [int]$MaxMods = 500,
@@ -202,6 +203,7 @@ function Show-Actions {
   Write-Host "16. Collection manifest match"
   Write-Host "17. Workflow guide"
   Write-Host "18. Skyrim runtime logs"
+  Write-Host "19. Config file validator"
   Write-Host "Q. Quit"
 }
 
@@ -556,6 +558,20 @@ function Invoke-MenuAction {
       Invoke-Server (@("--runtime-logs", "--args-file", $argsFile, "--output-json", $out) + $common)
       Write-Host "Wrote Skyrim runtime log report: $out" -ForegroundColor Green
       Write-Host "This action did not edit logs, mods, configs, or Vortex." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("19", "config", "config-file", "validate-config") } {
+      $config = $ConfigPath
+      if (!$config) {
+        if ($script:StartedWithAction) {
+          throw "Pass -ConfigPath with -Action config."
+        }
+        $config = Read-Host "Paste the config file path"
+      }
+      $out = Join-Path $script:ReportDir "config-file-$stamp.json"
+      Invoke-Server (@("--tool", "config_file_report", "--path", $config, "--output-json", $out) + $common)
+      Write-Host "Wrote config file validation report: $out" -ForegroundColor Green
+      Write-Host "This action did not edit the config file." -ForegroundColor Green
       return
     }
     { $_ -in @("q", "quit", "exit") } {

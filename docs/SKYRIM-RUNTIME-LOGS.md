@@ -33,7 +33,9 @@ It looks for terms such as:
 - `Address Library`
 - SKSE/plugin/DLL load failures
 
-It returns short matching lines only, not whole logs.
+It returns short matching lines only, not whole logs. It also groups repeated
+lines into `issueGroups` so OpenClaw can start from likely root-cause patterns
+instead of reading log spam line by line.
 
 ## How It Finds The Mod
 
@@ -49,6 +51,14 @@ BrokenPatch.esp
 Then it indexes the Vortex Skyrim SE staging folder and tries to map those
 references back to staged mods. If a line looks config-related, it also returns
 `configCandidates` so OpenClaw can read the exact file before proposing a fix.
+Candidate configs are validated with `config_file_report` by default, so parse
+errors, empty files, placeholder values, loose key/value configs, and obvious
+`configured=false` style settings are surfaced directly. For the simple
+configured-flag cases, the report may include `suggestedTextPatches` with exact
+old/new text for a dry-run `apply_config_text_patch`.
+
+The report also includes `freshLogStatus`. If the newest log is older than the
+freshness window, reproduce the problem once and rerun the report.
 
 ## Safe Fix Flow
 
@@ -56,10 +66,11 @@ For a popup like "file was not configured properly":
 
 1. Launch Skyrim, reproduce the popup once, then quit.
 2. Ask OpenClaw to run `skyrim_runtime_log_report` with your plain description.
-3. If `configCandidates` appears, OpenClaw should run `read_text_file` on the candidate path.
-4. OpenClaw may propose `apply_config_text_patch` with `dry_run=true`.
-5. Apply only after you approve. The patch tool creates a backup by default.
-6. Open Vortex, deploy if the edited file is staged by a mod, then test.
+3. Start with `issueGroups` and `freshLogStatus`.
+4. If `configCandidates` appears, OpenClaw should inspect the candidate validation and then run `config_file_report` or `read_text_file` on the candidate path.
+5. If `suggestedTextPatches` exists and the setting makes sense, OpenClaw may propose `apply_config_text_patch` with `dry_run=true`.
+6. Apply only after you approve. The patch tool creates a backup by default.
+7. Open Vortex, deploy if the edited file is staged by a mod, then test.
 
 `apply_config_text_patch` replaces exact text only. It refuses unknown binary
 formats, refuses paths outside detected Vortex/Skyrim roots unless explicitly
@@ -81,6 +92,7 @@ py -3 .\server.py --runtime-logs --description "popup after loading a save" --ou
 Read a candidate config:
 
 ```powershell
+py -3 .\server.py --tool config_file_report --path "C:\path\to\config\popup.json"
 py -3 .\server.py --tool read_text_file --path "C:\path\to\config\popup.json"
 ```
 
@@ -100,7 +112,7 @@ py -3 .\server.py --tool apply_config_text_patch --path "C:\path\to\config\popup
 
 ```text
 Use skyrim_runtime_log_report for my popup problem: "file was not configured properly".
-Read any configCandidates with read_text_file.
+Read any configCandidates with config_file_report, then read_text_file if needed.
 If a small config fix is obvious, propose apply_config_text_patch as a dry run first.
 Do not edit plugins, delete mods, or disable anything without asking me.
 ```

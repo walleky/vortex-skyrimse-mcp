@@ -157,10 +157,13 @@ For "file was not configured properly", SKSE popups, crash popups, or any log-li
 skyrim_runtime_log_report with description=<plain user problem>
 ```
 
-Read `findings`, `severityCounts`, and `configCandidates`. If a config candidate
-exists, call `read_text_file` on that path. Only propose
-`apply_config_text_patch` with exact `old_text` and `new_text`, and start with
-`dry_run=true`. Do not patch plugin files, DLLs, scripts, or arbitrary folders.
+Read `issueGroups`, `freshLogStatus`, `severityCounts`, and `configCandidates`.
+If a config candidate exists, call `config_file_report` on that path, then
+`read_text_file` if the exact setting still is not obvious. If
+`suggestedTextPatches` appears, treat it as a draft dry-run patch, not as
+approval to write. Only propose `apply_config_text_patch` with exact `old_text`
+and `new_text`, and start with `dry_run=true`. Do not patch plugin files, DLLs,
+scripts, or arbitrary folders.
 
 For placed objects, ask for exact location, object name, and if possible the console-clicked FormID.
 
@@ -268,10 +271,13 @@ If `scan.timedOut=true`, explain that the result is partial. Increase `timeout_s
 
 `skyrim_runtime_log_report has configCandidates`
 
-Read the candidate config file first. If the needed fix is a tiny exact text
-replacement, propose `apply_config_text_patch` as a dry run. Applying requires
-explicit user approval and writes a backup by default. If the candidate is an
-ESP/ESM/ESL, DLL, PEX, BSA, or SWF, do not patch it with this tool.
+Run `config_file_report` on the candidate first. It may already show JSON/XML/INI/TOML parse errors, placeholders, or configured=false style values. If the needed fix is a tiny exact text replacement, propose `apply_config_text_patch` as a dry run. Applying requires explicit user approval and writes a backup by default. If the candidate is an ESP/ESM/ESL, DLL, PEX, BSA, or SWF, do not patch it with this tool.
+For simple configured flags, `suggestedTextPatches` can provide the exact
+old/new text to dry-run. Still explain what will change before applying.
+
+`skyrim_runtime_log_report says logs are stale`
+
+Tell the user to reproduce the popup/error once, quit Skyrim, and rerun the same report. Stale logs are useful history, not proof of the current issue.
 
 `skyrim_runtime_log_report shows Address Library, DLL, fatal, or crash findings`
 

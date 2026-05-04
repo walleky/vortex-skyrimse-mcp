@@ -63,10 +63,10 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - xEdit/SSEEdit target hints: `xedit_diagnostics_report`, `xedit_candidates`, `form_id_load_order_hint`.
 - collection diagnostics: `vortex_collection_report`, `collection_local_match_report`, `extract_manifest_mod_refs`.
 - in-game issue triage: `in_game_issue_report`, `scan_mod_for_issue`, `extract_plugin_strings`.
-- runtime log diagnosis: `skyrim_runtime_log_report`, `collect_skyrim_runtime_log_files`, `match_runtime_references_to_staged_files`, `runtime_config_candidates`.
+- runtime log diagnosis: `skyrim_runtime_log_report`, `collect_skyrim_runtime_log_files`, `runtime_issue_groups`, `match_runtime_references_to_staged_files`, `runtime_config_candidates`.
 - performance shaping: `apply_performance_defaults`, `compact_issue_report`, `compact_play_report`.
 - plugin/load-order checks: `parse_plugin_list`, `plugin_report`, `plugin_masters`.
-- INI/config checks and writes: `ini_report`, `apply_ini_fixes`, `read_text_file`, `apply_config_text_patch`.
+- INI/config checks and writes: `ini_report`, `config_file_report`, `config_patch_suggestions`, `apply_ini_fixes`, `read_text_file`, `apply_config_text_patch`.
 - setup validation: `validate_setup`.
 - workflow routing: `workflow_guide`, `workflow_catalog`, `workflow_score`.
 - profile tools: `vortex_profile_report`, `vortex_profile_mods`, `vortex_compare_profiles`, `vortex_profile_deployment_report`, `vortex_profile_backup`, `vortex_profile_restore_plan`, `vortex_clone_profile`, `vortex_set_profile_mods`.

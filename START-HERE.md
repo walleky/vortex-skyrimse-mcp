@@ -146,7 +146,7 @@ For annoying popups, just say "popup", "notification", "warning", or similar in 
 If the popup says a file was not configured properly, reproduce it once and ask:
 
 ```text
-Use skyrim_runtime_log_report for this popup: file was not configured properly. Read any configCandidates and propose only a dry-run apply_config_text_patch if the fix is exact. Do not edit plugins or disable mods.
+Use skyrim_runtime_log_report for this popup: file was not configured properly. Start with issueGroups and freshLogStatus. Validate any configCandidates with config_file_report, check suggestedTextPatches if present, and propose only a dry-run apply_config_text_patch if the fix is exact. Do not edit plugins or disable mods.
 ```
 
 No-OpenClaw command:
