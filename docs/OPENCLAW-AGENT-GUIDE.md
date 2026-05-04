@@ -10,6 +10,12 @@ Start read-only. Do not apply INI fixes or Vortex profile writes unless the user
 
 For a confused or frustrated user, first call `safe_session_report`. It gives one no-change Markdown/JSON baseline with setup validation, optional profile backup, modded play health, optional in-game issue triage, and logs.
 
+If you are a slower model, or the user's collection is huge, call
+`safe_session_report` with `performance_mode=slow_model`. Read `summary`,
+`findings`, and `nextActions` before opening nested sections. Only ask for
+deeper scans after `diagnosticQuality` or `nextBestInputs` says more evidence is
+needed.
+
 For a narrower setup-only request, first call `validate_setup`. If it returns blockers, explain those blockers before running write-capable tools.
 
 When the user says mods are not working, first decide which layer is failing:
@@ -30,6 +36,12 @@ For a broad first pass:
 
 ```text
 safe_session_report
+```
+
+For a broad first pass on a slower model:
+
+```text
+safe_session_report with performance_mode=slow_model
 ```
 
 For a broad first pass without writing report files:
@@ -156,6 +168,20 @@ Read `diagnosticQuality` and `nextBestInputs` before asking the user for more in
 If `scan.timedOut=true`, explain that the result is partial. Increase `timeout_seconds`, lower `max_mods`, or ask for stronger evidence before blaming a mod.
 
 `safe_session_report` has `dryRunOnly=true`. It may write report files and a profile backup, but it should never deploy, disable, delete, sort, or edit mods.
+
+## Slower Model Tips
+
+Prefer these calls:
+
+```text
+safe_session_report with performance_mode=slow_model
+in_game_issue_report with response_mode=compact
+bug_report_bundle with performance_mode=slow_model
+```
+
+Avoid starting with collection-wide hash scans. Avoid asking for every nested
+section in one answer. Summarize the top finding, then inspect one section or
+candidate at a time.
 
 ## Safe Write Rules
 

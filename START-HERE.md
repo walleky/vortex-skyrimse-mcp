@@ -70,6 +70,12 @@ Start read-only:
 Use safe_session_report to write a no-change first report with setup validation, profile backup if possible, modded play health, and logs. Summarize the top findings and do not apply changes.
 ```
 
+If OpenClaw is using a slower model or the collection is huge:
+
+```text
+Use safe_session_report with performance_mode=slow_model. Read the summary, findings, and nextActions first. Do not apply changes.
+```
+
 Or start with only setup:
 
 ```text

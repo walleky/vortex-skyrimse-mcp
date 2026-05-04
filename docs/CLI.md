@@ -23,6 +23,12 @@ Write one safe first-response report:
 py -3 .\server.py --safe-session
 ```
 
+Write a smaller report for a slower OpenClaw model:
+
+```powershell
+py -3 .\server.py --safe-session --performance-mode slow_model
+```
+
 Generate the collection knowledge report:
 
 ```powershell
@@ -66,6 +72,12 @@ If the first result is weak, use the slower deep scan:
 
 ```powershell
 py -3 .\server.py --tool in_game_issue_report --description "annoying popup after loading a save" --scan-mode deep
+```
+
+Return compact JSON for a slower model:
+
+```powershell
+py -3 .\server.py --tool in_game_issue_report --description "annoying popup after loading a save" --response-mode compact
 ```
 
 Or double-click:
@@ -166,4 +178,9 @@ Profile write tools create backups before `--apply` by default. Use `--no-backup
 
 `in_game_issue_report` is read-only. It searches for likely cause candidates but does not edit plugins, delete objects, or disable mods.
 
-By default it scans mod names, plugin names, plugin strings, and readmes. Add `--deep-scan-files` only when you need slower file-path/config scanning.
+By default it uses the balanced issue scan: mod names, plugin names, readmes,
+plugin strings, important file paths, and limited config/text files. Add
+`--deep-scan-files` only when you need a slower second pass.
+
+Use `--performance-mode slow_model` when an OpenClaw model is slow or confused
+by long JSON. Use `--performance-mode fast` only for a rough first pass.

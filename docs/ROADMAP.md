@@ -10,8 +10,9 @@ These are useful next steps, ordered by value and risk.
 4. Add a read-only xEdit/SSEEdit integration for cell, reference, quest, and message lookup.
 5. Add a tiny local HTML report viewer for generated JSON/Markdown outputs.
 6. Add Nexus/Vortex collection manifest detection if stable local collection metadata is available.
-7. Add a synthetic Vortex profile fixture so profile/deployment behavior can be tested without a real Vortex install.
-8. Add a profile restore apply helper in the local menu only after the preview UX is clear enough for nontechnical users.
+7. Add an optional local scan cache for mod summaries so repeated large-collection triage can reuse unchanged file metadata.
+8. Add a synthetic Vortex profile fixture so profile/deployment behavior can be tested without a real Vortex install.
+9. Add a profile restore apply helper in the local menu only after the preview UX is clear enough for nontechnical users.
 
 ## What Not To Automate Yet
 
@@ -41,6 +42,7 @@ Those actions can break saves. Keep them as reports or dry-run plans until the e
 
 - Teach OpenClaw to call `bug_report_bundle` automatically after any tool exception.
 - Teach OpenClaw to call `safe_session_report` as the default first response for broad "something is broken" requests.
+- Teach slower OpenClaw models to use `performance_mode=slow_model` and read summary/findings before nested sections.
 - Teach OpenClaw to call `validate_setup` before diagnosis and `vortex_profile_backup` before profile experiments.
 - Teach OpenClaw to call `mod_knowledge_report` before suggesting collection cleanup.
 - Teach OpenClaw to call `in_game_issue_report` when the user asks about a visible object, location-specific problem, or popup.

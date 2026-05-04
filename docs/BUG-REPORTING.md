@@ -20,6 +20,10 @@ If a maintainer needs the full attachable bundle:
 Use the vortex-skyrimse MCP to run log_status and bug_report_bundle with zip_output=true and redact_user_paths=true. Then summarize the highest-risk findings and tell me where the zip was written. Do not apply changes.
 ```
 
+For a slower OpenClaw model, add `performance_mode=slow_model` to either
+`safe_session_report` or `bug_report_bundle`. The bundle still keeps important
+diagnostic sections, but compact issue/play details are easier to read.
+
 Or run MCP Doctor:
 
 ```powershell
@@ -57,7 +61,8 @@ Useful arguments:
   "include_vortex_profiles": true,
   "include_vortex_deployment": true,
   "include_play_report": true,
-  "include_conflicts": false
+  "include_conflicts": false,
+  "performance_mode": "slow_model"
 }
 ```
 

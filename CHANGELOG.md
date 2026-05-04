@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.13
+
+- Adds `performance_mode` for slower OpenClaw models: `slow_model`, `fast`, `normal`, and `thorough`.
+- Adds `response_mode=compact` for smaller in-game issue candidates and trimmed safe-session/bug-bundle sections.
+- Wires performance options into MCP tool schemas and direct CLI flags.
+- Documents slow-model usage so agents start with summaries and only deepen scans when needed.
+- Adds fixture coverage for compact issue output, slow-model safe sessions, and CLI performance flags.
+
 ## v0.2.12
 
 - Makes the default in-game issue scan more comprehensive with a new balanced first pass.

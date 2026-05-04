@@ -36,7 +36,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.12"
+SERVER_VERSION = "0.2.13"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -1650,9 +1650,69 @@ POPUP_SUPPORT_TERMS = {
 
 
 ISSUE_SCAN_MODES = {"quick", "balanced", "deep"}
+PERFORMANCE_MODES = {"normal", "slow_model", "fast", "thorough"}
+RESPONSE_MODES = {"standard", "compact", "brief", "slow_model"}
+COMPACT_RESPONSE_MODES = {"compact", "brief", "slow_model"}
 ISSUE_TEXT_SUFFIXES = {".txt", ".md", ".ini", ".json", ".xml", ".toml"}
 PATH_SCAN_KINDS = {"interface", "script", "skse_plugin", "config", "fomod", "plugin", "animation_tool"}
 WEAK_POPUP_PATH_TERMS = {"after", "loading", "save"}
+
+
+def normalized_performance_mode(args: Dict[str, Any]) -> str:
+    raw = str(args.get("performance_mode") or args.get("performanceMode") or "normal").strip().lower().replace("-", "_")
+    return raw if raw in PERFORMANCE_MODES else "normal"
+
+
+def normalized_response_mode(args: Dict[str, Any]) -> str:
+    raw = str(args.get("response_mode") or args.get("responseMode") or "").strip().lower().replace("-", "_")
+    if raw in COMPACT_RESPONSE_MODES:
+        return "compact"
+    if raw in RESPONSE_MODES:
+        return raw
+    return "compact" if normalized_performance_mode(args) in {"slow_model", "fast"} else "standard"
+
+
+def compact_response_requested(args: Dict[str, Any]) -> bool:
+    return normalized_response_mode(args) in COMPACT_RESPONSE_MODES
+
+
+def apply_performance_defaults(args: Dict[str, Any]) -> Dict[str, Any]:
+    mode = normalized_performance_mode(args)
+    tuned = dict(args)
+    if mode == "slow_model":
+        if normalized_response_mode(tuned) == "standard":
+            tuned["response_mode"] = "compact"
+        else:
+            tuned.setdefault("response_mode", "compact")
+        tuned.setdefault("scan_mode", "balanced")
+        tuned.setdefault("max_candidates", 5)
+        tuned.setdefault("max_evidence_per_mod", 3)
+        tuned.setdefault("balanced_text_files_per_mod", 4)
+        tuned.setdefault("max_log_files", 6)
+        tuned.setdefault("timeout_seconds", 45)
+        tuned.setdefault("include_conflicts", False)
+        tuned.setdefault("include_profile_backup", False)
+    elif mode == "fast":
+        if normalized_response_mode(tuned) == "standard":
+            tuned["response_mode"] = "compact"
+        else:
+            tuned.setdefault("response_mode", "compact")
+        tuned.setdefault("scan_mode", "quick")
+        tuned.setdefault("max_candidates", 3)
+        tuned.setdefault("max_evidence_per_mod", 2)
+        tuned.setdefault("max_mods", 250)
+        tuned.setdefault("max_log_files", 4)
+        tuned.setdefault("timeout_seconds", 25)
+        tuned.setdefault("include_conflicts", False)
+        tuned.setdefault("include_profile_backup", False)
+    elif mode == "thorough":
+        tuned.setdefault("response_mode", "standard")
+        tuned.setdefault("scan_mode", "balanced")
+        tuned.setdefault("max_candidates", 20)
+        tuned.setdefault("max_evidence_per_mod", 10)
+        tuned.setdefault("balanced_text_files_per_mod", 12)
+        tuned.setdefault("timeout_seconds", 90)
+    return tuned
 
 
 def tokenize_issue_terms(*values: Optional[str]) -> List[str]:
@@ -2091,7 +2151,96 @@ def issue_next_best_inputs(issue_kind: str, popup_text: str, form_id: str, candi
     return inputs
 
 
+def compact_preview(text: Any, limit: int = 140) -> str:
+    preview = re.sub(r"\s+", " ", str(text or "")).strip()
+    return preview[: limit - 3] + "..." if len(preview) > limit else preview
+
+
+def compact_evidence_items(items: Any, max_items: int = 3) -> List[Dict[str, Any]]:
+    compacted: List[Dict[str, Any]] = []
+    if not isinstance(items, list):
+        return compacted
+    for item in items[:max_items]:
+        if not isinstance(item, dict):
+            continue
+        compacted.append(
+            {
+                "source": item.get("source"),
+                "matchedTerms": list(item.get("matchedTerms", []))[:8]
+                if isinstance(item.get("matchedTerms"), list)
+                else item.get("matchedTerms"),
+                "preview": compact_preview(item.get("preview")),
+            }
+        )
+    return compacted
+
+
+def compact_candidate(candidate: Dict[str, Any], max_evidence: int = 3) -> Dict[str, Any]:
+    return {
+        "mod": candidate.get("mod"),
+        "confidence": candidate.get("confidence"),
+        "score": candidate.get("score"),
+        "vortexModId": candidate.get("vortexModId"),
+        "enabledInSelectedProfile": candidate.get("enabledInSelectedProfile"),
+        "role": candidate.get("role"),
+        "categories": list(candidate.get("categories", []))[:5] if isinstance(candidate.get("categories"), list) else candidate.get("categories"),
+        "removalRisk": candidate.get("removalRisk"),
+        "matchedTerms": list(candidate.get("matchedTerms", []))[:12]
+        if isinstance(candidate.get("matchedTerms"), list)
+        else candidate.get("matchedTerms"),
+        "likelyReason": candidate.get("likelyReason"),
+        "plugins": list(candidate.get("plugins", []))[:5] if isinstance(candidate.get("plugins"), list) else candidate.get("plugins"),
+        "evidence": compact_evidence_items(candidate.get("evidence"), max_evidence),
+        "evidenceCount": len(candidate.get("evidence", [])) if isinstance(candidate.get("evidence"), list) else 0,
+        "scanMode": candidate.get("scanMode"),
+        "popupEvidenceMode": candidate.get("popupEvidenceMode"),
+        "scannedPathCount": candidate.get("scannedPathCount"),
+        "balancedTextFileCount": candidate.get("balancedTextFileCount"),
+    }
+
+
+def compact_issue_report(report: Dict[str, Any], args: Dict[str, Any]) -> Dict[str, Any]:
+    max_candidates = max(0, min(int(args.get("max_candidates", 5)), 8))
+    max_evidence = max(0, min(int(args.get("max_evidence_per_mod", 3)), 4))
+    candidates = report.get("candidates", []) if isinstance(report.get("candidates"), list) else []
+    compacted = {
+        "issue": report.get("issue"),
+        "formIdHint": report.get("formIdHint"),
+        "searchedTerms": report.get("searchedTerms"),
+        "profileState": report.get("profileState"),
+        "scannedModCount": report.get("scannedModCount"),
+        "availableModCount": report.get("availableModCount"),
+        "scan": report.get("scan"),
+        "diagnosticQuality": report.get("diagnosticQuality"),
+        "nextBestInputs": report.get("nextBestInputs"),
+        "candidateCount": report.get("candidateCount"),
+        "candidates": [compact_candidate(item, max_evidence) for item in candidates[:max_candidates] if isinstance(item, dict)],
+        "truncated": bool(report.get("truncated")) or len(candidates) > max_candidates,
+        "recommendedActions": list(report.get("recommendedActions", []))[:8]
+        if isinstance(report.get("recommendedActions"), list)
+        else report.get("recommendedActions"),
+        "notes": list(report.get("notes", []))[:4] if isinstance(report.get("notes"), list) else report.get("notes"),
+        "performanceMode": normalized_performance_mode(args),
+        "responseMode": "compact",
+    }
+    return compacted
+
+
+def compact_play_report(report: Dict[str, Any], max_findings: int = 8) -> Dict[str, Any]:
+    findings = report.get("findings", []) if isinstance(report.get("findings"), list) else []
+    return {
+        "summary": report.get("summary"),
+        "findings": findings[:max_findings],
+        "recommendedActions": list(report.get("recommendedActions", []))[:max_findings]
+        if isinstance(report.get("recommendedActions"), list)
+        else report.get("recommendedActions"),
+        "notes": report.get("notes"),
+        "responseMode": "compact",
+    }
+
+
 def in_game_issue_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    args = apply_performance_defaults(args)
     _vortex_appdata, _skyrim_dir, staging_dir, _my_games = get_context_paths(args)
     if not staging_dir or not staging_dir.exists():
         raise ToolError("Vortex staging folder was not found. Pass staging_dir explicitly.")
@@ -2189,7 +2338,7 @@ def in_game_issue_report(args: Dict[str, Any]) -> Dict[str, Any]:
         recommended_actions.insert(0, "No candidates were found in the first scan. Rerun with scan_mode=deep or deep_scan_files=true for a slower pass.")
     diagnostic_quality = issue_diagnostic_quality(issue_kind, candidates, popup_text, form_id, timed_out)
 
-    return {
+    result = {
         "issue": {
             "kind": issue_kind,
             "description": description,
@@ -2245,6 +2394,9 @@ def in_game_issue_report(args: Dict[str, Any]) -> Dict[str, Any]:
             "For popups, saying 'popup', 'notification', 'warning', 'MCM message', or similar is enough for the first scan; exact text is optional evidence for a stronger second pass.",
         ],
     }
+    if compact_response_requested(args):
+        return compact_issue_report(result, args)
+    return result
 
 
 def knowledge_removal_candidates(
@@ -3952,6 +4104,9 @@ def safe_session_markdown(session: Dict[str, Any]) -> str:
     for key in ("highestSeverity", "findingCount", "ready", "backupPath"):
         if key in summary:
             lines.append(f"- {key}: {summary.get(key)}")
+    for key in ("performanceMode", "responseMode"):
+        if key in summary:
+            lines.append(f"- {key}: {summary.get(key)}")
     section_status = summary.get("sectionStatus")
     if isinstance(section_status, dict) and section_status:
         status_text = ", ".join(f"{key}={value}" for key, value in section_status.items())
@@ -4035,6 +4190,7 @@ def safe_session_markdown(session: Dict[str, Any]) -> str:
 
 
 def safe_session_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    args = apply_performance_defaults(args)
     markdown_path = safe_session_default_path(args)
     json_path = expand_path(args.get("session_json_path"))
     if not json_path:
@@ -4057,6 +4213,8 @@ def safe_session_report(args: Dict[str, Any]) -> Dict[str, Any]:
     if include_play_report:
         play_args = {**args, "include_conflicts": bool(args.get("include_conflicts", False))}
         collect_section(sections, "skyrimModdedPlay", skyrim_modded_play_report, play_args)
+        if compact_response_requested(args) and isinstance(sections.get("skyrimModdedPlay"), dict):
+            sections["skyrimModdedPlay"] = compact_play_report(sections["skyrimModdedPlay"])
     if any(args.get(key) for key in ("description", "location", "object", "form_id", "cell", "base_object", "popup_text", "extra_terms", "issue_kind")):
         collect_section(sections, "inGameIssue", in_game_issue_report, args)
     if include_logs:
@@ -4092,6 +4250,8 @@ def safe_session_report(args: Dict[str, Any]) -> Dict[str, Any]:
             "findingCount": len(findings),
             "backupPath": backup.get("output_path") if isinstance(backup, dict) else None,
             "sectionStatus": section_status_map(sections),
+            "performanceMode": normalized_performance_mode(args),
+            "responseMode": normalized_response_mode(args),
         },
         "findings": findings,
         "nextActions": next_actions,
@@ -4099,6 +4259,7 @@ def safe_session_report(args: Dict[str, Any]) -> Dict[str, Any]:
         "notes": [
             "This is a no-change safe session report.",
             "Profile backup may fail if Vortex.exe is not detected; pass vortex_exe or back up in Vortex.",
+            "Use performance_mode=slow_model for smaller outputs on weaker OpenClaw models.",
             "Use deep_scan_files=true for a slower second pass on weak in-game issue results.",
         ],
     }
@@ -4190,6 +4351,7 @@ def log_status(args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def bug_report_bundle(args: Dict[str, Any]) -> Dict[str, Any]:
+    args = apply_performance_defaults(args)
     output_path = expand_path(args.get("output_path"))
     if not output_path:
         docs = default_documents() or Path.cwd()
@@ -4214,6 +4376,8 @@ def bug_report_bundle(args: Dict[str, Any]) -> Dict[str, Any]:
         "version": SERVER_VERSION,
         "output_path": str(output_path),
         "log_dir": str(log_dir),
+        "performanceMode": normalized_performance_mode(args),
+        "responseMode": normalized_response_mode(args),
         "privacyNote": "This bundle may include local Windows paths, mod names, plugin names, and recent MCP logs. Review before posting publicly.",
         "redactedUserPaths": redact_user_paths,
         "redactionNote": "User profile, AppData, and LocalAppData paths are replaced when redact_user_paths=true.",
@@ -4254,6 +4418,8 @@ def bug_report_bundle(args: Dict[str, Any]) -> Dict[str, Any]:
         try:
             play_args = {**args, "include_conflicts": include_conflicts}
             bundle["skyrimModdedPlay"] = skyrim_modded_play_report(play_args)
+            if compact_response_requested(args) and isinstance(bundle.get("skyrimModdedPlay"), dict):
+                bundle["skyrimModdedPlay"] = compact_play_report(bundle["skyrimModdedPlay"])
         except Exception as exc:
             bundle["skyrimModdedPlayError"] = str(exc)
 
@@ -4488,6 +4654,8 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "popup_text": {"type": "string"},
                 "extra_terms": {"type": "string"},
                 "issue_kind": {"type": "string", "enum": ["placed_object", "popup", "general"]},
+                "performance_mode": {"type": "string", "enum": ["normal", "slow_model", "fast", "thorough"], "default": "normal"},
+                "response_mode": {"type": "string", "enum": ["standard", "compact"], "default": "standard"},
                 "vortex_appdata": {"type": "string"},
                 "vortex_exe": {"type": "string"},
                 "game_id": {"type": "string", "default": GAME_ID},
@@ -4544,6 +4712,8 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "popup_text": {"type": "string"},
                 "extra_terms": {"type": "string"},
                 "issue_kind": {"type": "string", "enum": ["placed_object", "popup", "general"]},
+                "performance_mode": {"type": "string", "enum": ["normal", "slow_model", "fast", "thorough"], "default": "normal"},
+                "response_mode": {"type": "string", "enum": ["standard", "compact"], "default": "standard"},
                 "scan_mode": {"type": "string", "enum": ["quick", "balanced", "deep"], "default": "balanced"},
                 "balanced_text_files_per_mod": {"type": "integer", "default": 8},
                 "deep_scan_files": {"type": "boolean", "default": False},
@@ -4837,6 +5007,8 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "popup_text": {"type": "string"},
                 "extra_terms": {"type": "string"},
                 "issue_kind": {"type": "string", "enum": ["placed_object", "popup", "general"]},
+                "performance_mode": {"type": "string", "enum": ["normal", "slow_model", "fast", "thorough"], "default": "normal"},
+                "response_mode": {"type": "string", "enum": ["standard", "compact"], "default": "standard"},
                 "max_text_bytes": {"type": "integer", "default": 12000},
                 "max_plugin_bytes": {"type": "integer", "default": 5000000},
                 "max_plugin_strings": {"type": "integer", "default": 2500},
@@ -5080,6 +5252,8 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         "popup_text": parsed.popup_text,
         "extra_terms": parsed.extra_terms,
         "issue_kind": parsed.issue_kind,
+        "performance_mode": parsed.performance_mode,
+        "response_mode": parsed.response_mode,
         "scan_mode": parsed.scan_mode,
     }
     for key, value in common.items():
@@ -5203,6 +5377,8 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--popup-text", help="Exact popup/notification text for in_game_issue_report.")
     parser.add_argument("--extra-terms", help="Extra search terms for in_game_issue_report.")
     parser.add_argument("--issue-kind", choices=["placed_object", "popup", "general"], help="Issue type for in_game_issue_report.")
+    parser.add_argument("--performance-mode", choices=["normal", "slow_model", "fast", "thorough"], help="Tune work and output size. Use slow_model for smaller OpenClaw-friendly reports.")
+    parser.add_argument("--response-mode", choices=["standard", "compact"], help="Use compact to return fewer nested details for slower AI models.")
     parser.add_argument("--scan-mode", choices=["quick", "balanced", "deep"], help="Issue scan mode. balanced is the default first scan.")
     parser.add_argument("--max-mods", type=int, help="Maximum mods to scan for supported tools.")
     parser.add_argument("--max-log-files", type=int, help="Maximum recent log files for support reports.")

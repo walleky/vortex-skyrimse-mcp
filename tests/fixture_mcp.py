@@ -158,6 +158,23 @@ def main() -> int:
         assert natural_popup["candidates"][0]["scannedPathCount"] > 0, natural_popup
         assert any(item["source"].startswith("file path:") for item in natural_popup["candidates"][0]["evidence"]), natural_popup
 
+        compact_popup = server.in_game_issue_report(
+            {
+                **base_args,
+                "description": "annoying popup after loading a save",
+                "response_mode": "compact",
+                "max_candidates": 2,
+                "include_profile_state": False,
+            }
+        )
+        assert compact_popup["responseMode"] == "compact", compact_popup
+        assert compact_popup["candidateCount"] >= 1, compact_popup
+        assert len(compact_popup["candidates"]) <= 2, compact_popup
+        assert compact_popup["candidates"][0]["mod"] == "Popup UI Mod", compact_popup
+        assert "path" not in compact_popup["candidates"][0], compact_popup
+        assert len(compact_popup["candidates"][0]["evidence"]) <= 3, compact_popup
+        assert compact_popup["performanceMode"] == "normal", compact_popup
+
         popup_kind_only = server.in_game_issue_report(
             {
                 **base_args,
@@ -200,6 +217,29 @@ def main() -> int:
         assert "inGameIssue" in safe["sections"], safe
         assert safe_payload["dryRunOnly"] is True, safe_payload
 
+        slow_safe_md = root / "safe-session-slow.md"
+        slow_safe_json = root / "safe-session-slow.json"
+        slow_safe = server.safe_session_report(
+            {
+                **base_args,
+                "output_path": str(slow_safe_md),
+                "session_json_path": str(slow_safe_json),
+                "performance_mode": "slow_model",
+                "include_play_report": False,
+                "include_logs": False,
+                "description": "annoying popup after loading a save",
+                "include_profile_state": False,
+                "redact_user_paths": True,
+            }
+        )
+        slow_payload = json.loads(slow_safe_json.read_text(encoding="utf-8"))
+        assert slow_safe["summary"]["performanceMode"] == "slow_model", slow_safe
+        assert slow_safe["summary"]["responseMode"] == "compact", slow_safe
+        assert "profileBackup" not in slow_payload["sections"], slow_payload
+        assert "inGameIssue" in slow_payload["sections"], slow_payload
+        assert slow_payload["sections"]["inGameIssue"]["responseMode"] == "compact", slow_payload
+        assert "path" not in slow_payload["sections"]["inGameIssue"]["candidates"][0], slow_payload
+
         cli_safe_md = root / "safe-session-cli.md"
         cli_safe_json = root / "safe-session-cli.json"
         cli_safe_result = subprocess.run(
@@ -227,6 +267,8 @@ def main() -> int:
                 "Whiterun Bannered Mare",
                 "--object",
                 "bed",
+                "--performance-mode",
+                "slow_model",
                 "--no-profile-backup",
                 "--no-play-report",
             ],
@@ -238,6 +280,7 @@ def main() -> int:
         assert cli_safe_md.exists(), cli_safe_payload
         assert cli_safe_json.exists(), cli_safe_payload
         assert "inGameIssue" in cli_safe_payload["sections"], cli_safe_payload
+        assert cli_safe_payload["summary"]["responseMode"] == "compact", cli_safe_payload
 
         knowledge_path = root / "knowledge.md"
         knowledge = server.mod_knowledge_report(

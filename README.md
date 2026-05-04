@@ -37,6 +37,8 @@ an MCP client.
   profile.
 - Write a no-change safe session report that combines setup validation, optional
   profile backup, play health, in-game issue triage, and log status.
+- Use `performance_mode=slow_model` or `response_mode=compact` so slower
+  OpenClaw models get smaller, easier-to-read diagnostics.
 - Check whether plugins from the selected Vortex profile appear in Skyrim
   `Data` and are enabled in `plugins.txt`.
 - Produce a one-shot modded play report that combines environment, SKSE, audio
@@ -55,6 +57,7 @@ an MCP client.
 - [docs/CLI.md](docs/CLI.md): direct command-line mode without an MCP client.
 - [docs/LOCAL-MENU.md](docs/LOCAL-MENU.md): local no-hassle menu for report generation.
 - [docs/SAFE-SESSION.md](docs/SAFE-SESSION.md): one safe first report for OpenClaw or local troubleshooting.
+- [docs/PERFORMANCE.md](docs/PERFORMANCE.md): compact outputs and slow-model guidance.
 - [docs/SAFETY-UNDO.md](docs/SAFETY-UNDO.md): backup, restore-preview, and dry-run rules.
 - [docs/IN-GAME-DIAGNOSIS.md](docs/IN-GAME-DIAGNOSIS.md): how to ask OpenClaw about misplaced objects, popups, FormIDs, and future live Skyrim bridging.
 - [docs/OPENCLAW-AGENT-GUIDE.md](docs/OPENCLAW-AGENT-GUIDE.md): how an OpenClaw agent should use the tools safely.
@@ -212,6 +215,12 @@ For a single no-hassle diagnosis:
 
 ```text
 Use skyrim_modded_play_report to tell me why my modded Skyrim SE setup is not launching with the expected Vortex profile. Do not apply changes.
+```
+
+For slower OpenClaw models or very large collections:
+
+```text
+Use safe_session_report with performance_mode=slow_model. Start from the summary, findings, and nextActions. Do not apply changes.
 ```
 
 For a large collection map:

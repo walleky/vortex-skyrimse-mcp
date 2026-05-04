@@ -65,6 +65,7 @@ def main() -> int:
     )
     listed_json = json.loads(listed.stdout)
     listed_names = [tool["name"] for tool in listed_json["tools"]]
+    listed_by_name = {tool["name"]: tool for tool in listed_json["tools"]}
     assert "detect_environment" in listed_names, listed_names
     assert "validate_setup" in listed_names, listed_names
     assert "mod_knowledge_report" in listed_names, listed_names
@@ -72,6 +73,8 @@ def main() -> int:
     assert "safe_session_report" in listed_names, listed_names
     assert "vortex_profile_backup" in listed_names, listed_names
     assert "vortex_profile_restore_plan" in listed_names, listed_names
+    assert "performance_mode" in listed_by_name["in_game_issue_report"]["inputSchema"]["properties"], listed_by_name
+    assert "response_mode" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
 
     direct = subprocess.run(
         [sys.executable, str(server), "--tool", "detect_environment"],

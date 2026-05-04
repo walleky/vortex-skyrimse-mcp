@@ -47,6 +47,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - Vortex CLI helpers: `run_vortex_cli`, `vortex_state_get`, `vortex_state_set`.
 - filesystem and mod inspection: `safe_walk`, `mod_summary`, `inventory_mods`, `analyze_conflicts`, `redundant_mod_report`, `mod_knowledge_report`.
 - in-game issue triage: `in_game_issue_report`, `scan_mod_for_issue`, `extract_plugin_strings`.
+- performance shaping: `apply_performance_defaults`, `compact_issue_report`, `compact_play_report`.
 - plugin/load-order checks: `parse_plugin_list`, `plugin_report`, `plugin_masters`.
 - INI checks and writes: `ini_report`, `apply_ini_fixes`.
 - setup validation: `validate_setup`.

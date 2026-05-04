@@ -65,6 +65,12 @@ If the report says the evidence is weak, rerun the narrower tool with
 py -3 .\server.py --safe-session
 ```
 
+For slower OpenClaw models or very large collections:
+
+```powershell
+py -3 .\server.py --safe-session --performance-mode slow_model
+```
+
 With exact issue evidence:
 
 ```powershell
@@ -81,6 +87,12 @@ py -3 .\server.py --safe-session --no-profile-backup
 
 ```text
 Use safe_session_report to write a no-change first report with setup validation, profile backup if possible, modded play health, logs, and this issue if relevant: <describe the problem>. Summarize the top findings and do not apply changes.
+```
+
+Slow-model prompt:
+
+```text
+Use safe_session_report with performance_mode=slow_model. Read summary, findings, and nextActions first. Do not apply changes.
 ```
 
 ## How OpenClaw Should Read It
