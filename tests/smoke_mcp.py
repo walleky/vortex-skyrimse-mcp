@@ -39,6 +39,26 @@ def main() -> int:
     mcp_server.add_finding(findings, "critical", "first", "first", "first")
     assert mcp_server.sort_findings(findings)[0]["code"] == "first"
 
+    listed = subprocess.run(
+        [sys.executable, str(server), "--list-tools"],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    listed_json = json.loads(listed.stdout)
+    listed_names = [tool["name"] for tool in listed_json["tools"]]
+    assert "detect_environment" in listed_names, listed_names
+    assert "mod_knowledge_report" in listed_names, listed_names
+
+    direct = subprocess.run(
+        [sys.executable, str(server), "--tool", "detect_environment"],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    direct_json = json.loads(direct.stdout)
+    assert "issues" in direct_json, direct_json
+
     proc = subprocess.Popen(
         [sys.executable, str(server)],
         stdin=subprocess.PIPE,

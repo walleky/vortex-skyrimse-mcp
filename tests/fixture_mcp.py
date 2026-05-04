@@ -2,6 +2,7 @@
 import json
 import os
 import shutil
+import subprocess
 import struct
 import sys
 import zipfile
@@ -120,6 +121,32 @@ def main() -> int:
         assert "Readme Pack" in knowledge_text
         assert str(root) not in knowledge_text
         assert knowledge["removalCandidateCount"] >= 1, knowledge
+
+        cli_knowledge_path = root / "knowledge-cli.md"
+        cli_result = subprocess.run(
+            [
+                sys.executable,
+                str(repo / "server.py"),
+                "--mod-knowledge",
+                "--output-path",
+                str(cli_knowledge_path),
+                "--staging-dir",
+                str(staging),
+                "--skyrim-dir",
+                str(skyrim),
+                "--local-appdata",
+                str(local_appdata),
+                "--no-profile-state",
+                "--max-mods",
+                "10",
+            ],
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        cli_payload = json.loads(cli_result.stdout)
+        assert cli_payload["modCount"] == 3, cli_payload
+        assert cli_knowledge_path.exists(), cli_payload
 
         bundle_path = root / "bundle.json"
         bundle = server.bug_report_bundle(

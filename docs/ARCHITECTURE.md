@@ -1,6 +1,6 @@
 # Architecture
 
-This repo is intentionally small: one dependency-free Python MCP server, one PowerShell installer, one PowerShell doctor, and tests.
+This repo is intentionally small: one dependency-free Python MCP/CLI server, PowerShell helpers, and tests.
 
 ## Runtime Shape
 
@@ -12,16 +12,24 @@ OpenClaw or MCP client
       -> inspect staging folders, plugins, INIs, profiles, conflicts
       -> optionally call Vortex.exe --get/--set for profile state
       -> return structured JSON to the MCP client
+
+PowerShell or cmd
+  -> server.py --tool NAME / --mod-knowledge
+      -> same tool functions
+      -> JSON result on stdout and optional report files on disk
 ```
 
 The server must never write normal logs to stdout because stdout is the MCP protocol stream. Logs go to files, and unexpected diagnostics go to stderr.
 
 ## Main Files
 
-- `server.py`: MCP server, tool implementations, logging, and stdio loop.
+- `server.py`: MCP server, direct CLI, tool implementations, logging, and stdio loop.
+- `server.py --tool ...`: direct CLI mode for no-MCP workflows.
 - `install_windows.ps1`: finds Python and prints a ready-to-copy MCP config snippet.
 - `mcp_doctor.ps1`: runs self-tests, smoke tests, config generation, optional OpenClaw registration, and writes a doctor transcript log.
 - `MCP-Doctor.cmd`: double-click wrapper around `mcp_doctor.ps1`.
+- `make_mod_knowledge.ps1`: direct PowerShell wrapper for writing the Markdown collection knowledge report.
+- `Make-Mod-Knowledge.cmd`: double-click wrapper around `make_mod_knowledge.ps1`.
 - `tests/smoke_mcp.py`: verifies JSON-RPC initialize, tools/list, and a basic tools/call.
 - `tests/fixture_mcp.py`: synthetic Skyrim/Vortex fixture for plugin, staging, conflict, logging, and bug-report behavior.
 - `openclaw.mcp.example.json`: static example config.
@@ -39,7 +47,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - profile tools: `vortex_profile_report`, `vortex_profile_mods`, `vortex_compare_profiles`, `vortex_clone_profile`, `vortex_set_profile_mods`.
 - play readiness: `skyrim_modded_play_report`, `suggest_conflict_fixes`.
 - support/report tools: `mod_knowledge_report`, `log_status`, `bug_report_bundle`, `write_report`.
-- MCP registration and loop: `TOOLS`, `tool_list`, `handle_call`, `handle_message`, `serve_stdio`.
+- MCP registration, CLI, and loop: `TOOLS`, `tool_list`, `handle_call`, `cli_main`, `handle_message`, `serve_stdio`.
 
 ## Safety Model
 

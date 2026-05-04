@@ -2,11 +2,13 @@
 
 [![CI](https://github.com/walleky/vortex-skyrimse-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/walleky/vortex-skyrimse-mcp/actions/workflows/ci.yml)
 
-Local MCP server for Windows Vortex + Skyrim Special Edition diagnostics.
+Local diagnostics tool for Windows Vortex + Skyrim Special Edition. It can run
+as an MCP server or as a normal command-line tool.
 
 It is built for an MCP client such as OpenClaw, Claude Desktop, Cursor, or any
 stdio MCP client. The server is dependency-free Python and talks newline-delimited
-JSON-RPC over stdin/stdout.
+JSON-RPC over stdin/stdout. Direct CLI mode uses the same tools without needing
+an MCP client.
 
 ## What It Can Do
 
@@ -35,11 +37,13 @@ JSON-RPC over stdin/stdout.
 - Write a JSON report that another agent can analyze.
 - Write MCP logs by area (`server`, `tool`, `vortex-cli`, `support`) and create
   a bug-report bundle with recent log tails.
+- Run the same tools directly from PowerShell for no-OpenClaw workflows.
 
 ## Documentation
 
 - [START-HERE.md](START-HERE.md): short install, first prompts, and MCP Doctor.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): code map and runtime flow.
+- [docs/CLI.md](docs/CLI.md): direct command-line mode without an MCP client.
 - [docs/OPENCLAW-AGENT-GUIDE.md](docs/OPENCLAW-AGENT-GUIDE.md): how an OpenClaw agent should use the tools safely.
 - [docs/LOGGING.md](docs/LOGGING.md): log folder, channels, and inspection commands.
 - [docs/BUG-REPORTING.md](docs/BUG-REPORTING.md): support bundle and issue-reporting guide.
@@ -123,6 +127,24 @@ Generic stdio MCP config:
 ```
 
 Restart OpenClaw after adding the server.
+
+## Direct CLI Mode
+
+You can run tools without OpenClaw:
+
+```powershell
+py -3 .\server.py --tool detect_environment
+py -3 .\server.py --mod-knowledge
+```
+
+Or double-click:
+
+```text
+Make-Mod-Knowledge.cmd
+```
+
+See [docs/CLI.md](docs/CLI.md) for options such as `--staging-dir`,
+`--hash-files`, and `--no-profile-state`.
 
 ## First OpenClaw Prompts
 

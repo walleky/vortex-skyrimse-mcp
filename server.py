@@ -11,6 +11,7 @@ Write actions are intentionally narrow and dry-run by default.
 
 from __future__ import annotations
 
+import argparse
 import configparser
 import datetime as _dt
 import hashlib
@@ -35,7 +36,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.4"
+SERVER_VERSION = "0.2.5"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -3630,7 +3631,158 @@ def self_test() -> int:
     return 0
 
 
+def load_json_object_arg(raw: Optional[str], label: str) -> Dict[str, Any]:
+    if not raw:
+        return {}
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ToolError(f"{label} must be valid JSON: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ToolError(f"{label} must decode to a JSON object.")
+    return value
+
+
+def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
+    tool_args: Dict[str, Any] = {}
+    if parsed.args_file:
+        path = expand_path(parsed.args_file)
+        if not path or not path.exists():
+            raise ToolError(f"args file was not found: {parsed.args_file}")
+        tool_args.update(load_json_object_arg(read_text(path, 2_000_000), "--args-file"))
+    tool_args.update(load_json_object_arg(parsed.args_json, "--args-json"))
+
+    common = {
+        "output_path": parsed.output_path,
+        "vortex_appdata": parsed.vortex_appdata,
+        "vortex_exe": parsed.vortex_exe,
+        "skyrim_dir": parsed.skyrim_dir,
+        "staging_dir": parsed.staging_dir,
+        "local_appdata": parsed.local_appdata,
+        "my_games_dir": parsed.my_games_dir,
+        "profile_id": parsed.profile_id,
+    }
+    for key, value in common.items():
+        if value:
+            tool_args[key] = value
+    if parsed.max_mods is not None:
+        tool_args["max_mods"] = parsed.max_mods
+    if parsed.hash_files:
+        tool_args["hash_files"] = True
+    if parsed.no_profile_state:
+        tool_args["include_profile_state"] = False
+    if parsed.no_conflicts:
+        tool_args["include_conflicts"] = False
+    if parsed.no_redundancy:
+        tool_args["include_redundancy"] = False
+    if parsed.no_readme_excerpts:
+        tool_args["include_readme_excerpts"] = False
+    return tool_args
+
+
+def call_tool_direct(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    if name not in TOOLS:
+        raise ToolError(f"Unknown tool: {name}")
+    _description, _schema, func = TOOLS[name]
+    call_id = uuid.uuid4().hex[:10]
+    start = time.perf_counter()
+    log_event("tool", "cli_start", {"callId": call_id, "tool": name, "args": args})
+    try:
+        result = func(args)
+        log_event(
+            "tool",
+            "cli_success",
+            {
+                "callId": call_id,
+                "tool": name,
+                "durationMs": int((time.perf_counter() - start) * 1000),
+                "result": summarize_result_for_log(result),
+            },
+        )
+        return result
+    except Exception as exc:
+        log_event(
+            "tool",
+            "cli_error",
+            {
+                "callId": call_id,
+                "tool": name,
+                "durationMs": int((time.perf_counter() - start) * 1000),
+                "error": str(exc),
+                "traceback": traceback.format_exc(limit=6),
+            },
+        )
+        raise
+
+
+def print_json(data: Any, pretty: bool = True) -> None:
+    if pretty:
+        print(json.dumps(data, indent=2, ensure_ascii=False, default=str))
+    else:
+        print(json.dumps(data, separators=(",", ":"), ensure_ascii=False, default=str))
+
+
+def cli_main(argv: List[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="server.py",
+        description="Run the Vortex Skyrim SE MCP server or call its tools directly.",
+    )
+    parser.add_argument("--stdio", action="store_true", help="Run the MCP stdio server explicitly.")
+    parser.add_argument("--self-test", action="store_true", help="Run environment self-test and exit.")
+    parser.add_argument("--list-tools", action="store_true", help="Print available tool schemas as JSON and exit.")
+    parser.add_argument("--tool", help="Call one MCP tool directly without an MCP client.")
+    parser.add_argument("--mod-knowledge", action="store_true", help="Shortcut for --tool mod_knowledge_report.")
+    parser.add_argument("--args-json", help="JSON object with tool arguments.")
+    parser.add_argument("--args-file", help="Path to a JSON object file with tool arguments.")
+    parser.add_argument("--output-json", help="Write the direct tool result JSON to this path.")
+    parser.add_argument("--compact", action="store_true", help="Print compact JSON instead of indented JSON.")
+
+    parser.add_argument("--output-path", help="Tool output path, for tools that write reports.")
+    parser.add_argument("--vortex-appdata", help="Override Vortex AppData path.")
+    parser.add_argument("--vortex-exe", help="Override Vortex.exe path.")
+    parser.add_argument("--skyrim-dir", help="Override Skyrim Special Edition folder.")
+    parser.add_argument("--staging-dir", help="Override Vortex Skyrim SE staging folder.")
+    parser.add_argument("--local-appdata", help="Override LocalAppData path.")
+    parser.add_argument("--my-games-dir", help="Override Documents/My Games/Skyrim Special Edition path.")
+    parser.add_argument("--profile-id", help="Override selected Vortex profile id.")
+    parser.add_argument("--max-mods", type=int, help="Maximum mods to scan for supported tools.")
+    parser.add_argument("--hash-files", action="store_true", help="Hash files for stronger duplicate evidence. Slower.")
+    parser.add_argument("--no-profile-state", action="store_true", help="Do not call Vortex CLI for profile state.")
+    parser.add_argument("--no-conflicts", action="store_true", help="Skip conflict scanning for supported tools.")
+    parser.add_argument("--no-redundancy", action="store_true", help="Skip redundancy scanning for supported tools.")
+    parser.add_argument("--no-readme-excerpts", action="store_true", help="Skip readme snippets for mod knowledge reports.")
+
+    parsed = parser.parse_args(argv)
+    if parsed.self_test:
+        return self_test()
+    if parsed.stdio:
+        serve_stdio()
+        return 0
+    if parsed.list_tools:
+        print_json({"server": SERVER_NAME, "version": SERVER_VERSION, "tools": tool_list()}, pretty=not parsed.compact)
+        return 0
+
+    tool_name = "mod_knowledge_report" if parsed.mod_knowledge else parsed.tool
+    if not tool_name:
+        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, or --mod-knowledge")
+
+    try:
+        tool_args = load_cli_tool_args(parsed)
+        result = call_tool_direct(tool_name, tool_args)
+        if parsed.output_json:
+            output_json = expand_path(parsed.output_json)
+            if not output_json:
+                raise ToolError("--output-json resolved to an empty path.")
+            write_text(output_json, json.dumps(result, indent=2, ensure_ascii=False, default=str))
+        print_json(result, pretty=not parsed.compact)
+        return 0
+    except Exception as exc:
+        print_json({"error": str(exc), "tool": tool_name}, pretty=True)
+        return 2
+
+
 if __name__ == "__main__":
-    if "--self-test" in sys.argv:
-        raise SystemExit(self_test())
-    serve_stdio()
+    if len(sys.argv) == 1:
+        serve_stdio()
+    else:
+        raise SystemExit(cli_main(sys.argv[1:]))

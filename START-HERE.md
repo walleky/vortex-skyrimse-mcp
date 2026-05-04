@@ -29,6 +29,22 @@ Or run:
 .\mcp_doctor.ps1
 ```
 
+## No-OpenClaw Mod Map
+
+To make the Markdown collection report directly, double-click:
+
+```text
+Make-Mod-Knowledge.cmd
+```
+
+Or run:
+
+```powershell
+.\make_mod_knowledge.ps1
+```
+
+This calls the same `mod_knowledge_report` tool without needing OpenClaw.
+
 MCP Doctor runs the server self-test, runs the MCP handshake smoke test, writes
 `openclaw.mcp.generated.json`, prints the OpenClaw registration command, and can
 open the OpenClaw config folder. It also writes a transcript log under the MCP

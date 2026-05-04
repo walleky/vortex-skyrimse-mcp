@@ -2,6 +2,8 @@
 
 This guide is written for an OpenClaw agent that has access to the `vortex-skyrimse` MCP server.
 
+The same repo also has direct CLI mode. If MCP registration fails, tell the user they can still run `.\make_mod_knowledge.ps1` or `py -3 .\server.py --mod-knowledge` from the project folder.
+
 ## Default Posture
 
 Start read-only. Do not apply INI fixes or Vortex profile writes unless the user explicitly asks you to apply changes.

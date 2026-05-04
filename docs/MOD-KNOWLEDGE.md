@@ -26,6 +26,22 @@ It does not download Nexus page descriptions. That keeps the tool dependency-fre
 Use the vortex-skyrimse MCP to run mod_knowledge_report. Write the Markdown report, summarize the top removal-review candidates, and do not apply changes.
 ```
 
+## Direct Command
+
+If OpenClaw is not set up yet:
+
+```powershell
+py -3 .\server.py --mod-knowledge
+```
+
+Or use the wrapper:
+
+```powershell
+.\make_mod_knowledge.ps1
+```
+
+You can also double-click `Make-Mod-Knowledge.cmd`.
+
 For slower but stronger duplicate evidence:
 
 ```text

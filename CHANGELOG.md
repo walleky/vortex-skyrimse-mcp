@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.5
+
+- Adds direct CLI mode so tools can run without an MCP client.
+- Adds `--mod-knowledge` as a no-OpenClaw shortcut for writing the Markdown collection knowledge report.
+- Adds `make_mod_knowledge.ps1` and `Make-Mod-Knowledge.cmd` for no-hassle report generation from PowerShell or double-click.
+- Adds CLI documentation and smoke/fixture coverage for direct tool calls.
+
 ## v0.2.4
 
 - Adds `mod_knowledge_report`, a read-only Markdown report for huge Skyrim SE collections.
