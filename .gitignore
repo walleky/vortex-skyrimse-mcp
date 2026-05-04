@@ -12,3 +12,5 @@ Thumbs.db
 # Local runtime data, if someone runs the project from the repo
 .local/
 .cache/
+openclaw.mcp.generated.json
+doctor.generated.json

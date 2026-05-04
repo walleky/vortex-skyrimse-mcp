@@ -51,3 +51,7 @@ if ($ConfigOut) {
 
 Write-Host "Quick test:"
 Write-Host "  $PythonCommand $($Args -join ' ') --self-test"
+Write-Host ""
+Write-Host "No-hassle doctor:"
+Write-Host "  .\mcp_doctor.ps1"
+Write-Host "  .\MCP-Doctor.cmd"

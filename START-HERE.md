@@ -15,6 +15,30 @@ cd vortex-skyrimse-mcp
 
 Copy the printed MCP config into OpenClaw, then restart OpenClaw.
 
+## No-Hassle Doctor
+
+For the easiest check, double-click:
+
+```text
+MCP-Doctor.cmd
+```
+
+Or run:
+
+```powershell
+.\mcp_doctor.ps1
+```
+
+MCP Doctor runs the server self-test, runs the MCP handshake smoke test, writes
+`openclaw.mcp.generated.json`, prints the OpenClaw registration command, and can
+open the OpenClaw config folder.
+
+To let it register the server through the OpenClaw CLI:
+
+```powershell
+.\mcp_doctor.ps1 -RegisterOpenClaw
+```
+
 ## First Prompts
 
 Start read-only:

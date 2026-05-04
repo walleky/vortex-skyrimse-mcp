@@ -69,6 +69,28 @@ cd C:\Users\<you>\Documents\vortex-skyrimse-mcp
 
 The installer prints an MCP config snippet.
 
+## MCP Doctor
+
+For a no-hassle check, run:
+
+```powershell
+.\mcp_doctor.ps1
+```
+
+Or double-click:
+
+```text
+MCP-Doctor.cmd
+```
+
+MCP Doctor runs the self-test, runs the MCP stdio smoke test, writes
+`openclaw.mcp.generated.json`, prints the OpenClaw registration command, and can
+open the OpenClaw config folder. To register through the OpenClaw CLI:
+
+```powershell
+.\mcp_doctor.ps1 -RegisterOpenClaw
+```
+
 ## MCP Client Config
 
 Generic stdio MCP config:
