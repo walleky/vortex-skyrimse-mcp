@@ -17,6 +17,12 @@ py -3 .\server.py --tool validate_setup
 py -3 .\server.py --tool detect_environment
 ```
 
+Ask for the safest workflow from a plain problem:
+
+```powershell
+py -3 .\server.py --workflow-guide --problem "mods downloaded but not working"
+```
+
 Write one safe first-response report:
 
 ```powershell

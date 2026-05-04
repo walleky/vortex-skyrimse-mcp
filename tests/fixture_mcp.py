@@ -102,7 +102,12 @@ def main() -> int:
         setup = server.validate_setup(base_args)
         assert setup["ready"] is True, setup
         assert setup["environment"]["nexus_api"]["configured"] is False, setup
+        assert "workflow_guide" in setup["toolGroups"]["alwaysAvailable"], setup
         assert "xedit_diagnostics_report" in setup["toolGroups"]["alwaysAvailable"], setup
+
+        workflow = server.workflow_guide({"problem": "there is a bed outside the tavern room", "max_workflows": 1})
+        assert workflow["workflows"][0]["key"] == "weird_object", workflow
+        assert "in_game_issue_report" in workflow["workflows"][0]["tools"], workflow
 
         xedit = server.xedit_diagnostics_report({**base_args, "form_id": "0100ABCD"})
         assert xedit["available"] is True, xedit

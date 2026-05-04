@@ -26,16 +26,34 @@ OpenClaw:
 Use the vortex-skyrimse MCP to run skyrim_diagnostics_report. Summarize the top findings and do not apply changes.
 ```
 
+Built-in workflow recommender:
+
+```text
+Use workflow_guide for this problem: mods downloaded but not working. Tell me the recommended tool sequence and do not apply changes.
+```
+
 Local menu:
 
 ```powershell
 .\vortex_skyrimse_menu.ps1
 ```
 
+Noninteractive workflow guide:
+
+```powershell
+.\vortex_skyrimse_menu.ps1 -Action workflow -Problem "mods downloaded but not working"
+```
+
 Direct CLI:
 
 ```powershell
 py -3 .\server.py --skyrim-diagnostics
+```
+
+Direct workflow guide:
+
+```powershell
+py -3 .\server.py --workflow-guide --problem "mods downloaded but not working"
 ```
 
 ## Workflow 1: First Setup Check

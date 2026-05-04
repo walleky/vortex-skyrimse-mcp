@@ -10,6 +10,7 @@ OpenClaw or MCP client
   -> server.py
       -> detect local Steam/Vortex/Skyrim paths
       -> inspect staging folders, plugins, INIs, profiles, conflicts
+      -> optionally recommend a safe workflow from a plain-language problem
       -> optionally enrich reports with read-only Nexus Mods metadata
       -> optionally use local scan cache, xEdit target hints, and collection diagnostics
       -> optionally call Vortex.exe --get/--set for profile state
@@ -64,6 +65,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - plugin/load-order checks: `parse_plugin_list`, `plugin_report`, `plugin_masters`.
 - INI checks and writes: `ini_report`, `apply_ini_fixes`.
 - setup validation: `validate_setup`.
+- workflow routing: `workflow_guide`, `workflow_catalog`, `workflow_score`.
 - profile tools: `vortex_profile_report`, `vortex_profile_mods`, `vortex_compare_profiles`, `vortex_profile_deployment_report`, `vortex_profile_backup`, `vortex_profile_restore_plan`, `vortex_clone_profile`, `vortex_set_profile_mods`.
 - play readiness: `skyrim_modded_play_report`, `suggest_conflict_fixes`.
 - support/report tools: `safe_session_report`, `skyrim_diagnostics_report`, `mod_knowledge_report`, `log_status`, `bug_report_bundle`, `write_report`.

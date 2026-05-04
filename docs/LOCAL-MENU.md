@@ -32,6 +32,7 @@ Vortex-SkyrimSE-Menu.cmd
 14. xEdit/SSEEdit target helper
 15. Vortex collection state
 16. Collection manifest match
+17. Workflow guide
 
 Reports are written to:
 
@@ -63,6 +64,7 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action xedit -FormId "0100ABCD"
 .\vortex_skyrimse_menu.ps1 -Action collection
 .\vortex_skyrimse_menu.ps1 -Action collection-match -CollectionManifestPath "C:\path\collection.json"
+.\vortex_skyrimse_menu.ps1 -Action workflow -Problem "mods downloaded but not working"
 ```
 
 Custom paths:

@@ -39,7 +39,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.15"
+SERVER_VERSION = "0.2.16"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -1647,6 +1647,7 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
         "alwaysAvailable": [
             "detect_environment",
             "validate_setup",
+            "workflow_guide",
             "inventory_mods",
             "analyze_conflicts",
             "redundant_mod_report",
@@ -1711,6 +1712,158 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "Profile writes refuse to run while Vortex.exe is open unless allow_running_vortex=true.",
             "vortex_set_profile_mods and vortex_clone_profile write a profile backup before apply=true by default.",
             "Use vortex_profile_restore_plan with apply=false first to preview undo/restore actions.",
+        ],
+    }
+
+
+def workflow_catalog() -> List[Dict[str, Any]]:
+    return [
+        {
+            "key": "first_setup",
+            "title": "First Setup Check",
+            "matchTerms": ["setup", "install", "detect", "doctor", "configured", "path", "skse", "xedit"],
+            "userPrompt": "Use validate_setup, then detect_environment. Tell me whether Vortex, Skyrim SE, staging, plugins.txt, SKSE, and xEdit are detected. Do not apply changes.",
+            "tools": ["validate_setup", "detect_environment"],
+            "whatToRead": ["ready", "blockers", "environment.issues", "toolGroups"],
+            "humanSteps": ["Fix setup blockers before disabling mods or changing profiles."],
+            "directCli": ["py -3 .\\server.py --tool validate_setup", "py -3 .\\server.py --tool detect_environment"],
+            "menuAction": "1. Validate setup",
+        },
+        {
+            "key": "mods_not_working",
+            "title": "Mods Downloaded But Not Working In Game",
+            "matchTerms": ["mods not working", "not working", "downloaded", "vanilla", "deploy", "deployment", "profile", "skyrim launches", "not active", "not showing", "audio"],
+            "userPrompt": "Use skyrim_diagnostics_report with performance_mode=slow_model. Check whether my selected Vortex profile is deployed into Skyrim Data and enabled in plugins.txt. Do not apply changes.",
+            "tools": ["skyrim_diagnostics_report", "vortex_profile_deployment_report", "plugin_report"],
+            "whatToRead": ["findings", "sections.skyrimModdedPlay", "sections.setupValidation", "sections.logStatus"],
+            "humanSteps": ["Select the intended Vortex profile.", "Click Deploy Mods in Vortex.", "Confirm plugins are enabled.", "Launch through SKSE when SKSE is part of the setup."],
+            "directCli": ["py -3 .\\server.py --skyrim-diagnostics --performance-mode slow_model"],
+            "menuAction": "12. Skyrim diagnostics report",
+        },
+        {
+            "key": "weird_object",
+            "title": "Weird Object Or Location Problem",
+            "matchTerms": ["object", "bed", "door", "tavern", "whiterun", "cell", "formid", "placed", "outside", "room"],
+            "userPrompt": "Use in_game_issue_report with my description, location, object, and any FormID/base object I provide. Then use xedit_diagnostics_report for the same FormID. Do not edit plugins.",
+            "tools": ["in_game_issue_report", "xedit_diagnostics_report", "vortex_profile_backup"],
+            "whatToRead": ["candidateCount", "candidates", "formIdHint", "diagnosticQuality"],
+            "humanSteps": ["Use the console-clicked FormID if available.", "Back up or clone the profile before testing.", "Disable one candidate in a cloned profile, deploy, and test."],
+            "directCli": ["py -3 .\\server.py --tool in_game_issue_report --description \"bed outside tavern room\" --location \"Whiterun Bannered Mare\" --object \"bed\""],
+            "menuAction": "10. In-game issue triage",
+        },
+        {
+            "key": "popup",
+            "title": "Annoying Popup Or Notification",
+            "matchTerms": ["popup", "pop-up", "notification", "warning", "alert", "prompt", "dialog", "mcm", "message"],
+            "userPrompt": "Use in_game_issue_report with my plain popup description. Do not ask me for exact text unless the first scan is weak.",
+            "tools": ["in_game_issue_report"],
+            "whatToRead": ["issue.kind", "diagnosticQuality", "candidates", "nextBestInputs"],
+            "humanSteps": ["If weak, provide screenshot/OCR or exact popup text.", "Test candidate disables in a cloned profile."],
+            "directCli": ["py -3 .\\server.py --tool in_game_issue_report --description \"annoying popup after loading a save\""],
+            "menuAction": "10. In-game issue triage",
+        },
+        {
+            "key": "large_collection_review",
+            "title": "Large Collection Review Or Removal Candidates",
+            "matchTerms": ["collection", "remove", "redundant", "cleanup", "what can i remove", "mod list", "huge", "knowledge"],
+            "userPrompt": "Use mod_knowledge_report to write a Markdown report explaining what each mod appears to do, how it fits into the collection, and which mods are safe candidates to review for disabling. Do not apply changes.",
+            "tools": ["mod_knowledge_report", "scan_cache_status"],
+            "whatToRead": ["Removal Review Shortlist", "Sensitive Conflict Examples", "Plugin Master Problems", "Mod Index"],
+            "humanSteps": ["Review candidates in a cloned profile.", "Disable, deploy, test, then decide whether to uninstall later."],
+            "directCli": ["py -3 .\\server.py --mod-knowledge"],
+            "menuAction": "5. Mod knowledge Markdown report",
+        },
+        {
+            "key": "collection_drift",
+            "title": "Collection Drift Or Missing Collection Mods",
+            "matchTerms": ["collection drift", "manifest", "missing collection", "nexus collection", "collection downloaded", "pinned", "file id"],
+            "userPrompt": "Use vortex_collection_report and nexus_update_report to inspect collection-like state and local Nexus metadata. Do not install, update, or remove mods.",
+            "tools": ["vortex_collection_report", "collection_local_match_report", "nexus_update_report"],
+            "whatToRead": ["collectionStates", "missingModIds", "filePairMismatches", "staleMods"],
+            "humanSteps": ["Use Vortex's collection UI for installs or updates.", "Do not auto-update pinned collection mods from metadata alone."],
+            "directCli": ["py -3 .\\server.py --tool vortex_collection_report", "py -3 .\\server.py --tool collection_local_match_report --collection-manifest-path \"C:\\path\\collection.json\""],
+            "menuAction": "15. Vortex collection state",
+        },
+        {
+            "key": "safe_profile_undo",
+            "title": "Safe Profile Experiment And Undo",
+            "matchTerms": ["profile", "clone", "backup", "undo", "restore", "disable", "test profile", "safe test"],
+            "userPrompt": "Use vortex_profile_backup with include_all_profiles=true. Then create a dry-run plan to clone my active profile as \"OpenClaw Safe Test\". Do not apply until I approve.",
+            "tools": ["vortex_profile_backup", "vortex_clone_profile", "vortex_profile_restore_plan"],
+            "whatToRead": ["backupPath", "plannedChangeCount", "plannedChanges"],
+            "humanSteps": ["Close Vortex before profile writes.", "Reopen Vortex, pick the intended profile, deploy, and test.", "Keep the backup path."],
+            "directCli": ["py -3 .\\server.py --tool vortex_profile_backup --include-all-profiles", "py -3 .\\server.py --tool vortex_clone_profile --args-json \"{\\\"new_name\\\":\\\"OpenClaw Safe Test\\\"}\""],
+            "menuAction": "2. Create Vortex profile backup",
+        },
+        {
+            "key": "bug_report",
+            "title": "Bug Report Or Confusing Tool Failure",
+            "matchTerms": ["bug", "error", "failed", "confused", "logs", "support", "bundle", "not working"],
+            "userPrompt": "Use log_status and bug_report_bundle with zip_output=true and redact_user_paths=true. Summarize the highest-risk findings and tell me where the zip was written. Do not apply changes.",
+            "tools": ["log_status", "bug_report_bundle"],
+            "whatToRead": ["setupValidation", "recent tool_error or exception logs", "vortex-cli errors", "skyrimModdedPlay.findings"],
+            "humanSteps": ["Review the zip before posting publicly.", "Include the exact OpenClaw prompt and whether Vortex was open."],
+            "directCli": ["py -3 .\\server.py --tool bug_report_bundle --args-json \"{\\\"zip_output\\\":true,\\\"redact_user_paths\\\":true}\""],
+            "menuAction": "7. Bug report zip",
+        },
+    ]
+
+
+def workflow_score(workflow: Dict[str, Any], text: str) -> int:
+    lowered = text.lower()
+    score = 0
+    for term in workflow.get("matchTerms", []):
+        term_text = str(term).lower()
+        if term_text and term_text in lowered:
+            score += 3 if " " in term_text else 1
+    return score
+
+
+def workflow_guide(args: Dict[str, Any]) -> Dict[str, Any]:
+    key = str(args.get("workflow_key") or "").strip().lower().replace("-", "_")
+    problem = str(args.get("problem") or args.get("description") or "").strip()
+    include_all = bool(args.get("include_all", False)) or key == "all"
+    include_direct_cli = bool(args.get("include_direct_cli", True))
+    max_workflows = max(1, min(20, int(args.get("max_workflows", 3))))
+    catalog = workflow_catalog()
+
+    if include_all:
+        selected = catalog
+        mode = "all"
+    elif key and key != "auto":
+        selected = [item for item in catalog if item["key"] == key]
+        mode = "key"
+        if not selected:
+            raise ToolError(f"Unknown workflow_key: {key}. Use workflow_guide with workflow_key=all to list valid keys.")
+    else:
+        scored = [(workflow_score(item, problem), item) for item in catalog]
+        scored.sort(key=lambda item: (-item[0], item[1]["key"]))
+        selected = [item for score, item in scored if score > 0][:max_workflows]
+        if not selected:
+            selected = [item for item in catalog if item["key"] in {"mods_not_working", "first_setup", "bug_report"}][:max_workflows]
+        mode = "inferred"
+
+    workflows = []
+    for item in selected[: max_workflows if not include_all else len(selected)]:
+        cleaned = {k: v for k, v in item.items() if k != "matchTerms"}
+        if not include_direct_cli:
+            cleaned.pop("directCli", None)
+        workflows.append(cleaned)
+
+    return {
+        "mode": mode,
+        "problem": problem or None,
+        "workflowCount": len(workflows),
+        "validWorkflowKeys": [item["key"] for item in catalog],
+        "workflows": workflows,
+        "safetyRules": [
+            "Reports first, backups second, cloned-profile tests third, real changes last.",
+            "Do not deploy, install, update, disable, delete, sort, or edit plugins from a workflow guide alone.",
+            "Use Vortex for final deployment/install/update decisions.",
+        ],
+        "notes": [
+            "This is a routing helper for OpenClaw and humans. It does not inspect the local setup by itself.",
+            "After choosing a workflow, run the listed tools and read the named fields before taking action.",
         ],
     }
 
@@ -5971,6 +6124,37 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         },
         validate_setup,
     ),
+    "workflow_guide": (
+        "Recommend the safest MCP workflow for a plain-language Skyrim/Vortex problem.",
+        {
+            "type": "object",
+            "properties": {
+                "problem": {"type": "string"},
+                "description": {"type": "string"},
+                "workflow_key": {
+                    "type": "string",
+                    "enum": [
+                        "auto",
+                        "all",
+                        "first_setup",
+                        "mods_not_working",
+                        "weird_object",
+                        "popup",
+                        "large_collection_review",
+                        "collection_drift",
+                        "safe_profile_undo",
+                        "bug_report",
+                    ],
+                    "default": "auto",
+                },
+                "include_all": {"type": "boolean", "default": False},
+                "include_direct_cli": {"type": "boolean", "default": True},
+                "max_workflows": {"type": "integer", "default": 3},
+            },
+            "additionalProperties": False,
+        },
+        workflow_guide,
+    ),
     "inventory_mods": (
         "Inventory staged Vortex Skyrim SE mods, file kinds, plugins, archives, SKSE DLLs, readmes, and metadata.",
         {
@@ -7036,6 +7220,8 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         "plugin_name": parsed.plugin_name,
         "collection_manifest_path": parsed.collection_manifest_path,
         "collection_manifest_json": parsed.collection_manifest_json,
+        "problem": parsed.problem,
+        "workflow_key": parsed.workflow_key,
     }
     for key, value in common.items():
         if value:
@@ -7056,6 +7242,8 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["scan_cache_ttl_seconds"] = parsed.scan_cache_ttl_seconds
     if parsed.max_collection_items is not None:
         tool_args["max_collection_items"] = parsed.max_collection_items
+    if parsed.max_workflows is not None:
+        tool_args["max_workflows"] = parsed.max_workflows
     if parsed.hash_files:
         tool_args["hash_files"] = True
     if parsed.include_nexus_metadata:
@@ -7064,6 +7252,10 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["include_xedit_report"] = True
     if parsed.include_collection_report:
         tool_args["include_collection_report"] = True
+    if parsed.include_all_workflows:
+        tool_args["include_all"] = True
+    if parsed.no_direct_cli:
+        tool_args["include_direct_cli"] = False
     if parsed.no_nexus_cache:
         tool_args["nexus_use_cache"] = False
     if parsed.no_scan_cache:
@@ -7153,6 +7345,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--mod-knowledge", action="store_true", help="Shortcut for --tool mod_knowledge_report.")
     parser.add_argument("--safe-session", action="store_true", help="Shortcut for --tool safe_session_report.")
     parser.add_argument("--skyrim-diagnostics", action="store_true", help="Shortcut for --tool skyrim_diagnostics_report.")
+    parser.add_argument("--workflow-guide", action="store_true", help="Shortcut for --tool workflow_guide.")
     parser.add_argument("--args-json", help="JSON object with tool arguments.")
     parser.add_argument("--args-file", help="Path to a JSON object file with tool arguments.")
     parser.add_argument("--output-json", help="Write the direct tool result JSON to this path.")
@@ -7171,6 +7364,8 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--session-json-path", help="JSON output path for --safe-session.")
     parser.add_argument("--log-dir", help="Override MCP log folder for log_status and support reports.")
     parser.add_argument("--description", help="In-game issue description for in_game_issue_report.")
+    parser.add_argument("--problem", help="Plain-language problem for workflow_guide.")
+    parser.add_argument("--workflow-key", help="Specific workflow key for workflow_guide, or all.")
     parser.add_argument("--location", help="In-game location for in_game_issue_report, such as 'Whiterun Bannered Mare'.")
     parser.add_argument("--object", help="Problem object for in_game_issue_report, such as 'bed' or 'door'.")
     parser.add_argument("--form-id", help="Console-clicked reference/base FormID for in_game_issue_report.")
@@ -7196,6 +7391,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--collection-manifest-path", help="JSON manifest-like file for collection_local_match_report.")
     parser.add_argument("--collection-manifest-json", help="Inline JSON object for collection_local_match_report.")
     parser.add_argument("--max-collection-items", type=int, help="Maximum collection-like entries or manifest refs to scan.")
+    parser.add_argument("--max-workflows", type=int, help="Maximum workflows returned by workflow_guide.")
     parser.add_argument("--max-mods", type=int, help="Maximum mods to scan for supported tools.")
     parser.add_argument("--max-log-files", type=int, help="Maximum recent log files for support reports.")
     parser.add_argument("--balanced-text-files-per-mod", type=int, help="For balanced issue scans, max config/text files to read per mod.")
@@ -7203,6 +7399,8 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--include-nexus-metadata", action="store_true", help="Include optional read-only Nexus metadata in supported reports.")
     parser.add_argument("--include-xedit-report", action="store_true", help="Include read-only xEdit/SSEEdit target hints in supported reports.")
     parser.add_argument("--include-collection-report", action="store_true", help="Include read-only Vortex collection-state hints in supported reports.")
+    parser.add_argument("--include-all-workflows", action="store_true", help="Return every workflow from workflow_guide.")
+    parser.add_argument("--no-direct-cli", action="store_true", help="Hide direct CLI examples from workflow_guide output.")
     parser.add_argument("--no-nexus-cache", action="store_true", help="Disable the local Nexus metadata cache for this call.")
     parser.add_argument("--no-scan-cache", action="store_true", help="Disable the local mod-summary scan cache for this call.")
     parser.add_argument("--apply", action="store_true", help="Apply a write-capable tool. Most tools are dry-run without this.")
@@ -7237,10 +7435,12 @@ def cli_main(argv: List[str]) -> int:
         if parsed.safe_session
         else "mod_knowledge_report"
         if parsed.mod_knowledge
+        else "workflow_guide"
+        if parsed.workflow_guide
         else parsed.tool
     )
     if not tool_name:
-        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, or --skyrim-diagnostics")
+        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, or --workflow-guide")
 
     try:
         tool_args = load_cli_tool_args(parsed)

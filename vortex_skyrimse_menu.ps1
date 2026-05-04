@@ -17,6 +17,8 @@ param(
   [string]$XeditExe = "",
   [string]$PluginName = "",
   [string]$CollectionManifestPath = "",
+  [string]$Problem = "",
+  [string]$WorkflowKey = "",
   [int]$MaxMods = 500,
   [switch]$HashFiles,
   [switch]$NoProfileState,
@@ -28,6 +30,7 @@ param(
   [switch]$IncludeNexusMetadata,
   [switch]$IncludeXeditReport,
   [switch]$IncludeCollectionReport,
+  [switch]$IncludeAllWorkflows,
   [string]$NexusApiKeyFile = "",
   [int]$NexusMaxLookupMods = 80,
   [switch]$NoNexusCache,
@@ -118,6 +121,14 @@ function Get-CommonArgs {
     $args += "--plugin-name"
     $args += $PluginName
   }
+  if ($Problem) {
+    $args += "--problem"
+    $args += $Problem
+  }
+  if ($WorkflowKey) {
+    $args += "--workflow-key"
+    $args += $WorkflowKey
+  }
   if ($NexusApiKeyFile) {
     $args += "--nexus-api-key-file"
     $args += $NexusApiKeyFile
@@ -131,6 +142,9 @@ function Get-CommonArgs {
   }
   if ($NoScanCache) {
     $args += "--no-scan-cache"
+  }
+  if ($IncludeAllWorkflows) {
+    $args += "--include-all-workflows"
   }
   return $args
 }
@@ -182,6 +196,7 @@ function Show-Actions {
   Write-Host "14. xEdit/SSEEdit target helper"
   Write-Host "15. Vortex collection state"
   Write-Host "16. Collection manifest match"
+  Write-Host "17. Workflow guide"
   Write-Host "Q. Quit"
 }
 
@@ -488,6 +503,28 @@ function Invoke-MenuAction {
       Invoke-Server (@("--tool", "collection_local_match_report", "--collection-manifest-path", $manifest, "--output-json", $out) + $common)
       Write-Host "Wrote collection manifest match report: $out" -ForegroundColor Green
       Write-Host "This action did not install, update, or remove collection mods." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("17", "workflow", "workflow-guide", "guide") } {
+      $problemText = $Problem
+      if (!$problemText -and !$WorkflowKey -and !$script:StartedWithAction) {
+        $problemText = Read-Host "Describe what you are trying to fix"
+      }
+      $argsData = @{}
+      if ($problemText) {
+        $argsData.problem = $problemText
+      }
+      if ($WorkflowKey) {
+        $argsData.workflow_key = $WorkflowKey
+      }
+      if ($IncludeAllWorkflows) {
+        $argsData.include_all = $true
+      }
+      $argsFile = Write-JsonArgs "workflow-guide" $argsData
+      $out = Join-Path $script:ReportDir "workflow-guide-$stamp.json"
+      Invoke-Server (@("--workflow-guide", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Wrote workflow guide: $out" -ForegroundColor Green
+      Write-Host "This action only recommends safe next tools; it did not inspect or change Vortex." -ForegroundColor Green
       return
     }
     { $_ -in @("q", "quit", "exit") } {

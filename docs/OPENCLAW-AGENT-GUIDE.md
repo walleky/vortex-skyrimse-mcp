@@ -46,6 +46,16 @@ For a broad first pass:
 skyrim_diagnostics_report
 ```
 
+When the user's request is vague and you need routing help:
+
+```text
+workflow_guide with problem=<the user's plain-language issue>
+```
+
+Read the returned `workflows[0].tools`, `whatToRead`, and `humanSteps`, then run
+the first listed diagnostic tool. Do not treat `workflow_guide` as evidence; it
+is only a safe routing helper.
+
 For a broad first pass on a slower model:
 
 ```text

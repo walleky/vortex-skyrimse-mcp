@@ -31,3 +31,6 @@ if (($MenuOutput -join "`n") -notmatch "Safe session report") {
 if (($MenuOutput -join "`n") -notmatch "Collection manifest match") {
   throw "Menu did not list the collection manifest match action."
 }
+if (($MenuOutput -join "`n") -notmatch "Workflow guide") {
+  throw "Menu did not list the workflow guide action."
+}

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.16
+
+- Adds `workflow_guide`, a read-only routing helper that turns a plain-language Skyrim/Vortex problem into a safe recommended MCP tool sequence.
+- Adds `--workflow-guide`, `--problem`, `--workflow-key`, and local menu action 17 for workflow recommendations without memorizing tool names.
+- Documents the workflow recommender in the README, Start Here, CLI, local menu, OpenClaw guide, and workflow examples.
+- Extends smoke, fixture, and PowerShell menu tests for the new workflow guide.
+
 ## v0.2.15
 
 - Adds a local mod-summary scan cache for faster repeated diagnostics on large collections, with `scan_cache_status`, CLI/menu flags, and safe fallback if the cache cannot be written.

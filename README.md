@@ -15,6 +15,7 @@ an MCP client.
 - Find Steam, Skyrim SE, Vortex AppData, Vortex staging folders, `plugins.txt`,
   `loadorder.txt`, SKSE, and common missing-path problems.
 - Validate the whole setup in one call for OpenClaw with `validate_setup`.
+- Recommend a safe next workflow from a plain-language problem with `workflow_guide`.
 - Inventory Vortex-staged Skyrim SE mods.
 - Read mod evidence: files, readmes, FOMOD XML, plugins, masters, BSA archives,
   SKSE DLL plugins, scripts, meshes, textures, UI files.
@@ -176,6 +177,7 @@ You can run tools without OpenClaw:
 ```powershell
 py -3 .\server.py --tool detect_environment
 py -3 .\server.py --tool validate_setup
+py -3 .\server.py --workflow-guide --problem "mods downloaded but not working"
 py -3 .\server.py --tool scan_cache_status
 py -3 .\server.py --tool xedit_diagnostics_report --form-id 0100ABCD
 py -3 .\server.py --tool vortex_collection_report

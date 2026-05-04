@@ -68,6 +68,7 @@ def main() -> int:
     listed_by_name = {tool["name"]: tool for tool in listed_json["tools"]}
     assert "detect_environment" in listed_names, listed_names
     assert "validate_setup" in listed_names, listed_names
+    assert "workflow_guide" in listed_names, listed_names
     assert "mod_knowledge_report" in listed_names, listed_names
     assert "in_game_issue_report" in listed_names, listed_names
     assert "safe_session_report" in listed_names, listed_names
@@ -86,6 +87,7 @@ def main() -> int:
     assert "scan_cache_dir" in listed_by_name["mod_knowledge_report"]["inputSchema"]["properties"], listed_by_name
     assert "include_xedit_report" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
     assert "include_collection_report" in listed_by_name["bug_report_bundle"]["inputSchema"]["properties"], listed_by_name
+    assert "workflow_key" in listed_by_name["workflow_guide"]["inputSchema"]["properties"], listed_by_name
 
     direct = subprocess.run(
         [sys.executable, str(server), "--tool", "detect_environment"],
@@ -95,6 +97,15 @@ def main() -> int:
     )
     direct_json = json.loads(direct.stdout)
     assert "issues" in direct_json, direct_json
+
+    workflow_direct = subprocess.run(
+        [sys.executable, str(server), "--workflow-guide", "--problem", "mods downloaded but not working"],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    workflow_json = json.loads(workflow_direct.stdout)
+    assert workflow_json["workflows"][0]["key"] == "mods_not_working", workflow_json
 
     proc = subprocess.Popen(
         [sys.executable, str(server)],
@@ -139,6 +150,7 @@ def main() -> int:
             names = [tool["name"] for tool in data["result"]["tools"]]
             assert "detect_environment" in names, names
             assert "validate_setup" in names, names
+            assert "workflow_guide" in names, names
             assert "analyze_conflicts" in names, names
             assert "in_game_issue_report" in names, names
             assert "safe_session_report" in names, names

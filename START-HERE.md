@@ -69,6 +69,12 @@ For complete examples, see [docs/WORKFLOW-EXAMPLES.md](docs/WORKFLOW-EXAMPLES.md
 Start read-only:
 
 ```text
+Use workflow_guide for this problem: mods downloaded but not working. Tell me the recommended safe tool sequence and do not apply changes.
+```
+
+Then run the recommended first report, or start directly with:
+
+```text
 Use skyrim_diagnostics_report to write a no-change first report with setup validation, profile backup if possible, modded play health, logs, and Nexus metadata if available. Summarize the top findings and do not apply changes.
 ```
 
