@@ -2,13 +2,15 @@
 
 This guide is written for an OpenClaw agent that has access to the `vortex-skyrimse` MCP server.
 
-The same repo also has direct CLI mode. If MCP registration fails, tell the user they can still run `.\vortex_skyrimse_menu.ps1`, `.\make_mod_knowledge.ps1`, or `py -3 .\server.py --mod-knowledge` from the project folder.
+The same repo also has direct CLI mode. If MCP registration fails, tell the user they can still run `.\vortex_skyrimse_menu.ps1`, `.\make_mod_knowledge.ps1`, `py -3 .\server.py --safe-session`, or `py -3 .\server.py --mod-knowledge` from the project folder.
 
 ## Default Posture
 
 Start read-only. Do not apply INI fixes or Vortex profile writes unless the user explicitly asks you to apply changes.
 
-First call `validate_setup`. If it returns blockers, explain those blockers before running write-capable tools.
+For a confused or frustrated user, first call `safe_session_report`. It gives one no-change Markdown/JSON baseline with setup validation, optional profile backup, modded play health, optional in-game issue triage, and logs.
+
+For a narrower setup-only request, first call `validate_setup`. If it returns blockers, explain those blockers before running write-capable tools.
 
 When the user says mods are not working, first decide which layer is failing:
 
@@ -25,6 +27,12 @@ environment detection
 ## First Tool Calls
 
 For a broad first pass:
+
+```text
+safe_session_report
+```
+
+For a broad first pass without writing report files:
 
 ```text
 validate_setup
@@ -69,7 +77,7 @@ mod_knowledge_report
 For "why is this object here?", "which mod added this?", or annoying popups:
 
 ```text
-in_game_issue_report
+safe_session_report with description/location/object/popup_text, or in_game_issue_report for a narrower call
 ```
 
 Ask the user for exact location, object name, popup text, and if possible the console-clicked FormID.
@@ -92,6 +100,7 @@ vortex_clone_profile with apply=true
 When a tool fails or the user says OpenClaw got confused:
 
 ```text
+safe_session_report
 log_status
 bug_report_bundle with zip_output=true and redact_user_paths=true
 ```
@@ -141,6 +150,8 @@ This usually means stale deployment or the wrong active profile.
 Ask for stronger evidence: exact popup text, screenshot/OCR text, current cell/location, and console-clicked FormID/base object. Then rerun `in_game_issue_report`.
 
 If the first pass is still too weak, rerun with `deep_scan_files=true`. Warn the user that it is slower on large collections.
+
+`safe_session_report` has `dryRunOnly=true`. It may write report files and a profile backup, but it should never deploy, disable, delete, sort, or edit mods.
 
 ## Safe Write Rules
 

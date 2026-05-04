@@ -23,4 +23,8 @@ foreach ($Script in $Scripts) {
 }
 
 $MenuReportDir = Join-Path $PSScriptRoot "..\.local\menu-test-reports"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "..\vortex_skyrimse_menu.ps1") -ListActions -ReportDir $MenuReportDir
+$MenuOutput = powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "..\vortex_skyrimse_menu.ps1") -ListActions -ReportDir $MenuReportDir
+$MenuOutput
+if (($MenuOutput -join "`n") -notmatch "Safe session report") {
+  throw "Menu did not list the safe session report action."
+}

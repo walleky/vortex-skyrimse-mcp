@@ -40,6 +40,7 @@ Those actions can break saves. Keep them as reports or dry-run plans until the e
 ## OpenClaw Experience Improvements
 
 - Teach OpenClaw to call `bug_report_bundle` automatically after any tool exception.
+- Teach OpenClaw to call `safe_session_report` as the default first response for broad "something is broken" requests.
 - Teach OpenClaw to call `validate_setup` before diagnosis and `vortex_profile_backup` before profile experiments.
 - Teach OpenClaw to call `mod_knowledge_report` before suggesting collection cleanup.
 - Teach OpenClaw to call `in_game_issue_report` when the user asks about a visible object, location-specific problem, or popup.

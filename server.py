@@ -36,7 +36,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.9"
+SERVER_VERSION = "0.2.10"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -877,6 +877,7 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "ini_report",
             "mod_knowledge_report",
             "in_game_issue_report",
+            "safe_session_report",
             "bug_report_bundle",
         ],
         "vortexCliRequired": [
@@ -3528,7 +3529,7 @@ def skyrim_modded_play_report(args: Dict[str, Any]) -> Dict[str, Any]:
             sections["conflictPlan"] = {"error": str(exc)}
 
     findings = sort_findings(findings)
-    highest = findings[0]["severity"] if findings else "none"
+    highest = findings[0].get("severity", "unknown") if findings else "none"
     ok_to_launch_modded = highest not in {"critical", "high"}
     recommended_actions = []
     seen_actions: set[str] = set()
@@ -3593,6 +3594,259 @@ def suggest_conflict_fixes(args: Dict[str, Any]) -> Dict[str, Any]:
             "This MCP does not delete mods or rewrite Vortex conflict rules automatically.",
             "Use these actions as an assistant-readable repair plan, then confirm changes in Vortex.",
         ],
+    }
+
+
+def safe_session_default_path(args: Dict[str, Any]) -> Path:
+    output_path = expand_path(args.get("output_path"))
+    if output_path:
+        return output_path
+    docs = default_documents() or Path.cwd()
+    return docs / "vortex-skyrimse-mcp-reports" / f"safe-session-{now_stamp()}.md"
+
+
+def collect_section(sections: Dict[str, Any], key: str, func: Callable[[Dict[str, Any]], Dict[str, Any]], args: Dict[str, Any]) -> None:
+    try:
+        sections[key] = func(args)
+    except Exception as exc:
+        sections[f"{key}Error"] = str(exc)
+        log_event("support", "safe_session_section_error", {"section": key, "error": str(exc)})
+
+
+def safe_session_findings(sections: Dict[str, Any]) -> List[Dict[str, Any]]:
+    findings: List[Dict[str, Any]] = []
+    section_error_actions = {
+        "setupValidationError": ("high", "Fix basic path detection first, then rerun the safe session."),
+        "skyrimModdedPlayError": ("high", "Pass explicit skyrim_dir, staging_dir, vortex_exe, or local_appdata and rerun."),
+        "inGameIssueError": ("medium", "Rerun with simpler issue text, exact popup text, or console FormID if available."),
+        "logStatusError": ("low", "Pass log_dir explicitly or rerun after MCP Doctor creates logs."),
+    }
+    for key, (severity, action) in section_error_actions.items():
+        if sections.get(key):
+            add_finding(findings, severity, key[:-5].lower() + "_failed", str(sections[key]), action)
+    setup = sections.get("setupValidation")
+    if isinstance(setup, dict):
+        for blocker in setup.get("blockers", []):
+            add_finding(findings, "high", "setup_blocker", str(blocker), "Fix this setup blocker before applying changes.")
+    if sections.get("profileBackupError"):
+        add_finding(
+            findings,
+            "medium",
+            "profile_backup_failed",
+            str(sections["profileBackupError"]),
+            "Profile backup failed; pass vortex_exe or create a backup from Vortex before profile experiments.",
+        )
+    play = sections.get("skyrimModdedPlay")
+    if isinstance(play, dict):
+        for item in play.get("findings", [])[:20]:
+            if isinstance(item, dict):
+                findings.append(item)
+    issue = sections.get("inGameIssue")
+    if isinstance(issue, dict):
+        candidates = issue.get("candidates", [])
+        if candidates:
+            top = candidates[0]
+            add_finding(
+                findings,
+                "medium",
+                "in_game_issue_candidate",
+                f"Top in-game issue candidate: {top.get('mod')} ({top.get('confidence')} confidence).",
+                "Confirm in xEdit or a cloned Vortex profile before changing anything.",
+                {
+                    "mod": top.get("mod"),
+                    "confidence": top.get("confidence"),
+                    "matchedTerms": top.get("matchedTerms"),
+                    "vortexModId": top.get("vortexModId"),
+                },
+            )
+    return sort_findings(findings)
+
+
+def section_status_map(sections: Dict[str, Any]) -> Dict[str, str]:
+    status: Dict[str, str] = {}
+    for key, value in sections.items():
+        if key.endswith("Error"):
+            status[key[:-5]] = "error"
+        elif key not in status:
+            status[key] = report_status(value)
+    return status
+
+
+def safe_session_markdown(session: Dict[str, Any]) -> str:
+    lines = [
+        "# Vortex Skyrim SE Safe Session",
+        "",
+        f"- Generated: {session.get('generatedAt')}",
+        f"- Server: {session.get('server')} {session.get('version')}",
+        f"- Dry run only: {session.get('dryRunOnly')}",
+        f"- Report JSON: {session.get('json_path') or 'not written'}",
+        "",
+        "## Summary",
+        "",
+    ]
+    summary = session.get("summary", {}) if isinstance(session.get("summary"), dict) else {}
+    for key in ("highestSeverity", "findingCount", "ready", "backupPath"):
+        if key in summary:
+            lines.append(f"- {key}: {summary.get(key)}")
+    section_status = summary.get("sectionStatus")
+    if isinstance(section_status, dict) and section_status:
+        status_text = ", ".join(f"{key}={value}" for key, value in section_status.items())
+        lines.append(f"- sectionStatus: {status_text}")
+
+    findings = session.get("findings", []) if isinstance(session.get("findings"), list) else []
+    lines.extend(["", "## Findings", ""])
+    if findings:
+        for item in findings[:30]:
+            severity = item.get("severity", "info")
+            code = item.get("code", "finding")
+            message = item.get("message", "")
+            action = item.get("nextAction", "")
+            lines.append(f"- [{severity}] {code}: {message}")
+            if action:
+                lines.append(f"  Next: {action}")
+    else:
+        lines.append("- No high-signal findings were generated.")
+
+    sections = session.get("sections", {}) if isinstance(session.get("sections"), dict) else {}
+    setup = sections.get("setupValidation")
+    if isinstance(setup, dict):
+        lines.extend(["", "## Setup", ""])
+        if setup.get("blockers"):
+            for blocker in setup.get("blockers", []):
+                lines.append(f"- Blocker: {blocker}")
+        else:
+            lines.append("- No setup blockers reported.")
+
+    backup = sections.get("profileBackup")
+    lines.extend(["", "## Backup", ""])
+    if isinstance(backup, dict):
+        lines.append(f"- Profile backup: {backup.get('output_path')}")
+        lines.append(f"- Profiles backed up: {backup.get('profileCount')}")
+    elif sections.get("profileBackupError"):
+        lines.append(f"- Backup error: {sections.get('profileBackupError')}")
+    else:
+        lines.append("- Profile backup was not requested.")
+
+    issue = sections.get("inGameIssue")
+    if isinstance(issue, dict):
+        lines.extend(["", "## In-Game Issue Candidates", ""])
+        candidates = issue.get("candidates", [])
+        if candidates:
+            for candidate in candidates[:10]:
+                lines.append(
+                    f"- {candidate.get('mod')} ({candidate.get('confidence')} confidence, score {candidate.get('score')})"
+                )
+                reason = candidate.get("likelyReason")
+                if reason:
+                    lines.append(f"  Why: {reason}")
+        else:
+            lines.append("- No candidates found. Try exact popup text, console FormID, or deep_scan_files=true.")
+
+    lines.extend(["", "## Next Actions", ""])
+    next_actions = session.get("nextActions", []) if isinstance(session.get("nextActions"), list) else []
+    if next_actions:
+        for action in next_actions:
+            lines.append(f"- {action}")
+    else:
+        lines.append("- Keep this report with any bug report or OpenClaw follow-up.")
+
+    lines.extend(
+        [
+            "",
+            "## Safety",
+            "",
+            "- This report did not apply changes.",
+            "- Do not delete mods from this report alone.",
+            "- Use a cloned profile for tests, deploy in Vortex, then verify in game.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def safe_session_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    markdown_path = safe_session_default_path(args)
+    json_path = expand_path(args.get("session_json_path"))
+    if not json_path:
+        json_path = markdown_path.with_suffix(".json")
+    if json_path == markdown_path:
+        json_path = markdown_path.with_name(f"{markdown_path.name}.json")
+    include_profile_backup = bool(args.get("include_profile_backup", True))
+    include_play_report = bool(args.get("include_play_report", True))
+    include_logs = bool(args.get("include_logs", True))
+    redact_user_paths = bool(args.get("redact_user_paths", True))
+    sections: Dict[str, Any] = {}
+
+    collect_section(sections, "setupValidation", validate_setup, args)
+    if include_profile_backup:
+        backup_args = {**args, "include_all_profiles": bool(args.get("include_all_profiles", True))}
+        backup_args.pop("output_path", None)
+        if not backup_args.get("backup_dir") and not backup_args.get("backup_path"):
+            backup_args["backup_dir"] = str(markdown_path.parent / "profile-backups")
+        collect_section(sections, "profileBackup", vortex_profile_backup, backup_args)
+    if include_play_report:
+        play_args = {**args, "include_conflicts": bool(args.get("include_conflicts", False))}
+        collect_section(sections, "skyrimModdedPlay", skyrim_modded_play_report, play_args)
+    if any(args.get(key) for key in ("description", "location", "object", "form_id", "cell", "base_object", "popup_text", "extra_terms")):
+        collect_section(sections, "inGameIssue", in_game_issue_report, args)
+    if include_logs:
+        collect_section(sections, "logStatus", log_status, {"log_dir": args.get("log_dir"), "max_files": args.get("max_log_files", 12)})
+
+    findings = safe_session_findings(sections)
+    highest = findings[0].get("severity", "unknown") if findings else "none"
+    setup = sections.get("setupValidation") if isinstance(sections.get("setupValidation"), dict) else {}
+    backup = sections.get("profileBackup") if isinstance(sections.get("profileBackup"), dict) else {}
+    next_actions = []
+    for item in findings:
+        action = item.get("nextAction")
+        if action and action not in next_actions:
+            next_actions.append(action)
+    if not next_actions:
+        next_actions.append("Keep this report as a baseline before making changes.")
+    issue_section = sections.get("inGameIssue") if isinstance(sections.get("inGameIssue"), dict) else {}
+    if isinstance(issue_section, dict) and issue_section.get("candidates"):
+        next_actions.append("If testing a mod candidate, use a cloned Vortex profile and deploy before launching Skyrim.")
+    else:
+        next_actions.append("Use a cloned Vortex profile for experiments, deploy in Vortex, then verify in game.")
+
+    session: Dict[str, Any] = {
+        "generatedAt": iso_now(),
+        "server": SERVER_NAME,
+        "version": SERVER_VERSION,
+        "dryRunOnly": True,
+        "output_path": str(markdown_path),
+        "json_path": str(json_path),
+        "summary": {
+            "ready": setup.get("ready") if isinstance(setup, dict) else None,
+            "highestSeverity": highest,
+            "findingCount": len(findings),
+            "backupPath": backup.get("output_path") if isinstance(backup, dict) else None,
+            "sectionStatus": section_status_map(sections),
+        },
+        "findings": findings,
+        "nextActions": next_actions,
+        "sections": sections,
+        "notes": [
+            "This is a no-change safe session report.",
+            "Profile backup may fail if Vortex.exe is not detected; pass vortex_exe or back up in Vortex.",
+            "Use deep_scan_files=true for a slower second pass on weak in-game issue results.",
+        ],
+    }
+    session_to_write = redact_paths_in_value(session) if redact_user_paths else session
+    write_text(json_path, json.dumps(session_to_write, indent=2, ensure_ascii=False, default=str))
+    write_text(markdown_path, safe_session_markdown(session_to_write))
+    log_event(
+        "support",
+        "safe_session_report_written",
+        {"output_path": str(markdown_path), "json_path": str(json_path), "sections": list(sections.keys())},
+    )
+    return {
+        "output_path": str(markdown_path),
+        "json_path": str(json_path),
+        "redactedUserPaths": redact_user_paths,
+        "summary": session_to_write["summary"],
+        "nextActions": session_to_write["nextActions"],
+        "sections": list(sections.keys()),
     }
 
 
@@ -3983,6 +4237,53 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
             "additionalProperties": False,
         },
         in_game_issue_report,
+    ),
+    "safe_session_report": (
+        "Write one no-change Markdown/JSON safe-session report with setup, optional profile backup, play health, optional in-game triage, and logs.",
+        {
+            "type": "object",
+            "properties": {
+                "output_path": {"type": "string"},
+                "session_json_path": {"type": "string"},
+                "vortex_appdata": {"type": "string"},
+                "vortex_exe": {"type": "string"},
+                "game_id": {"type": "string", "default": GAME_ID},
+                "profile_id": {"type": "string"},
+                "skyrim_dir": {"type": "string"},
+                "staging_dir": {"type": "string"},
+                "local_appdata": {"type": "string"},
+                "my_games_dir": {"type": "string"},
+                "backup_path": {"type": "string"},
+                "backup_dir": {"type": "string"},
+                "log_dir": {"type": "string"},
+                "include_profile_backup": {"type": "boolean", "default": True},
+                "include_all_profiles": {"type": "boolean", "default": True},
+                "include_profile_state": {"type": "boolean", "default": True},
+                "include_play_report": {"type": "boolean", "default": True},
+                "include_logs": {"type": "boolean", "default": True},
+                "include_conflicts": {"type": "boolean", "default": False},
+                "redact_user_paths": {"type": "boolean", "default": True},
+                "description": {"type": "string"},
+                "location": {"type": "string"},
+                "object": {"type": "string"},
+                "form_id": {"type": "string"},
+                "cell": {"type": "string"},
+                "base_object": {"type": "string"},
+                "popup_text": {"type": "string"},
+                "extra_terms": {"type": "string"},
+                "issue_kind": {"type": "string", "enum": ["placed_object", "popup", "general"]},
+                "deep_scan_files": {"type": "boolean", "default": False},
+                "hash_files": {"type": "boolean", "default": False},
+                "max_mods": {"type": "integer", "default": 500},
+                "max_candidates": {"type": "integer", "default": 20},
+                "max_files_per_mod": {"type": "integer", "default": 3000},
+                "max_conflicts": {"type": "integer", "default": 300},
+                "max_log_files": {"type": "integer", "default": 12},
+                "timeout_seconds": {"type": "integer", "default": 60},
+            },
+            "additionalProperties": False,
+        },
+        safe_session_report,
     ),
     "ini_report": (
         "Inspect Skyrim SE INI files and report mod-manager-friendly settings.",
@@ -4492,6 +4793,8 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         "profile_id": parsed.profile_id,
         "backup_path": parsed.backup_path,
         "backup_dir": parsed.backup_dir,
+        "session_json_path": parsed.session_json_path,
+        "log_dir": parsed.log_dir,
         "description": parsed.description,
         "location": parsed.location,
         "object": parsed.object,
@@ -4507,6 +4810,8 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
             tool_args[key] = value
     if parsed.max_mods is not None:
         tool_args["max_mods"] = parsed.max_mods
+    if parsed.max_log_files is not None:
+        tool_args["max_log_files"] = parsed.max_log_files
     if parsed.hash_files:
         tool_args["hash_files"] = True
     if parsed.no_profile_state:
@@ -4531,6 +4836,12 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["include_mod_metadata"] = False
     if parsed.deep_scan_files:
         tool_args["deep_scan_files"] = True
+    if parsed.no_profile_backup:
+        tool_args["include_profile_backup"] = False
+    if parsed.no_play_report:
+        tool_args["include_play_report"] = False
+    if parsed.no_logs:
+        tool_args["include_logs"] = False
     return tool_args
 
 
@@ -4586,6 +4897,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--list-tools", action="store_true", help="Print available tool schemas as JSON and exit.")
     parser.add_argument("--tool", help="Call one MCP tool directly without an MCP client.")
     parser.add_argument("--mod-knowledge", action="store_true", help="Shortcut for --tool mod_knowledge_report.")
+    parser.add_argument("--safe-session", action="store_true", help="Shortcut for --tool safe_session_report.")
     parser.add_argument("--args-json", help="JSON object with tool arguments.")
     parser.add_argument("--args-file", help="Path to a JSON object file with tool arguments.")
     parser.add_argument("--output-json", help="Write the direct tool result JSON to this path.")
@@ -4601,6 +4913,8 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--profile-id", help="Override selected Vortex profile id.")
     parser.add_argument("--backup-path", help="Profile backup JSON path for restore tools, or explicit backup output path for write tools.")
     parser.add_argument("--backup-dir", help="Folder for automatic profile backups.")
+    parser.add_argument("--session-json-path", help="JSON output path for --safe-session.")
+    parser.add_argument("--log-dir", help="Override MCP log folder for log_status and support reports.")
     parser.add_argument("--description", help="In-game issue description for in_game_issue_report.")
     parser.add_argument("--location", help="In-game location for in_game_issue_report, such as 'Whiterun Bannered Mare'.")
     parser.add_argument("--object", help="Problem object for in_game_issue_report, such as 'bed' or 'door'.")
@@ -4611,6 +4925,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--extra-terms", help="Extra search terms for in_game_issue_report.")
     parser.add_argument("--issue-kind", choices=["placed_object", "popup", "general"], help="Issue type for in_game_issue_report.")
     parser.add_argument("--max-mods", type=int, help="Maximum mods to scan for supported tools.")
+    parser.add_argument("--max-log-files", type=int, help="Maximum recent log files for support reports.")
     parser.add_argument("--hash-files", action="store_true", help="Hash files for stronger duplicate evidence. Slower.")
     parser.add_argument("--apply", action="store_true", help="Apply a write-capable tool. Most tools are dry-run without this.")
     parser.add_argument("--allow-running-vortex", action="store_true", help="Allow Vortex profile writes while Vortex.exe is running.")
@@ -4623,6 +4938,9 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--no-backup-before-apply", action="store_true", help="Do not write an automatic profile backup before apply=true.")
     parser.add_argument("--no-mod-metadata", action="store_true", help="For profile backup, omit Vortex mod metadata.")
     parser.add_argument("--deep-scan-files", action="store_true", help="For in_game_issue_report, scan extra file paths and text/config files. Slower.")
+    parser.add_argument("--no-profile-backup", action="store_true", help="For --safe-session, skip the profile backup section.")
+    parser.add_argument("--no-play-report", action="store_true", help="For --safe-session, skip the modded play health section.")
+    parser.add_argument("--no-logs", action="store_true", help="For --safe-session or bug reports, skip log status.")
 
     parsed = parser.parse_args(argv)
     if parsed.self_test:
@@ -4634,9 +4952,9 @@ def cli_main(argv: List[str]) -> int:
         print_json({"server": SERVER_NAME, "version": SERVER_VERSION, "tools": tool_list()}, pretty=not parsed.compact)
         return 0
 
-    tool_name = "mod_knowledge_report" if parsed.mod_knowledge else parsed.tool
+    tool_name = "safe_session_report" if parsed.safe_session else "mod_knowledge_report" if parsed.mod_knowledge else parsed.tool
     if not tool_name:
-        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, or --mod-knowledge")
+        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, or --safe-session")
 
     try:
         tool_args = load_cli_tool_args(parsed)

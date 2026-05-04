@@ -7,6 +7,13 @@ This project should feel boring in the best way: check the setup, make a backup,
 Ask OpenClaw to run:
 
 ```text
+safe_session_report
+```
+
+This writes a no-change Markdown/JSON baseline and tries to include a profile
+backup if Vortex CLI is available. If you only want setup blockers, ask for:
+
+```text
 validate_setup
 ```
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.10
+
+- Adds `safe_session_report`, a no-change Markdown/JSON first-response report that combines setup validation, optional Vortex profile backup, modded play health, optional in-game issue triage, and log status.
+- Adds `--safe-session` CLI shortcut and a local helper menu action for users who want one safe report without choosing several tools manually.
+- Documents the safe-session flow for OpenClaw agents and no-MCP users.
+- Adds fixture and smoke coverage for the safe-session MCP tool and CLI shortcut.
+
 ## v0.2.9
 
 - Tightens `in_game_issue_report` for large collections by avoiding the extra full file-path/text scan unless `deep_scan_files=true`.

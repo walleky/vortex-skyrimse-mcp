@@ -11,7 +11,7 @@ This covers questions like:
 Use:
 
 ```text
-in_game_issue_report
+safe_session_report with issue details, or in_game_issue_report for only the issue scan
 ```
 
 Give it as much plain evidence as possible:
@@ -85,9 +85,9 @@ OpenClaw should not delete mods or edit records automatically.
 
 Safer path:
 
-1. Run `validate_setup`.
-2. Run `vortex_profile_backup`.
-3. Run `in_game_issue_report`.
+1. Run `safe_session_report` with the issue details.
+2. If needed, run `in_game_issue_report` again with `deep_scan_files=true`.
+3. Confirm a profile backup exists, or run `vortex_profile_backup`.
 4. Inspect the top candidate in xEdit/SSEEdit if available.
 5. Clone the Vortex profile.
 6. Disable one candidate in the cloned profile as a dry run first.

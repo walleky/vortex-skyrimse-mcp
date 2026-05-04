@@ -34,6 +34,8 @@ an MCP client.
   for safer testing.
 - Write Vortex profile backups and preview restore/undo plans before changing a
   profile.
+- Write a no-change safe session report that combines setup validation, optional
+  profile backup, play health, in-game issue triage, and log status.
 - Check whether plugins from the selected Vortex profile appear in Skyrim
   `Data` and are enabled in `plugins.txt`.
 - Produce a one-shot modded play report that combines environment, SKSE, audio
@@ -51,6 +53,7 @@ an MCP client.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): code map and runtime flow.
 - [docs/CLI.md](docs/CLI.md): direct command-line mode without an MCP client.
 - [docs/LOCAL-MENU.md](docs/LOCAL-MENU.md): local no-hassle menu for report generation.
+- [docs/SAFE-SESSION.md](docs/SAFE-SESSION.md): one safe first report for OpenClaw or local troubleshooting.
 - [docs/SAFETY-UNDO.md](docs/SAFETY-UNDO.md): backup, restore-preview, and dry-run rules.
 - [docs/IN-GAME-DIAGNOSIS.md](docs/IN-GAME-DIAGNOSIS.md): how to ask OpenClaw about misplaced objects, popups, FormIDs, and future live Skyrim bridging.
 - [docs/OPENCLAW-AGENT-GUIDE.md](docs/OPENCLAW-AGENT-GUIDE.md): how an OpenClaw agent should use the tools safely.
@@ -145,6 +148,7 @@ You can run tools without OpenClaw:
 ```powershell
 py -3 .\server.py --tool detect_environment
 py -3 .\server.py --tool validate_setup
+py -3 .\server.py --safe-session
 py -3 .\server.py --mod-knowledge
 ```
 
@@ -162,6 +166,12 @@ and `--no-profile-state`.
 ## First OpenClaw Prompts
 
 Try:
+
+```text
+Use safe_session_report to write a no-change first report with setup validation, profile backup if possible, modded play health, and logs. Summarize the top findings and do not apply changes.
+```
+
+Or start narrower:
 
 ```text
 Use the vortex-skyrimse MCP to run validate_setup, then detect my Skyrim SE/Vortex environment and list the highest-risk problems. Do not apply changes.
@@ -240,6 +250,7 @@ Use apply_ini_fixes with dry_run=false and make_backup=true.
 - `mod_evidence`
 - `mod_knowledge_report`
 - `in_game_issue_report`
+- `safe_session_report`
 - `ini_report`
 - `apply_ini_fixes`
 - `read_text_file`
@@ -287,10 +298,10 @@ If detection misses your setup, pass `skyrim_dir`, `staging_dir`,
 
 ## Safety Model
 
-- `detect_environment`, `inventory_mods`, `analyze_conflicts`,
+- `detect_environment`, `validate_setup`, `inventory_mods`, `analyze_conflicts`,
   `redundant_mod_report`, `plugin_report`, `mod_evidence`,
   `mod_knowledge_report`, `in_game_issue_report`, `ini_report`,
-  `read_text_file`, `vortex_cli_get`, `vortex_profile_report`,
+  `safe_session_report`, `read_text_file`, `vortex_cli_get`, `vortex_profile_report`,
   `vortex_profile_mods`, `vortex_compare_profiles`,
   `vortex_profile_deployment_report`, `skyrim_modded_play_report`,
   `suggest_conflict_fixes`, `log_status`, `bug_report_bundle`, and

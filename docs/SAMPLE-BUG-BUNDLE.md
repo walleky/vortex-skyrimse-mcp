@@ -6,7 +6,7 @@ This is a shortened, sanitized example of what `bug_report_bundle` writes. It he
 {
   "generatedAt": "2026-05-04T01:30:00.000",
   "server": "vortex-skyrimse-mcp",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "output_path": "%USERPROFILE%\\Documents\\vortex-skyrimse-mcp-bug-report-20260504-013000.json",
   "log_dir": "%LOCALAPPDATA%\\vortex-skyrimse-mcp\\logs",
   "privacyNote": "This bundle may include local Windows paths, mod names, plugin names, and recent MCP logs. Review before posting publicly.",
@@ -60,4 +60,4 @@ This is a shortened, sanitized example of what `bug_report_bundle` writes. It he
 }
 ```
 
-OpenClaw should start with `skyrimModdedPlay.findings`, then check `vortexProfileDeployment.issues`, then recent `tool_error` or `vortex-cli` timeout entries.
+OpenClaw should start with `skyrimModdedPlay.findings`, then check `vortexProfileDeployment.issues`, then recent `tool_error` or `vortex-cli` timeout entries. For a simpler first pass, call `safe_session_report` before creating a full bug bundle.

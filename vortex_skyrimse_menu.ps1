@@ -18,7 +18,10 @@ param(
   [switch]$HashFiles,
   [switch]$NoProfileState,
   [switch]$NoConflicts,
-  [switch]$NoReadmeExcerpts
+  [switch]$NoReadmeExcerpts,
+  [switch]$NoProfileBackup,
+  [switch]$NoLogs,
+  [switch]$NoPlayReport
 )
 
 $ErrorActionPreference = "Stop"
@@ -132,6 +135,7 @@ function Show-Actions {
   Write-Host "8. Log status"
   Write-Host "9. List available tools"
   Write-Host "10. In-game issue triage"
+  Write-Host "11. Safe session report"
   Write-Host "Q. Quit"
 }
 
@@ -274,6 +278,70 @@ function Invoke-MenuAction {
       Write-Host "Wrote in-game issue triage: $out" -ForegroundColor Green
       return
     }
+    { $_ -in @("11", "safe", "session", "safe-session", "safe-session-report") } {
+      $md = Join-Path $script:ReportDir "safe-session-$stamp.md"
+      $json = Join-Path $script:ReportDir "safe-session-$stamp.json"
+      $description = $IssueDescription
+      $location = $IssueLocation
+      $objectName = $IssueObject
+      $formId = $FormId
+      $cellName = $Cell
+      $baseObjectName = $BaseObject
+      $popup = $PopupText
+      if (!$description -and !$script:StartedWithAction) {
+        $description = Read-Host "Optional in-game problem to include (press Enter to skip)"
+      }
+      if ($description -and !$location -and !$script:StartedWithAction) {
+        $location = Read-Host "Location, if known (press Enter to skip)"
+      }
+      if ($description -and !$objectName -and !$script:StartedWithAction) {
+        $objectName = Read-Host "Object or thing, if known (press Enter to skip)"
+      }
+      if ($description -and !$popup -and !$script:StartedWithAction) {
+        $popup = Read-Host "Exact popup text, if any (press Enter to skip)"
+      }
+      if ($description -and !$formId -and !$script:StartedWithAction) {
+        $formId = Read-Host "Console-clicked FormID, if any (press Enter to skip)"
+      }
+      $argsData = @{
+        output_path = $md
+        session_json_path = $json
+        include_profile_backup = (-not $NoProfileBackup)
+        include_all_profiles = $true
+        include_play_report = (-not $NoPlayReport)
+        include_logs = (-not $NoLogs)
+        redact_user_paths = $true
+      }
+      if ($description) {
+        $argsData.description = $description
+      }
+      if ($location) {
+        $argsData.location = $location
+      }
+      if ($objectName) {
+        $argsData.object = $objectName
+      }
+      if ($formId) {
+        $argsData.form_id = $formId
+      }
+      if ($cellName) {
+        $argsData.cell = $cellName
+      }
+      if ($baseObjectName) {
+        $argsData.base_object = $baseObjectName
+      }
+      if ($popup) {
+        $argsData.popup_text = $popup
+      }
+      $argsFile = Write-JsonArgs "safe-session" $argsData
+      $out = Join-Path $script:ReportDir "safe-session-$stamp.result.json"
+      Invoke-Server (@("--safe-session", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Wrote safe session Markdown: $md" -ForegroundColor Green
+      Write-Host "Wrote safe session JSON: $json" -ForegroundColor Green
+      Write-Host "Wrote JSON result: $out" -ForegroundColor Green
+      Write-Host "This action did not deploy, disable, delete, or edit mods." -ForegroundColor Green
+      return
+    }
     { $_ -in @("q", "quit", "exit") } {
       return
     }
@@ -289,7 +357,6 @@ if (!(Test-Path -LiteralPath $script:Server)) {
   throw "server.py was not found beside vortex_skyrimse_menu.ps1."
 }
 
-$script:Python = Find-Python
 $script:ReportDir = Get-DefaultReportDir
 $script:StartedWithAction = [bool]$Action
 New-Item -ItemType Directory -Force -Path $script:ReportDir | Out-Null
@@ -301,6 +368,8 @@ if ($ListActions) {
   Show-Actions
   exit 0
 }
+
+$script:Python = Find-Python
 
 if ($Action) {
   Invoke-MenuAction $Action

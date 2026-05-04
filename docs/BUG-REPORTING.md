@@ -11,6 +11,12 @@ Good bug reports should let OpenClaw or a maintainer answer three questions:
 Ask OpenClaw:
 
 ```text
+Use safe_session_report to write a no-change first report, summarize the highest-risk findings, and tell me where the Markdown and JSON files were written. Do not apply changes.
+```
+
+If a maintainer needs the full attachable bundle:
+
+```text
 Use the vortex-skyrimse MCP to run log_status and bug_report_bundle with zip_output=true and redact_user_paths=true. Then summarize the highest-risk findings and tell me where the zip was written. Do not apply changes.
 ```
 
@@ -25,6 +31,7 @@ Or run MCP Doctor:
 Attach:
 
 - the zip file from `bug_report_bundle` with `zip_output=true`
+- the Markdown/JSON files from `safe_session_report`, if you ran it first
 - the exact OpenClaw prompt that failed
 - a screenshot of the Vortex error, if there was one
 - whether Vortex was open or closed

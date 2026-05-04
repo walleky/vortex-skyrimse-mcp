@@ -36,6 +36,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - `tests/fixture_mcp.py`: synthetic Skyrim/Vortex fixture for plugin, staging, conflict, logging, and bug-report behavior.
 - `tests/check_powershell.ps1`: parses PowerShell helpers and exercises the menu's noninteractive action list.
 - `openclaw.mcp.example.json`: static example config.
+- `docs/SAFE-SESSION.md`: explains the one-call safe-session report flow.
 - `docs/MOD-KNOWLEDGE.md`: explains the collection knowledge report and safe removal-review flow.
 - `docs/SAMPLE-BUG-BUNDLE.md`: shortened sanitized support bundle example for agents and humans.
 
@@ -51,7 +52,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - setup validation: `validate_setup`.
 - profile tools: `vortex_profile_report`, `vortex_profile_mods`, `vortex_compare_profiles`, `vortex_profile_deployment_report`, `vortex_profile_backup`, `vortex_profile_restore_plan`, `vortex_clone_profile`, `vortex_set_profile_mods`.
 - play readiness: `skyrim_modded_play_report`, `suggest_conflict_fixes`.
-- support/report tools: `mod_knowledge_report`, `log_status`, `bug_report_bundle`, `write_report`.
+- support/report tools: `safe_session_report`, `mod_knowledge_report`, `log_status`, `bug_report_bundle`, `write_report`.
 - MCP registration, CLI, and loop: `TOOLS`, `tool_list`, `handle_call`, `cli_main`, `handle_message`, `serve_stdio`.
 
 ## Safety Model
@@ -117,6 +118,17 @@ vortex_profile_restore_plan
 ```
 
 ## Bug Report Flow
+
+For a low-friction first pass, OpenClaw should call:
+
+```text
+safe_session_report
+```
+
+`safe_session_report` writes a Markdown report plus JSON. It calls setup
+validation, optional profile backup, modded play health, optional in-game issue
+triage, and log status. It is no-change except for writing report files and a
+profile backup JSON.
 
 For a bug, OpenClaw should call:
 

@@ -136,6 +136,75 @@ def main() -> int:
         assert popup_issue["candidates"][0]["mod"] == "Whiterun Tavern Overhaul", popup_issue
         assert popup_issue["candidates"][0]["confidence"] == "high", popup_issue
 
+        safe_md = root / "safe-session.md"
+        safe_json = root / "safe-session.json"
+        safe = server.safe_session_report(
+            {
+                **base_args,
+                "output_path": str(safe_md),
+                "session_json_path": str(safe_json),
+                "include_profile_backup": False,
+                "include_play_report": False,
+                "include_logs": True,
+                "log_dir": str(log_dir),
+                "description": "There is a bed outside the tavern room and it is messing things up.",
+                "location": "Whiterun Bannered Mare",
+                "object": "bed",
+                "include_profile_state": False,
+                "redact_user_paths": True,
+            }
+        )
+        assert safe_md.exists(), safe
+        assert safe_json.exists(), safe
+        safe_text = safe_md.read_text(encoding="utf-8")
+        safe_payload_text = safe_json.read_text(encoding="utf-8")
+        safe_payload = json.loads(safe_payload_text)
+        assert "Vortex Skyrim SE Safe Session" in safe_text
+        assert "Whiterun Tavern Overhaul" in safe_text
+        assert str(root) not in safe_text
+        assert str(root) not in safe_payload_text
+        assert "inGameIssue" in safe["sections"], safe
+        assert safe_payload["dryRunOnly"] is True, safe_payload
+
+        cli_safe_md = root / "safe-session-cli.md"
+        cli_safe_json = root / "safe-session-cli.json"
+        cli_safe_result = subprocess.run(
+            [
+                sys.executable,
+                str(repo / "server.py"),
+                "--safe-session",
+                "--output-path",
+                str(cli_safe_md),
+                "--session-json-path",
+                str(cli_safe_json),
+                "--staging-dir",
+                str(staging),
+                "--skyrim-dir",
+                str(skyrim),
+                "--local-appdata",
+                str(local_appdata),
+                "--my-games-dir",
+                str(my_games),
+                "--log-dir",
+                str(log_dir),
+                "--description",
+                "bed outside tavern room",
+                "--location",
+                "Whiterun Bannered Mare",
+                "--object",
+                "bed",
+                "--no-profile-backup",
+                "--no-play-report",
+            ],
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        cli_safe_payload = json.loads(cli_safe_result.stdout)
+        assert cli_safe_md.exists(), cli_safe_payload
+        assert cli_safe_json.exists(), cli_safe_payload
+        assert "inGameIssue" in cli_safe_payload["sections"], cli_safe_payload
+
         knowledge_path = root / "knowledge.md"
         knowledge = server.mod_knowledge_report(
             {

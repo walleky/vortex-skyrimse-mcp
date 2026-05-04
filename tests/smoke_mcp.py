@@ -69,6 +69,7 @@ def main() -> int:
     assert "validate_setup" in listed_names, listed_names
     assert "mod_knowledge_report" in listed_names, listed_names
     assert "in_game_issue_report" in listed_names, listed_names
+    assert "safe_session_report" in listed_names, listed_names
     assert "vortex_profile_backup" in listed_names, listed_names
     assert "vortex_profile_restore_plan" in listed_names, listed_names
 
@@ -126,6 +127,7 @@ def main() -> int:
             assert "validate_setup" in names, names
             assert "analyze_conflicts" in names, names
             assert "in_game_issue_report" in names, names
+            assert "safe_session_report" in names, names
             assert "apply_ini_fixes" in names, names
             assert "vortex_profile_report" in names, names
             assert "vortex_profile_mods" in names, names

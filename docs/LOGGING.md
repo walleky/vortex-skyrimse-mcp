@@ -68,6 +68,7 @@ doctor-YYYYMMDD-HHMMSS.log
 `support`
 
 - bug-report bundle creation
+- safe-session report creation and per-section errors
 
 `doctor`
 
@@ -84,6 +85,12 @@ log_status
 It returns the log folder, recent files, and channel counts.
 
 For a full support report:
+
+```text
+safe_session_report
+```
+
+For an attachable bug bundle:
 
 ```text
 bug_report_bundle

@@ -67,6 +67,12 @@ To let it register the server through the OpenClaw CLI:
 Start read-only:
 
 ```text
+Use safe_session_report to write a no-change first report with setup validation, profile backup if possible, modded play health, and logs. Summarize the top findings and do not apply changes.
+```
+
+Or start with only setup:
+
+```text
 Use the vortex-skyrimse MCP to run validate_setup, then detect my Skyrim SE/Vortex environment and list the highest-risk problems. Do not apply changes.
 ```
 
@@ -91,7 +97,7 @@ Use the vortex-skyrimse MCP to run mod_knowledge_report. Write the Markdown repo
 For something weird inside the game:
 
 ```text
-Use in_game_issue_report to find likely mods causing this: there is a bed outside the tavern room in the Whiterun Bannered Mare. Do not apply changes.
+Use safe_session_report with this issue: there is a bed outside the tavern room in the Whiterun Bannered Mare. Include in-game issue candidates and do not apply changes.
 ```
 
 For annoying popups, paste the exact popup text if you can.

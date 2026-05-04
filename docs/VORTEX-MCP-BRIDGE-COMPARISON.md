@@ -39,6 +39,7 @@ This project is intentionally a safety-first sidecar:
 - dependency-free Python server
 - direct CLI mode when OpenClaw is not working
 - setup validation through `validate_setup`
+- no-change first-response report through `safe_session_report`
 - large collection Markdown knowledge report
 - bug-report zip with recent MCP/Vortex CLI logs
 - profile deployment checks against Skyrim `Data` and `plugins.txt`
@@ -55,6 +56,7 @@ For a frustrated user, this is less magical but easier to undo and easier to deb
 Useful Bridge ideas now mirrored in this project:
 
 - `validate_setup`: one call that tells an agent what is ready and what is blocked.
+- `safe_session_report`: one low-friction baseline report before an agent starts changing things.
 - profile backup: export profile state before risky work.
 - profile diff/compare: already present as `vortex_compare_profiles`.
 - local no-hassle workflows: this project adds `Vortex-SkyrimSE-Menu.cmd` and direct CLI mode.
@@ -75,7 +77,7 @@ Those actions are best done by a Vortex extension or by the user in Vortex until
 
 If the user has both tools:
 
-1. Use this project for `validate_setup`, `skyrim_modded_play_report`, `mod_knowledge_report`, and bug bundles.
+1. Use this project for `safe_session_report`, `validate_setup`, `skyrim_modded_play_report`, `mod_knowledge_report`, and bug bundles.
 2. Use this project to make a profile backup.
 3. Use Bridge for live Vortex actions like deploy/install/update if the user trusts it and Vortex is open.
 4. Use this project again to verify deployment and plugin state after changes.

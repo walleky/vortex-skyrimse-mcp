@@ -17,6 +17,12 @@ py -3 .\server.py --tool validate_setup
 py -3 .\server.py --tool detect_environment
 ```
 
+Write one safe first-response report:
+
+```powershell
+py -3 .\server.py --safe-session
+```
+
 Generate the collection knowledge report:
 
 ```powershell
@@ -27,6 +33,12 @@ Triage an in-game object problem:
 
 ```powershell
 py -3 .\server.py --tool in_game_issue_report --description "bed outside tavern room" --location "Whiterun Bannered Mare" --object "bed"
+```
+
+Include the same issue inside a safe session:
+
+```powershell
+py -3 .\server.py --safe-session --description "bed outside tavern room" --location "Whiterun Bannered Mare" --object "bed"
 ```
 
 With stronger console evidence:
@@ -49,6 +61,20 @@ Make-Mod-Knowledge.cmd
 ```
 
 `Vortex-SkyrimSE-Menu.cmd` opens a menu for the common report actions. `Make-Mod-Knowledge.cmd` goes straight to the collection knowledge report.
+
+## Useful Safe Session Options
+
+```powershell
+py -3 .\server.py --safe-session --no-profile-backup
+```
+
+Use this when Vortex CLI is unavailable or locked. The report still includes setup, play health, optional issue triage, and logs.
+
+```powershell
+py -3 .\server.py --safe-session --output-path .\safe-session.md --session-json-path .\safe-session.json
+```
+
+Use explicit output paths when attaching the report to a bug or keeping a baseline before experiments.
 
 ## Useful Mod Knowledge Options
 
