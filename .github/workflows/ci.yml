@@ -18,7 +18,7 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12"]
 
-      steps:
+    steps:
       - name: Check out repo
         uses: actions/checkout@v6
 
