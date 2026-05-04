@@ -19,8 +19,8 @@ an MCP client.
 - Read mod evidence: files, readmes, FOMOD XML, plugins, masters, BSA archives,
   SKSE DLL plugins, scripts, meshes, textures, UI files.
 - Triage in-game weirdness such as misplaced objects or annoying popups by
-  searching staged mods for location, object, plugin, readme, and popup-text
-  evidence.
+  searching staged mods for location, object, plugin, readme, popup wording,
+  UI/script/MCM evidence, and optional exact popup text.
 - Detect likely redundant mods:
   - duplicate plugin names
   - duplicate Nexus IDs when metadata is present
@@ -222,10 +222,10 @@ Use mod_knowledge_report to write a Markdown report explaining what each Skyrim 
 For an in-game object or popup:
 
 ```text
-Use in_game_issue_report to find likely mods causing this: there is a bed outside the tavern room in the Whiterun Bannered Mare. Do not apply changes.
+Use in_game_issue_report to find likely mods causing this: there is an annoying popup after loading a save. Do not apply changes.
 ```
 
-If you can open Skyrim's console, click the bad object and include the shown FormID/base object. That makes the report much stronger.
+If you can open Skyrim's console for placed objects, click the bad object and include the shown FormID/base object. For popups, exact text or a screenshot/OCR can help later, but OpenClaw should run the first popup scan from your plain description.
 
 For INI fixes:
 

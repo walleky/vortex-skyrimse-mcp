@@ -12,7 +12,7 @@ It writes two files:
 - `validate_setup`: detected Vortex, Skyrim SE, staging folder, SKSE, and blockers.
 - `vortex_profile_backup`: a backup of Skyrim SE Vortex profiles when Vortex CLI is available.
 - `skyrim_modded_play_report`: deployment, plugins, INI, audio archive, SKSE, and profile health.
-- `in_game_issue_report`: only when you pass a problem description, location, object, popup text, or FormID.
+- `in_game_issue_report`: only when you pass a problem description, location, object, optional popup text, or FormID.
 - `log_status`: recent MCP logs and channels.
 
 ## What It Does Not Do
@@ -43,6 +43,12 @@ Include an in-game issue:
 
 ```powershell
 .\vortex_skyrimse_menu.ps1 -Action safe -IssueDescription "bed outside tavern room" -IssueLocation "Whiterun Bannered Mare" -IssueObject "bed"
+```
+
+For popups, a plain description is enough:
+
+```powershell
+.\vortex_skyrimse_menu.ps1 -Action safe -IssueDescription "annoying popup after loading a save"
 ```
 
 ## Direct CLI

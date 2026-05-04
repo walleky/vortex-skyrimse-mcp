@@ -50,7 +50,13 @@ py -3 .\server.py --tool in_game_issue_report --description "bad bed placement" 
 Triage an annoying popup:
 
 ```powershell
-py -3 .\server.py --tool in_game_issue_report --issue-kind popup --description "popup after loading a save" --popup-text "paste exact popup text here"
+py -3 .\server.py --tool in_game_issue_report --description "annoying popup after loading a save"
+```
+
+Exact popup text is optional second-pass evidence:
+
+```powershell
+py -3 .\server.py --tool in_game_issue_report --description "popup after loading a save" --popup-text "paste exact popup text here"
 ```
 
 Or double-click:

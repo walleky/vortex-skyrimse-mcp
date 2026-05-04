@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.11
+
+- Improves popup triage so natural language like "annoying popup after loading a save" automatically uses popup mode without requiring exact popup text.
+- Adds popup synonym handling for pop-up, dialog, warning, alert, prompt, notification, MCM, overlay, widget, and similar wording.
+- Ranks UI/interface, script, SKSE, config, FOMOD, and MCM-style evidence for popup candidates even when screenshots/OCR/exact text are not provided.
+- Updates OpenClaw and CLI docs so exact popup text is optional second-pass evidence, not a first-pass requirement.
+
 ## v0.2.10
 
 - Adds `safe_session_report`, a no-change Markdown/JSON first-response report that combines setup validation, optional Vortex profile backup, modded play health, optional in-game issue triage, and log status.

@@ -36,7 +36,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.10"
+SERVER_VERSION = "0.2.11"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -1601,6 +1601,54 @@ ISSUE_STOP_WORDS = {
 }
 
 
+POPUP_INTENT_TERMS = {
+    "alert",
+    "alerts",
+    "dialog",
+    "dialogue",
+    "message",
+    "messages",
+    "mcm",
+    "menu",
+    "modal",
+    "notification",
+    "notifications",
+    "overlay",
+    "pop",
+    "popup",
+    "popups",
+    "popping",
+    "prompt",
+    "prompts",
+    "toast",
+    "warning",
+    "warnings",
+    "widget",
+    "window",
+}
+
+
+POPUP_SUPPORT_TERMS = {
+    "after",
+    "alert",
+    "box",
+    "dialog",
+    "interface",
+    "loading",
+    "mcm",
+    "menu",
+    "message",
+    "notification",
+    "prompt",
+    "save",
+    "settings",
+    "skyui",
+    "ui",
+    "warning",
+    "widget",
+}
+
+
 def tokenize_issue_terms(*values: Optional[str]) -> List[str]:
     terms: set[str] = set()
     joined = " ".join(str(value or "") for value in values).lower()
@@ -1608,14 +1656,17 @@ def tokenize_issue_terms(*values: Optional[str]) -> List[str]:
         clean = token.strip("_'-")
         if clean and clean not in ISSUE_STOP_WORDS:
             terms.add(clean)
+            compact = clean.replace("-", "")
+            if compact and compact != clean and compact not in ISSUE_STOP_WORDS:
+                terms.add(compact)
     if "whiterun" in terms and ({"tavern", "inn", "room"} & terms):
         terms.update({"bannered", "mare", "inn"})
     if "bannered" in terms or "mare" in terms:
         terms.update({"bannered", "mare", "whiterun", "tavern", "inn"})
     if "bed" in terms:
         terms.update({"bedroll", "furniture", "furn"})
-    if {"popup", "popups", "notification", "message"} & terms:
-        terms.update({"message", "notification", "mcm", "menu", "interface", "dialog", "skyui"})
+    if POPUP_INTENT_TERMS & terms:
+        terms.update(POPUP_SUPPORT_TERMS)
     return sorted(terms)
 
 
@@ -1743,11 +1794,46 @@ def infer_issue_kind(args: Dict[str, Any], terms: List[str]) -> str:
     explicit = str(args.get("issue_kind") or "").strip().lower()
     if explicit in {"placed_object", "popup", "ui_popup", "general"}:
         return "popup" if explicit == "ui_popup" else explicit
-    if args.get("popup_text") or {"popup", "popups", "notification", "message", "mcm", "menu"} & set(terms):
+    if args.get("popup_text") or POPUP_INTENT_TERMS & set(terms):
         return "popup"
     if args.get("object") or {"bed", "bedroll", "furniture", "furn"} & set(terms):
         return "placed_object"
     return "general"
+
+
+def natural_language_popup_mode(args: Dict[str, Any], terms: List[str]) -> bool:
+    return infer_issue_kind(args, terms) == "popup" and not str(args.get("popup_text") or "").strip()
+
+
+def popup_capability_evidence(summary: Dict[str, Any], max_evidence: int) -> Tuple[int, List[Dict[str, Any]]]:
+    kinds = summary.get("kinds", {}) if isinstance(summary.get("kinds"), dict) else {}
+    metadata = summary.get("metadata", {}) if isinstance(summary.get("metadata"), dict) else {}
+    name = str(summary.get("name") or "")
+    evidence: List[Dict[str, Any]] = []
+    score = 0
+
+    def add(points: int, source: str, matched: List[str], preview: str) -> None:
+        nonlocal score
+        score += points
+        if len(evidence) < max_evidence:
+            evidence.append({"source": source, "matchedTerms": matched, "preview": preview})
+
+    if kinds.get("interface"):
+        add(8, "mod file kinds", ["interface", "ui"], f"{kinds.get('interface')} UI/interface file(s) detected.")
+    if kinds.get("script"):
+        add(4, "mod file kinds", ["script"], f"{kinds.get('script')} Papyrus script file(s) detected.")
+    if kinds.get("skse_plugin"):
+        add(4, "mod file kinds", ["skse_plugin"], f"{kinds.get('skse_plugin')} SKSE plugin file(s) detected.")
+    if kinds.get("config"):
+        add(2, "mod file kinds", ["config"], f"{kinds.get('config')} config file(s) detected.")
+    if metadata.get("fomod"):
+        add(2, "FOMOD metadata", ["fomod", "menu"], "Installer metadata is present; check installed options if this mod is a candidate.")
+
+    name_hits = matched_issue_terms(name, POPUP_SUPPORT_TERMS | POPUP_INTENT_TERMS)
+    if name_hits:
+        add(5, "mod name popup wording", name_hits, name)
+
+    return score, evidence
 
 
 def scan_mod_for_issue(
@@ -1773,6 +1859,9 @@ def scan_mod_for_issue(
     plugin_object_hit = False
     popup_text_hit = False
     popup_text = str(args.get("popup_text") or "").strip()
+    issue_kind = infer_issue_kind(args, terms)
+    natural_popup = natural_language_popup_mode(args, terms)
+    popup_capability_score = 0
 
     def note_exact_popup(source: str, text: str) -> None:
         nonlocal popup_text_hit, score
@@ -1804,6 +1893,15 @@ def scan_mod_for_issue(
         path = mod_dir / readme
         if path.exists():
             score_hits(f"readme: {readme}", read_file_head(path, max_text_bytes), terms, 3)
+
+    if natural_popup:
+        capability_score, capability_evidence = popup_capability_evidence(summary, max_evidence - len(evidence))
+        if capability_score:
+            popup_capability_score = capability_score
+            score += capability_score
+            for item in capability_evidence:
+                evidence.append(item)
+                matched.update(item.get("matchedTerms", []))
 
     text_suffixes = {".txt", ".md", ".ini", ".json", ".xml"}
     scanned_files = int(summary.get("fileCount", 0) or 0)
@@ -1856,9 +1954,11 @@ def scan_mod_for_issue(
     elif score >= 10:
         confidence = "medium"
 
-    issue_kind = infer_issue_kind(args, terms)
     if issue_kind == "popup":
-        likely_reason = "This mod has UI/script/plugin evidence matching the popup description. Check MCM/settings first, then test in a cloned profile."
+        if natural_popup:
+            likely_reason = "This mod has UI/script/MCM-style evidence matching the natural-language popup request. Exact popup text is not required for this first pass; check MCM/settings first, then test in a cloned profile."
+        else:
+            likely_reason = "This mod has UI/script/plugin evidence matching the popup description. Check MCM/settings first, then test in a cloned profile."
     elif plugin_location_hit and plugin_object_hit:
         likely_reason = "This mod has plugin string evidence for both the location and object/problem terms. Inspect this plugin in xEdit first."
     elif plugin_location_hit:
@@ -1886,6 +1986,8 @@ def scan_mod_for_issue(
         "scannedFilesApprox": scanned_files,
         "scannedPluginCount": scanned_plugins,
         "deepScanFiles": deep_scan_files,
+        "popupEvidenceMode": "natural_language" if natural_popup else "exact_text" if popup_text else None,
+        "popupCapabilityScore": popup_capability_score,
     }
 
 
@@ -1906,6 +2008,8 @@ def in_game_issue_report(args: Dict[str, Any]) -> Dict[str, Any]:
         terms = [popup_text.lower()]
     elif not terms and form_id:
         terms = [normalize_form_id(form_id) or form_id]
+    elif not terms and infer_issue_kind(args, terms) == "popup":
+        terms = sorted(POPUP_SUPPORT_TERMS | {"popup"})
     if not terms:
         raise ToolError("Pass description, location, object, popup_text, or extra_terms so the tool has something to search for.")
     location_terms = tokenize_issue_terms(location)
@@ -1961,7 +2065,10 @@ def in_game_issue_report(args: Dict[str, Any]) -> Dict[str, Any]:
         "Use xEdit/SSEEdit to inspect the reported cell or quest/message records before applying any fix.",
     ]
     if issue_kind == "popup":
-        recommended_actions.insert(1, "Copy the exact popup text or attach a screenshot/OCR text; exact text makes the search much stronger.")
+        if popup_text:
+            recommended_actions.insert(1, "Use the exact popup text result first; it is the strongest popup evidence this tool can read.")
+        else:
+            recommended_actions.insert(1, "No exact popup text is required for this first pass. If candidates are weak, a screenshot/OCR text can make the next scan stronger.")
         recommended_actions.append("Check the candidate mod's MCM/settings before disabling it, because many popups are configurable notifications.")
 
     return {
@@ -1974,6 +2081,8 @@ def in_game_issue_report(args: Dict[str, Any]) -> Dict[str, Any]:
             "baseObject": base_object,
             "formId": normalize_form_id(form_id),
             "popupTextProvided": bool(popup_text),
+            "popupTextRequired": False,
+            "naturalLanguagePopup": issue_kind == "popup" and not bool(popup_text),
         },
         "formIdHint": form_id_load_order_hint(args, form_id),
         "staging_dir": str(staging_dir),
@@ -1996,7 +2105,7 @@ def in_game_issue_report(args: Dict[str, Any]) -> Dict[str, Any]:
         "notes": [
             "This is a heuristic read-only triage. High-confidence candidates still need confirmation in xEdit or a cloned-profile test.",
             "For misplaced objects, exact FormID evidence is much stronger than a natural-language description.",
-            "For popups, exact text is much stronger than saying 'annoying popup'.",
+            "For popups, saying 'popup', 'notification', 'warning', 'MCM message', or similar is enough for the first scan; exact text is optional evidence for a stronger second pass.",
         ],
     }
 
@@ -3618,7 +3727,7 @@ def safe_session_findings(sections: Dict[str, Any]) -> List[Dict[str, Any]]:
     section_error_actions = {
         "setupValidationError": ("high", "Fix basic path detection first, then rerun the safe session."),
         "skyrimModdedPlayError": ("high", "Pass explicit skyrim_dir, staging_dir, vortex_exe, or local_appdata and rerun."),
-        "inGameIssueError": ("medium", "Rerun with simpler issue text, exact popup text, or console FormID if available."),
+        "inGameIssueError": ("medium", "Rerun with simpler issue text, screenshot/OCR popup text, or console FormID if available."),
         "logStatusError": ("low", "Pass log_dir explicitly or rerun after MCP Doctor creates logs."),
     }
     for key, (severity, action) in section_error_actions.items():
@@ -3740,7 +3849,7 @@ def safe_session_markdown(session: Dict[str, Any]) -> str:
                 if reason:
                     lines.append(f"  Why: {reason}")
         else:
-            lines.append("- No candidates found. Try exact popup text, console FormID, or deep_scan_files=true.")
+            lines.append("- No candidates found. Try screenshot/OCR popup text, console FormID, or deep_scan_files=true.")
 
     lines.extend(["", "## Next Actions", ""])
     next_actions = session.get("nextActions", []) if isinstance(session.get("nextActions"), list) else []

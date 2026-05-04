@@ -100,7 +100,7 @@ For something weird inside the game:
 Use safe_session_report with this issue: there is a bed outside the tavern room in the Whiterun Bannered Mare. Include in-game issue candidates and do not apply changes.
 ```
 
-For annoying popups, paste the exact popup text if you can.
+For annoying popups, just say "popup", "notification", "warning", or similar in the description. Exact popup text or a screenshot/OCR can help later, but it is not required for the first scan.
 
 Before changing a Vortex profile:
 

@@ -28,11 +28,16 @@ For popups:
 
 ```json
 {
-  "description": "I keep getting a popup after loading a save.",
-  "popup_text": "paste the exact popup text here",
-  "issue_kind": "popup"
+  "description": "I keep getting an annoying popup after loading a save."
 }
 ```
+
+You do not need to type the exact popup message for the first pass. If you say
+`popup`, `pop-up`, `notification`, `warning`, `alert`, `prompt`, `dialog`,
+`MCM message`, or similar, the MCP automatically switches to popup triage and
+looks for UI/interface, script, SKSE, config, FOMOD, and MCM-style evidence.
+Exact text or screenshot/OCR is optional second-pass evidence when the first
+candidate list is weak.
 
 The tool searches staged mods for:
 
@@ -41,6 +46,7 @@ The tool searches staged mods for:
 - readable plugin strings
 - readmes and config files
 - file paths
+- UI/interface, script, SKSE, FOMOD, and MCM-style popup evidence
 - Vortex profile enabled/disabled state when available
 
 It returns likely candidate mods, evidence snippets, confidence, and a safe test plan.
@@ -105,4 +111,4 @@ A future live bridge would need one or more of these:
 - console-log bridge that can export clicked reference details
 - read-only xEdit/SSEEdit integration for cell and record lookup
 
-That would make questions like "what object am I looking at?" much stronger. Until then, exact popup text and console FormIDs are the best input.
+That would make questions like "what object am I looking at?" much stronger. Until then, plain popup descriptions work for the first pass, while exact popup text, screenshots/OCR, and console FormIDs make second-pass diagnosis stronger.

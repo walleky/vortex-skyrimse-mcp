@@ -74,6 +74,9 @@ def main() -> int:
             plugin_bytes("Skyrim.esm") + b"Whiterun Bannered Mare tavern room bed furniture popup message",
         )
         write(staging / "Whiterun Tavern Overhaul" / "readme.txt", "Places a bed in the Whiterun Bannered Mare tavern room.")
+        write(staging / "Popup UI Mod" / "interface" / "annoyingpopup.swf", "ui")
+        write(staging / "Popup UI Mod" / "scripts" / "popupnotice.pex", "script")
+        write(staging / "Popup UI Mod" / "readme.txt", "Shows a warning notification after loading a save. Configure the popup in MCM.")
         write(plugins_dir / "plugins.txt", "# comment\r\n*Skyrim.esm\r\n*MYMOD.ESP\r\n*MissingOnDisk.esp\r\n")
         write(my_games / "Skyrim.ini", "[Archive]\nbInvalidateOlderFiles=1\n")
         write(my_games / "SkyrimPrefs.ini", "[Launcher]\nbEnableFileSelection=1\n")
@@ -96,7 +99,7 @@ def main() -> int:
         assert setup["ready"] is True, setup
 
         inventory = server.inventory_mods({**base_args, "include_files": True})
-        assert inventory["modCount"] == 4, inventory
+        assert inventory["modCount"] == 5, inventory
 
         conflicts = server.analyze_conflicts(base_args)
         assert any(item["relativePath"] == "scripts/shared.pex" for item in conflicts["conflicts"]), conflicts
@@ -135,6 +138,31 @@ def main() -> int:
         )
         assert popup_issue["candidates"][0]["mod"] == "Whiterun Tavern Overhaul", popup_issue
         assert popup_issue["candidates"][0]["confidence"] == "high", popup_issue
+
+        natural_popup = server.in_game_issue_report(
+            {
+                **base_args,
+                "description": "annoying popup after loading a save",
+                "include_profile_state": False,
+            }
+        )
+        assert natural_popup["issue"]["kind"] == "popup", natural_popup
+        assert natural_popup["issue"]["popupTextProvided"] is False, natural_popup
+        assert natural_popup["issue"]["popupTextRequired"] is False, natural_popup
+        assert natural_popup["issue"]["naturalLanguagePopup"] is True, natural_popup
+        assert natural_popup["candidates"][0]["mod"] == "Popup UI Mod", natural_popup
+        assert natural_popup["candidates"][0]["popupEvidenceMode"] == "natural_language", natural_popup
+
+        popup_kind_only = server.in_game_issue_report(
+            {
+                **base_args,
+                "issue_kind": "popup",
+                "include_profile_state": False,
+            }
+        )
+        assert popup_kind_only["issue"]["kind"] == "popup", popup_kind_only
+        assert popup_kind_only["issue"]["popupTextRequired"] is False, popup_kind_only
+        assert popup_kind_only["candidateCount"] >= 1, popup_kind_only
 
         safe_md = root / "safe-session.md"
         safe_json = root / "safe-session.json"
@@ -252,7 +280,7 @@ def main() -> int:
             check=True,
         )
         cli_payload = json.loads(cli_result.stdout)
-        assert cli_payload["modCount"] == 4, cli_payload
+        assert cli_payload["modCount"] == 5, cli_payload
         assert cli_knowledge_path.exists(), cli_payload
 
         bundle_path = root / "bundle.json"

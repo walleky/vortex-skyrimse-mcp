@@ -80,7 +80,9 @@ For "why is this object here?", "which mod added this?", or annoying popups:
 safe_session_report with description/location/object/popup_text, or in_game_issue_report for a narrower call
 ```
 
-Ask the user for exact location, object name, popup text, and if possible the console-clicked FormID.
+If the user says "popup", "notification", "warning", "alert", "prompt", "dialog", "MCM message", or similar, run popup triage from the plain description first. Do not block on exact popup text. Ask for exact text or screenshot/OCR only if the first candidates are weak.
+
+For placed objects, ask for exact location, object name, and if possible the console-clicked FormID.
 
 For "make me a safe test profile":
 
@@ -147,7 +149,7 @@ This usually means stale deployment or the wrong active profile.
 
 `in_game_issue_report returns weak candidates`
 
-Ask for stronger evidence: exact popup text, screenshot/OCR text, current cell/location, and console-clicked FormID/base object. Then rerun `in_game_issue_report`.
+For popups, first rerun from the user's natural-language description if OpenClaw forgot to include it. If candidates are still weak, ask for screenshot/OCR text or exact popup text. For placed objects, ask for current cell/location and console-clicked FormID/base object. Then rerun `in_game_issue_report`.
 
 If the first pass is still too weak, rerun with `deep_scan_files=true`. Warn the user that it is slower on large collections.
 
@@ -186,7 +188,7 @@ Before `vortex_profile_restore_plan apply=true`:
 Before fixing an in-game object or popup:
 
 - run `in_game_issue_report`
-- explain that it is heuristic unless there is FormID or exact popup-text evidence
+- explain that it is heuristic; popup exact text is optional second-pass evidence, while FormID is strongest for placed objects
 - create a Vortex profile backup
 - prefer cloned-profile disable tests over deletion
 - do not edit plugin records or conflict rules automatically
@@ -217,7 +219,7 @@ For unwanted mods, prefer this wording: "disable in a cloned profile and test" i
 
 ## In-Game Issue Review
 
-For misplaced objects, ask the user to open the console, click the object, and provide the shown reference/base FormID and name. For popups, ask for exact text. Then run:
+For misplaced objects, ask the user to open the console, click the object, and provide the shown reference/base FormID and name. For popups, run from the plain description first. Then run:
 
 ```text
 in_game_issue_report with description, location, object, popup_text if available
