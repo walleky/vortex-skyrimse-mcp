@@ -57,6 +57,7 @@ doctor-YYYYMMDD-HHMMSS.log
 - tool success
 - expected `ToolError`
 - unexpected exception with traceback preview
+- compact tool arguments/results with Nexus API keys and token-like fields redacted
 
 `vortex-cli`
 
@@ -125,5 +126,8 @@ Logs may include:
 - plugin names
 - Vortex CLI stdout/stderr previews
 - OpenClaw config paths
+
+Logs must not include Nexus API keys. If you see a key in a log, treat that as a
+security bug and rotate the key.
 
 Review logs before posting them publicly.

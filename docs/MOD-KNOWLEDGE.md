@@ -4,7 +4,7 @@
 
 ## What It Uses
 
-The report uses local evidence only:
+By default, the report uses local evidence:
 
 - staged Vortex mod folders
 - ESP/ESM/ESL plugin headers and masters
@@ -18,7 +18,13 @@ The report uses local evidence only:
 - duplicate plugin/Nexus id/file coverage evidence
 - file-level conflict examples
 
-It does not download Nexus page descriptions. That keeps the tool dependency-free and avoids rate-limit/API surprises, but it also means the report is an evidence map, not a perfect encyclopedia.
+With `include_nexus_metadata=true` and a configured Nexus API key, it can also
+attach read-only Nexus name, summary, category, version, status, and URL
+metadata for locally mapped Nexus mod ids.
+
+It does not download mods or install collection files. Nexus metadata makes the
+report easier to read, but it is still an evidence map, not a perfect
+encyclopedia.
 
 ## Basic OpenClaw Prompt
 
@@ -32,6 +38,12 @@ If OpenClaw is not set up yet:
 
 ```powershell
 py -3 .\server.py --mod-knowledge
+```
+
+With optional Nexus metadata:
+
+```powershell
+py -3 .\server.py --mod-knowledge --include-nexus-metadata
 ```
 
 Or use the wrapper:
@@ -84,4 +96,7 @@ The MCP can help preview exact profile changes with `vortex_set_profile_mods app
 
 ## Limits
 
-The report cannot know the author's intent unless the intent is visible in local metadata, readmes, file names, plugin headers, or the Vortex state. For uncertain mods, OpenClaw should say "candidate" and ask the user whether that content is wanted.
+The report cannot know the author's intent unless the intent is visible in local
+metadata, readmes, file names, plugin headers, Vortex state, or optional Nexus
+metadata. For uncertain mods, OpenClaw should say "candidate" and ask the user
+whether that content is wanted.

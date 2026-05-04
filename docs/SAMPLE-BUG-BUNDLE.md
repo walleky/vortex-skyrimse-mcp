@@ -62,4 +62,4 @@ This is a shortened, sanitized example of what `bug_report_bundle` writes. It he
 }
 ```
 
-OpenClaw should start with `skyrimModdedPlay.findings`, then check `vortexProfileDeployment.issues`, then recent `tool_error` or `vortex-cli` timeout entries. For a simpler first pass, call `safe_session_report` before creating a full bug bundle.
+OpenClaw should start with `skyrimModdedPlay.findings`, then check `vortexProfileDeployment.issues`, then recent `tool_error` or `vortex-cli` timeout entries. For a simpler first pass, call `skyrim_diagnostics_report` before creating a full bug bundle.

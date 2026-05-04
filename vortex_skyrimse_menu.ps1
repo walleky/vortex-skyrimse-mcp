@@ -21,7 +21,11 @@ param(
   [switch]$NoReadmeExcerpts,
   [switch]$NoProfileBackup,
   [switch]$NoLogs,
-  [switch]$NoPlayReport
+  [switch]$NoPlayReport,
+  [switch]$IncludeNexusMetadata,
+  [string]$NexusApiKeyFile = "",
+  [int]$NexusMaxLookupMods = 80,
+  [switch]$NoNexusCache
 )
 
 $ErrorActionPreference = "Stop"
@@ -91,6 +95,20 @@ function Get-CommonArgs {
   if ($NoReadmeExcerpts) {
     $args += "--no-readme-excerpts"
   }
+  if ($IncludeNexusMetadata) {
+    $args += "--include-nexus-metadata"
+  }
+  if ($NexusApiKeyFile) {
+    $args += "--nexus-api-key-file"
+    $args += $NexusApiKeyFile
+  }
+  if ($NexusMaxLookupMods -gt 0) {
+    $args += "--nexus-max-lookup-mods"
+    $args += "$NexusMaxLookupMods"
+  }
+  if ($NoNexusCache) {
+    $args += "--no-nexus-cache"
+  }
   return $args
 }
 
@@ -136,6 +154,7 @@ function Show-Actions {
   Write-Host "9. List available tools"
   Write-Host "10. In-game issue triage"
   Write-Host "11. Safe session report"
+  Write-Host "12. Skyrim diagnostics report"
   Write-Host "Q. Quit"
 }
 
@@ -340,6 +359,58 @@ function Invoke-MenuAction {
       Write-Host "Wrote safe session JSON: $json" -ForegroundColor Green
       Write-Host "Wrote JSON result: $out" -ForegroundColor Green
       Write-Host "This action did not deploy, disable, delete, or edit mods." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("12", "diagnostics", "skyrim-diagnostics", "skyrim") } {
+      $md = Join-Path $script:ReportDir "skyrim-diagnostics-$stamp.md"
+      $json = Join-Path $script:ReportDir "skyrim-diagnostics-$stamp.json"
+      $description = $IssueDescription
+      $location = $IssueLocation
+      $objectName = $IssueObject
+      $formId = $FormId
+      $cellName = $Cell
+      $baseObjectName = $BaseObject
+      $popup = $PopupText
+      if (!$description -and !$script:StartedWithAction) {
+        $description = Read-Host "Optional in-game problem to include (press Enter to skip)"
+      }
+      $argsData = @{
+        output_path = $md
+        session_json_path = $json
+        include_profile_backup = (-not $NoProfileBackup)
+        include_all_profiles = $true
+        include_play_report = (-not $NoPlayReport)
+        include_logs = (-not $NoLogs)
+        redact_user_paths = $true
+      }
+      if ($description) {
+        $argsData.description = $description
+      }
+      if ($location) {
+        $argsData.location = $location
+      }
+      if ($objectName) {
+        $argsData.object = $objectName
+      }
+      if ($formId) {
+        $argsData.form_id = $formId
+      }
+      if ($cellName) {
+        $argsData.cell = $cellName
+      }
+      if ($baseObjectName) {
+        $argsData.base_object = $baseObjectName
+      }
+      if ($popup) {
+        $argsData.popup_text = $popup
+      }
+      $argsFile = Write-JsonArgs "skyrim-diagnostics" $argsData
+      $out = Join-Path $script:ReportDir "skyrim-diagnostics-$stamp.result.json"
+      Invoke-Server (@("--skyrim-diagnostics", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Wrote Skyrim diagnostics Markdown: $md" -ForegroundColor Green
+      Write-Host "Wrote Skyrim diagnostics JSON: $json" -ForegroundColor Green
+      Write-Host "Wrote JSON result: $out" -ForegroundColor Green
+      Write-Host "This action did not deploy, disable, delete, update, or edit mods." -ForegroundColor Green
       return
     }
     { $_ -in @("q", "quit", "exit") } {

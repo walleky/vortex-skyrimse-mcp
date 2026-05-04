@@ -23,10 +23,16 @@ Write one safe first-response report:
 py -3 .\server.py --safe-session
 ```
 
+Write the broadest one-button Skyrim diagnostics report:
+
+```powershell
+py -3 .\server.py --skyrim-diagnostics
+```
+
 Write a smaller report for a slower OpenClaw model:
 
 ```powershell
-py -3 .\server.py --safe-session --performance-mode slow_model
+py -3 .\server.py --skyrim-diagnostics --performance-mode slow_model
 ```
 
 Generate the collection knowledge report:
@@ -88,6 +94,23 @@ Make-Mod-Knowledge.cmd
 ```
 
 `Vortex-SkyrimSE-Menu.cmd` opens a menu for the common report actions. `Make-Mod-Knowledge.cmd` goes straight to the collection knowledge report.
+
+## Nexus Metadata
+
+Nexus support is optional and read-only. Set `NEXUS_MODS_API_KEY` or pass a key
+file. The MCP does not copy Vortex's key.
+
+```powershell
+py -3 .\server.py --tool nexus_validate_key
+py -3 .\server.py --skyrim-diagnostics --include-nexus-metadata
+py -3 .\server.py --tool nexus_update_report --include-nexus-metadata
+```
+
+For a key file:
+
+```powershell
+py -3 .\server.py --tool nexus_validate_key --nexus-api-key-file "$env:USERPROFILE\.vortex-skyrimse-mcp\nexus-api-key.txt"
+```
 
 ## Useful Safe Session Options
 

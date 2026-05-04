@@ -11,7 +11,7 @@ This covers questions like:
 Use:
 
 ```text
-safe_session_report with issue details, or in_game_issue_report for only the issue scan
+skyrim_diagnostics_report with issue details, or in_game_issue_report for only the issue scan
 ```
 
 Give it as much plain evidence as possible:
@@ -99,7 +99,7 @@ OpenClaw should not delete mods or edit records automatically.
 
 Safer path:
 
-1. Run `safe_session_report` with the issue details.
+1. Run `skyrim_diagnostics_report` with the issue details.
 2. If needed, run `in_game_issue_report` again with `scan_mode=deep`.
 3. Confirm a profile backup exists, or run `vortex_profile_backup`.
 4. Inspect the top candidate in xEdit/SSEEdit if available.

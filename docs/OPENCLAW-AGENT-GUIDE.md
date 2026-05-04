@@ -2,16 +2,24 @@
 
 This guide is written for an OpenClaw agent that has access to the `vortex-skyrimse` MCP server.
 
-The same repo also has direct CLI mode. If MCP registration fails, tell the user they can still run `.\vortex_skyrimse_menu.ps1`, `.\make_mod_knowledge.ps1`, `py -3 .\server.py --safe-session`, or `py -3 .\server.py --mod-knowledge` from the project folder.
+The same repo also has direct CLI mode. If MCP registration fails, tell the user they can still run `.\vortex_skyrimse_menu.ps1`, `.\make_mod_knowledge.ps1`, `py -3 .\server.py --skyrim-diagnostics`, `py -3 .\server.py --safe-session`, or `py -3 .\server.py --mod-knowledge` from the project folder.
 
 ## Default Posture
 
 Start read-only. Do not apply INI fixes or Vortex profile writes unless the user explicitly asks you to apply changes.
 
-For a confused or frustrated user, first call `safe_session_report`. It gives one no-change Markdown/JSON baseline with setup validation, optional profile backup, modded play health, optional in-game issue triage, and logs.
+For a confused or frustrated user, first call `skyrim_diagnostics_report` when
+available, or `safe_session_report` if you need the older narrower baseline.
+Both are no-change Markdown/JSON reports with setup validation, optional profile
+backup, modded play health, optional in-game issue triage, and logs.
+
+Prefer `skyrim_diagnostics_report` when the user wants the easiest broad
+Skyrim/Vortex answer. It wraps the same no-change safety posture, defaults to
+slow-model-friendly output, and includes Nexus metadata automatically when a
+Nexus key is configured.
 
 If you are a slower model, or the user's collection is huge, call
-`safe_session_report` with `performance_mode=slow_model`. Read `summary`,
+`skyrim_diagnostics_report` with `performance_mode=slow_model`. Read `summary`,
 `findings`, and `nextActions` before opening nested sections. Only ask for
 deeper scans after `diagnosticQuality` or `nextBestInputs` says more evidence is
 needed.
@@ -35,13 +43,13 @@ environment detection
 For a broad first pass:
 
 ```text
-safe_session_report
+skyrim_diagnostics_report
 ```
 
 For a broad first pass on a slower model:
 
 ```text
-safe_session_report with performance_mode=slow_model
+skyrim_diagnostics_report with performance_mode=slow_model
 ```
 
 For a broad first pass without writing report files:
@@ -86,6 +94,17 @@ For "what does this whole collection do?" or "what can I remove?":
 mod_knowledge_report
 ```
 
+For Nexus source/update metadata:
+
+```text
+nexus_validate_key
+nexus_update_report
+```
+
+Use this MCP's own configured Nexus key only. Do not ask for, scrape, or reuse
+Vortex's API key. Nexus metadata is helpful context, not an instruction to
+update a working collection.
+
 For "why is this object here?", "which mod added this?", or annoying popups:
 
 ```text
@@ -115,6 +134,7 @@ When a tool fails or the user says OpenClaw got confused:
 
 ```text
 safe_session_report
+skyrim_diagnostics_report
 log_status
 bug_report_bundle with zip_output=true and redact_user_paths=true
 ```
@@ -159,6 +179,18 @@ Tell the user to enable plugins in Vortex's Plugins tab, then deploy.
 
 This usually means stale deployment or the wrong active profile.
 
+`nexus_metadata_unavailable`
+
+Explain that local diagnostics still work. If the user wants Nexus metadata,
+they can set `NEXUS_MODS_API_KEY` or provide `nexus_api_key_file`, then rerun
+`nexus_validate_key` and `skyrim_diagnostics_report`.
+
+`nexus_updates_available`
+
+Do not tell the user to update automatically. Large collections may require
+specific pinned versions. Tell the user to review collection notes and Vortex
+changelogs first.
+
 `in_game_issue_report returns weak candidates`
 
 For popups, first rerun from the user's natural-language description if OpenClaw forgot to include it. If candidates are still weak, ask for screenshot/OCR text or exact popup text. For placed objects, ask for current cell/location and console-clicked FormID/base object. Then rerun `in_game_issue_report`.
@@ -175,6 +207,7 @@ Prefer these calls:
 
 ```text
 safe_session_report with performance_mode=slow_model
+skyrim_diagnostics_report with performance_mode=slow_model
 in_game_issue_report with response_mode=compact
 bug_report_bundle with performance_mode=slow_model
 ```

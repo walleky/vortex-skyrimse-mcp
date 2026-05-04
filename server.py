@@ -24,6 +24,9 @@ import subprocess
 import sys
 import time
 import traceback
+import urllib.error
+import urllib.parse
+import urllib.request
 import uuid
 import zipfile
 from pathlib import Path
@@ -36,15 +39,30 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.13"
+SERVER_VERSION = "0.2.14"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
+NEXUS_GAME_DOMAIN = "skyrimspecialedition"
 MAX_DEFAULT_TEXT_BYTES = 200_000
 MAX_DEFAULT_FILES = 40_000
 MAX_VORTEX_CLI_CHARS = 24_000
 LOG_ENV_VAR = "VORTEX_SKYRIMSE_MCP_LOG_DIR"
 LOG_TAIL_DEFAULT_BYTES = 80_000
+NEXUS_API_BASE = "https://api.nexusmods.com/v1"
+NEXUS_GRAPHQL_URL = "https://api.nexusmods.com/v2/graphql"
+NEXUS_API_KEY_ENV_VAR = "NEXUS_MODS_API_KEY"
+NEXUS_CACHE_ENV_VAR = "VORTEX_SKYRIMSE_MCP_NEXUS_CACHE_DIR"
+NEXUS_DEFAULT_CACHE_TTL_SECONDS = 24 * 60 * 60
+SENSITIVE_FIELD_NAMES = {
+    "apikey",
+    "api_key",
+    "key",
+    "nexus_api_key",
+    "nexusapikey",
+    "token",
+    "authorization",
+}
 
 
 class ToolError(Exception):
@@ -82,6 +100,11 @@ def default_log_dir(override: Optional[str] = None) -> Path:
     return (Path.home() / f".{SERVER_NAME}" / "logs").resolve()
 
 
+def is_sensitive_key_name(key: object) -> bool:
+    lowered = str(key).lower().replace("-", "_")
+    return lowered in SENSITIVE_FIELD_NAMES or lowered.endswith("_token") or lowered.endswith("_api_key")
+
+
 def compact_for_log(value: Any, max_string: int = 1200, max_items: int = 30, depth: int = 0) -> Any:
     if depth > 4:
         return "<max-depth>"
@@ -97,7 +120,7 @@ def compact_for_log(value: Any, max_string: int = 1200, max_items: int = 30, dep
             if index >= max_items:
                 result["..."] = f"{len(value) - max_items} more keys"
                 break
-            result[str(key)] = compact_for_log(item, max_string, max_items, depth + 1)
+            result[str(key)] = "<redacted>" if is_sensitive_key_name(key) else compact_for_log(item, max_string, max_items, depth + 1)
         return result
     if isinstance(value, (list, tuple, set)):
         seq = list(value)
@@ -190,6 +213,7 @@ def redaction_replacements() -> List[Tuple[str, str]]:
         (os.environ.get("LOCALAPPDATA"), "%LOCALAPPDATA%"),
         (os.environ.get("APPDATA"), "%APPDATA%"),
         (str(Path.home()), "%USERPROFILE%"),
+        (os.environ.get(NEXUS_API_KEY_ENV_VAR), "%NEXUS_MODS_API_KEY%"),
     ]
     seen: set[str] = set()
     pairs: List[Tuple[str, str]] = []
@@ -771,6 +795,589 @@ def default_my_games_dir(override: Optional[str] = None) -> Optional[Path]:
     return (docs / "My Games" / "Skyrim Special Edition").resolve() if docs else None
 
 
+def nexus_default_cache_dir(override: Optional[str] = None) -> Path:
+    override_path = expand_path(override)
+    if override_path:
+        return override_path
+    env_path = os.environ.get(NEXUS_CACHE_ENV_VAR)
+    if env_path:
+        return expand_path(env_path) or Path(env_path)
+    base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+    if base:
+        return (Path(base) / SERVER_NAME / "nexus-cache").resolve()
+    return (Path.home() / f".{SERVER_NAME}" / "nexus-cache").resolve()
+
+
+def nexus_game_domain(args: Dict[str, Any]) -> str:
+    raw = str(args.get("nexus_game_domain") or args.get("game_domain_name") or NEXUS_GAME_DOMAIN).strip().lower()
+    return raw or NEXUS_GAME_DOMAIN
+
+
+def nexus_api_key(args: Dict[str, Any]) -> Optional[str]:
+    direct = str(args.get("nexus_api_key") or "").strip()
+    if direct:
+        return direct
+    key_file = expand_path(args.get("nexus_api_key_file"))
+    if key_file and key_file.exists() and key_file.is_file():
+        try:
+            return read_text(key_file, 20_000).strip() or None
+        except OSError:
+            return None
+    env_value = os.environ.get(NEXUS_API_KEY_ENV_VAR)
+    return env_value.strip() if env_value else None
+
+
+def nexus_key_source(args: Dict[str, Any]) -> Optional[str]:
+    if str(args.get("nexus_api_key") or "").strip():
+        return "tool_argument"
+    key_file = expand_path(args.get("nexus_api_key_file"))
+    if key_file and key_file.exists() and key_file.is_file():
+        return "file"
+    if os.environ.get(NEXUS_API_KEY_ENV_VAR):
+        return NEXUS_API_KEY_ENV_VAR
+    return None
+
+
+def nexus_config_status(args: Dict[str, Any]) -> Dict[str, Any]:
+    configured = bool(nexus_api_key(args))
+    return {
+        "configured": configured,
+        "keySource": nexus_key_source(args),
+        "gameDomain": nexus_game_domain(args),
+        "cacheDir": str(nexus_default_cache_dir(args.get("nexus_cache_dir"))),
+        "apiBase": NEXUS_API_BASE,
+        "notes": [
+            "Use this MCP's own Nexus API key or NEXUS_MODS_API_KEY; do not borrow Vortex's application key.",
+            "Nexus API metadata is optional. Local Skyrim/Vortex diagnostics still work without it.",
+        ],
+    }
+
+
+def nexus_cache_path(args: Dict[str, Any]) -> Path:
+    return nexus_default_cache_dir(args.get("nexus_cache_dir")) / "cache.json"
+
+
+def nexus_cache_enabled(args: Dict[str, Any]) -> bool:
+    return bool(args.get("nexus_use_cache", True))
+
+
+def load_nexus_cache(args: Dict[str, Any]) -> Dict[str, Any]:
+    path = nexus_cache_path(args)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(read_text(path, 5_000_000))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def write_nexus_cache(args: Dict[str, Any], cache: Dict[str, Any]) -> None:
+    path = nexus_cache_path(args)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_text(path, json.dumps(cache, indent=2, ensure_ascii=False, default=str))
+
+
+def nexus_cache_key(path: str, params: Optional[Dict[str, Any]] = None) -> str:
+    raw = path
+    if params:
+        raw += "?" + urllib.parse.urlencode(sorted((str(k), str(v)) for k, v in params.items()))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def nexus_rate_limit_from_headers(headers: Any) -> Dict[str, Optional[int]]:
+    def read_int(name: str) -> Optional[int]:
+        value = headers.get(name) if headers else None
+        try:
+            return int(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    return {
+        "dailyRemaining": read_int("x-rl-daily-remaining"),
+        "dailyLimit": read_int("x-rl-daily-limit"),
+        "hourlyRemaining": read_int("x-rl-hourly-remaining"),
+        "hourlyLimit": read_int("x-rl-hourly-limit"),
+    }
+
+
+def nexus_url(path: str, params: Optional[Dict[str, Any]] = None) -> str:
+    base = NEXUS_API_BASE.rstrip("/") + "/" + path.lstrip("/")
+    if params:
+        return base + "?" + urllib.parse.urlencode(params)
+    return base
+
+
+def parse_json_body(raw: str) -> Any:
+    try:
+        return json.loads(raw or "{}")
+    except json.JSONDecodeError:
+        return {"raw": raw[:2000]}
+
+
+def nexus_http_get(
+    args: Dict[str, Any],
+    path: str,
+    params: Optional[Dict[str, Any]] = None,
+    cache_namespace: Optional[str] = None,
+) -> Dict[str, Any]:
+    key = nexus_api_key(args)
+    ttl = int(args.get("nexus_cache_ttl_seconds", NEXUS_DEFAULT_CACHE_TTL_SECONDS))
+    cache_id = f"{cache_namespace or 'rest'}:{nexus_cache_key(path, params)}"
+    fetched_at = time.time()
+    if nexus_cache_enabled(args) and cache_namespace:
+        cache = load_nexus_cache(args)
+        entry = cache.get(cache_id)
+        if isinstance(entry, dict) and (fetched_at - float(entry.get("fetchedAtEpoch", 0))) <= ttl:
+            return {
+                "ok": True,
+                "available": True,
+                "cacheHit": True,
+                "statusCode": entry.get("statusCode", 200),
+                "data": entry.get("data"),
+                "fetchedAt": entry.get("fetchedAt"),
+                "rateLimit": entry.get("rateLimit", {}),
+            }
+
+    if not key:
+        return {
+            "ok": False,
+            "available": False,
+            "cacheHit": False,
+            "statusCode": None,
+            "error": "Nexus API key is not configured.",
+            "keyConfigured": False,
+            "keySource": None,
+        }
+
+    url = nexus_url(path, params)
+    headers = {
+        "Accept": "application/json",
+        "APIKEY": key,
+        "Application-Name": SERVER_NAME,
+        "Application-Version": SERVER_VERSION,
+        "User-Agent": f"{SERVER_NAME}/{SERVER_VERSION}",
+    }
+    timeout = max(1, int(args.get("nexus_timeout_seconds", args.get("timeout_seconds", 20))))
+    request = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+            data = parse_json_body(raw)
+            rate_limit = nexus_rate_limit_from_headers(response.headers)
+            result = {
+                "ok": True,
+                "available": True,
+                "cacheHit": False,
+                "statusCode": response.status,
+                "data": data,
+                "fetchedAt": iso_now(),
+                "rateLimit": rate_limit,
+            }
+            if nexus_cache_enabled(args) and cache_namespace:
+                cache = load_nexus_cache(args)
+                cache[cache_id] = {**result, "fetchedAtEpoch": fetched_at}
+                write_nexus_cache(args, cache)
+            return result
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        data = parse_json_body(raw)
+        message = (data.get("message") or data.get("error")) if isinstance(data, dict) else str(exc)
+        return {
+            "ok": False,
+            "available": False,
+            "cacheHit": False,
+            "statusCode": exc.code,
+            "error": message or str(exc),
+            "data": data,
+            "rateLimit": nexus_rate_limit_from_headers(exc.headers),
+        }
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        return {
+            "ok": False,
+            "available": False,
+            "cacheHit": False,
+            "statusCode": None,
+            "error": str(exc),
+        }
+
+
+def nexus_int_arg(args: Dict[str, Any], key: str, label: str) -> int:
+    raw = args.get(key)
+    try:
+        value = int(str(raw))
+    except (TypeError, ValueError):
+        raise ToolError(f"{label} must be a positive integer.") from None
+    if value <= 0:
+        raise ToolError(f"{label} must be a positive integer.")
+    return value
+
+
+def normalize_nexus_mod(data: Any, game_domain: str) -> Dict[str, Any]:
+    if not isinstance(data, dict):
+        return {"rawType": type(data).__name__}
+    mod_id = data.get("mod_id") or data.get("modId") or data.get("id")
+    return {
+        "modId": mod_id,
+        "gameDomain": data.get("domain_name") or data.get("domainName") or game_domain,
+        "name": data.get("name"),
+        "summary": data.get("summary"),
+        "version": data.get("version"),
+        "author": data.get("author"),
+        "uploader": data.get("uploader"),
+        "categoryId": data.get("category_id") or data.get("categoryId"),
+        "category": data.get("category_name") or data.get("categoryName"),
+        "createdAt": data.get("created_time") or data.get("createdAt"),
+        "updatedAt": data.get("updated_time") or data.get("updatedAt"),
+        "status": data.get("status"),
+        "available": data.get("available"),
+        "allowRating": data.get("allow_rating") or data.get("allowRating"),
+        "containsAdultContent": data.get("contains_adult_content") or data.get("containsAdultContent"),
+        "downloads": data.get("downloads") or data.get("downloads_count") or data.get("downloadsCount"),
+        "endorsements": data.get("endorsements") or data.get("endorsement_count") or data.get("endorsementsCount"),
+        "url": f"https://www.nexusmods.com/{game_domain}/mods/{mod_id}" if mod_id else None,
+    }
+
+
+def normalize_nexus_file(data: Any, game_domain: str, mod_id: Optional[int] = None) -> Dict[str, Any]:
+    if not isinstance(data, dict):
+        return {"rawType": type(data).__name__}
+    file_id = data.get("file_id") or data.get("fileId") or data.get("id")
+    actual_mod_id = mod_id or data.get("mod_id") or data.get("modId")
+    return {
+        "modId": actual_mod_id,
+        "fileId": file_id,
+        "uid": data.get("uid"),
+        "gameDomain": game_domain,
+        "name": data.get("name"),
+        "fileName": data.get("file_name") or data.get("fileName"),
+        "version": data.get("version"),
+        "modVersion": data.get("mod_version") or data.get("modVersion"),
+        "categoryId": data.get("category_id") or data.get("categoryId"),
+        "category": data.get("category_name") or data.get("categoryName"),
+        "isPrimary": data.get("is_primary") or data.get("isPrimary"),
+        "sizeBytes": data.get("size") or data.get("sizeBytes"),
+        "uploadedAt": data.get("uploaded_time") or data.get("uploadedAt"),
+        "description": data.get("description"),
+        "externalVirusScanUrl": data.get("external_virus_scan_url") or data.get("externalVirusScanUrl"),
+        "contentPreviewUrl": data.get("content_preview_url") or data.get("contentPreviewUrl"),
+        "url": f"https://www.nexusmods.com/{game_domain}/mods/{actual_mod_id}?tab=files&file_id={file_id}"
+        if actual_mod_id and file_id
+        else None,
+    }
+
+
+def nexus_validate_key(args: Dict[str, Any]) -> Dict[str, Any]:
+    request = nexus_http_get(args, "/users/validate", cache_namespace=None)
+    if not request.get("ok"):
+        return {
+            "available": False,
+            "configured": bool(nexus_api_key(args)),
+            "keySource": nexus_key_source(args),
+            "error": request.get("error"),
+            "statusCode": request.get("statusCode"),
+            "notes": [
+                "Use NEXUS_MODS_API_KEY or nexus_api_key_file for this MCP.",
+                "Do not copy or reuse Vortex's application API key.",
+            ],
+        }
+    data = request.get("data") if isinstance(request.get("data"), dict) else {}
+    return {
+        "available": True,
+        "configured": True,
+        "keySource": nexus_key_source(args),
+        "user": {
+            "userId": data.get("user_id") or data.get("userId"),
+            "name": data.get("name"),
+            "isPremium": data.get("is_premium") or data.get("isPremium"),
+            "isSupporter": data.get("is_supporter") or data.get("isSupporter"),
+            "profileUrl": data.get("profile_url") or data.get("profileUrl"),
+        },
+        "rateLimit": request.get("rateLimit"),
+        "notes": ["The API key was validated without logging the key."],
+    }
+
+
+def nexus_mod_lookup(args: Dict[str, Any]) -> Dict[str, Any]:
+    game_domain = nexus_game_domain(args)
+    mod_id = nexus_int_arg(args, "mod_id", "mod_id")
+    request = nexus_http_get(
+        args,
+        f"/games/{urllib.parse.quote(game_domain)}/mods/{mod_id}",
+        cache_namespace=f"mod:{game_domain}:{mod_id}",
+    )
+    result = {
+        "available": bool(request.get("ok")),
+        "gameDomain": game_domain,
+        "modId": mod_id,
+        "cacheHit": request.get("cacheHit", False),
+        "statusCode": request.get("statusCode"),
+        "rateLimit": request.get("rateLimit", {}),
+    }
+    if not request.get("ok"):
+        result["error"] = request.get("error")
+        return result
+    result["mod"] = normalize_nexus_mod(request.get("data"), game_domain)
+    if bool(args.get("include_raw", False)):
+        result["raw"] = request.get("data")
+    return result
+
+
+def nexus_mod_files(args: Dict[str, Any]) -> Dict[str, Any]:
+    game_domain = nexus_game_domain(args)
+    mod_id = nexus_int_arg(args, "mod_id", "mod_id")
+    request = nexus_http_get(
+        args,
+        f"/games/{urllib.parse.quote(game_domain)}/mods/{mod_id}/files",
+        cache_namespace=f"mod-files:{game_domain}:{mod_id}",
+    )
+    result = {
+        "available": bool(request.get("ok")),
+        "gameDomain": game_domain,
+        "modId": mod_id,
+        "cacheHit": request.get("cacheHit", False),
+        "statusCode": request.get("statusCode"),
+        "rateLimit": request.get("rateLimit", {}),
+    }
+    if not request.get("ok"):
+        result["error"] = request.get("error")
+        return result
+    data = request.get("data")
+    raw_files = data.get("files", []) if isinstance(data, dict) else data if isinstance(data, list) else []
+    files = [normalize_nexus_file(item, game_domain, mod_id) for item in raw_files if isinstance(item, dict)]
+    result["fileCount"] = len(files)
+    result["files"] = files
+    if isinstance(data, dict) and data.get("file_updates") is not None:
+        result["fileUpdates"] = data.get("file_updates")
+    if bool(args.get("include_raw", False)):
+        result["raw"] = data
+    return result
+
+
+def nexus_file_info(args: Dict[str, Any]) -> Dict[str, Any]:
+    game_domain = nexus_game_domain(args)
+    mod_id = nexus_int_arg(args, "mod_id", "mod_id")
+    file_id = nexus_int_arg(args, "file_id", "file_id")
+    request = nexus_http_get(
+        args,
+        f"/games/{urllib.parse.quote(game_domain)}/mods/{mod_id}/files/{file_id}",
+        cache_namespace=f"file:{game_domain}:{mod_id}:{file_id}",
+    )
+    result = {
+        "available": bool(request.get("ok")),
+        "gameDomain": game_domain,
+        "modId": mod_id,
+        "fileId": file_id,
+        "cacheHit": request.get("cacheHit", False),
+        "statusCode": request.get("statusCode"),
+        "rateLimit": request.get("rateLimit", {}),
+    }
+    if not request.get("ok"):
+        result["error"] = request.get("error")
+        return result
+    result["file"] = normalize_nexus_file(request.get("data"), game_domain, mod_id)
+    if bool(args.get("include_raw", False)):
+        result["raw"] = request.get("data")
+    return result
+
+
+def nexus_file_by_md5(args: Dict[str, Any]) -> Dict[str, Any]:
+    game_domain = nexus_game_domain(args)
+    md5_hash = str(args.get("md5") or args.get("md5_hash") or "").strip().lower()
+    if not re.fullmatch(r"[a-f0-9]{32}", md5_hash):
+        raise ToolError("md5 must be a 32-character hexadecimal MD5 hash.")
+    request = nexus_http_get(
+        args,
+        f"/games/{urllib.parse.quote(game_domain)}/mods/md5_search/{md5_hash}",
+        cache_namespace=f"md5:{game_domain}:{md5_hash}",
+    )
+    result = {
+        "available": bool(request.get("ok")),
+        "gameDomain": game_domain,
+        "md5": md5_hash,
+        "cacheHit": request.get("cacheHit", False),
+        "statusCode": request.get("statusCode"),
+        "rateLimit": request.get("rateLimit", {}),
+    }
+    if not request.get("ok"):
+        result["error"] = request.get("error")
+        return result
+    data = request.get("data")
+    raw_matches = data if isinstance(data, list) else data.get("matches", []) if isinstance(data, dict) else []
+    matches = []
+    for item in raw_matches:
+        if isinstance(item, dict):
+            match = {
+                "mod": normalize_nexus_mod(item.get("mod") if isinstance(item.get("mod"), dict) else item, game_domain),
+                "file": normalize_nexus_file(item.get("file") if isinstance(item.get("file"), dict) else item, game_domain),
+            }
+            matches.append(match)
+    result["matchCount"] = len(matches)
+    result["matches"] = matches
+    if bool(args.get("include_raw", False)):
+        result["raw"] = data
+    return result
+
+
+def nexus_parse_nxm_link(args: Dict[str, Any]) -> Dict[str, Any]:
+    link = str(args.get("nxm_link") or args.get("url") or "").strip()
+    if not link:
+        raise ToolError("nxm_link is required.")
+    parsed = urllib.parse.urlparse(link)
+    if parsed.scheme.lower() != "nxm":
+        raise ToolError("nxm_link must start with nxm://")
+    parts = [part for part in parsed.path.split("/") if part]
+    query = urllib.parse.parse_qs(parsed.query)
+    mod_id = parts[1] if len(parts) >= 2 and parts[0].lower() == "mods" else None
+    file_id = parts[3] if len(parts) >= 4 and parts[2].lower() == "files" else None
+    expires = query.get("expires", [None])[0]
+    key = query.get("key", [None])[0]
+    return {
+        "gameDomain": parsed.netloc.lower(),
+        "modId": int(mod_id) if mod_id and mod_id.isdigit() else mod_id,
+        "fileId": int(file_id) if file_id and file_id.isdigit() else file_id,
+        "hasDownloadKey": bool(key),
+        "expires": int(expires) if expires and expires.isdigit() else expires,
+        "isExpired": bool(expires and expires.isdigit() and int(expires) < int(time.time())),
+        "notes": [
+            "For non-premium users, Nexus download links may require this website-generated key and expiry.",
+            "This MCP should hand nxm links to Vortex for installation instead of bypassing Vortex metadata.",
+        ],
+    }
+
+
+def metadata_first(metadata: Dict[str, Any], *keys: str) -> Optional[str]:
+    lower_map = {str(key).lower(): value for key, value in metadata.items()}
+    for key in keys:
+        value = lower_map.get(key.lower())
+        if value not in (None, ""):
+            return str(value)
+    return None
+
+
+def local_nexus_ids(summary: Dict[str, Any], profile: Optional[Dict[str, Any]] = None) -> Dict[str, Optional[int]]:
+    metadata = summary.get("metadata") if isinstance(summary.get("metadata"), dict) else {}
+    profile = profile if isinstance(profile, dict) else {}
+
+    def parse_int(value: Any) -> Optional[int]:
+        try:
+            return int(str(value))
+        except (TypeError, ValueError):
+            return None
+
+    mod_id = parse_int(profile.get("nexusModId") or metadata_first(metadata, "modId", "nexusModId", "nexus_id"))
+    file_id = parse_int(profile.get("nexusFileId") or metadata_first(metadata, "fileId", "nexusFileId", "file_id"))
+    return {"modId": mod_id, "fileId": file_id}
+
+
+def local_mod_version(summary: Dict[str, Any], profile: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    metadata = summary.get("metadata") if isinstance(summary.get("metadata"), dict) else {}
+    profile = profile if isinstance(profile, dict) else {}
+    return (
+        str(profile.get("version"))
+        if profile.get("version") not in (None, "")
+        else metadata_first(metadata, "version", "modVersion", "installedVersion")
+    )
+
+
+def nexus_update_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    _vortex_appdata, _skyrim_dir, staging_dir, _my_games = get_context_paths(args)
+    if not staging_dir or not staging_dir.exists():
+        raise ToolError("Vortex staging folder was not found. Pass staging_dir explicitly.")
+    max_mods = int(args.get("max_mods", 500))
+    max_lookup_mods = int(args.get("nexus_max_lookup_mods", args.get("max_nexus_lookup_mods", 80)))
+    max_files_per_mod = int(args.get("max_files_per_mod", 3000))
+    game_domain = nexus_game_domain(args)
+    profile_lookup = profile_lookup_for_staging(args, staging_dir) if bool(args.get("include_profile_state", True)) else {"modsByPath": {}}
+    profile_by_path = profile_lookup.get("modsByPath") if isinstance(profile_lookup.get("modsByPath"), dict) else {}
+
+    if not nexus_api_key(args):
+        return {
+            "available": False,
+            "configured": False,
+            "gameDomain": game_domain,
+            "checkedModCount": 0,
+            "missingSourceMetadata": [],
+            "notes": [
+                "Nexus API key is not configured. Set NEXUS_MODS_API_KEY or pass nexus_api_key_file.",
+                "Local Skyrim/Vortex diagnostics still work without Nexus metadata.",
+            ],
+        }
+
+    checked = []
+    missing_source = []
+    skipped_lookup_limit = []
+    stale = []
+    unavailable = []
+    errors = []
+    mod_dirs = sorted([path for path in staging_dir.iterdir() if path.is_dir()], key=lambda path: path.name.lower())[:max_mods]
+    for mod_dir in mod_dirs:
+        summary = mod_summary(mod_dir, include_files=False, max_files=max_files_per_mod)
+        try:
+            profile_key = str(mod_dir.resolve()).lower()
+        except OSError:
+            profile_key = str(mod_dir).lower()
+        profile = profile_by_path.get(profile_key)
+        ids = local_nexus_ids(summary, profile if isinstance(profile, dict) else None)
+        if not ids.get("modId"):
+            missing_source.append({"mod": summary.get("name"), "reason": "No Nexus mod id found in local/Vortex metadata."})
+            continue
+        if len(checked) >= max_lookup_mods:
+            skipped_lookup_limit.append({"mod": summary.get("name"), "modId": ids.get("modId"), "fileId": ids.get("fileId")})
+            continue
+        lookup = nexus_mod_lookup({**args, "mod_id": ids["modId"], "nexus_game_domain": game_domain})
+        if not lookup.get("available"):
+            errors.append({"mod": summary.get("name"), "modId": ids["modId"], "error": lookup.get("error")})
+            continue
+        remote = lookup.get("mod") if isinstance(lookup.get("mod"), dict) else {}
+        local_version = local_mod_version(summary, profile if isinstance(profile, dict) else None)
+        remote_version = str(remote.get("version")) if remote.get("version") not in (None, "") else None
+        item = {
+            "mod": summary.get("name"),
+            "modId": ids.get("modId"),
+            "fileId": ids.get("fileId"),
+            "localVersion": local_version,
+            "currentVersion": remote_version,
+            "nexusName": remote.get("name"),
+            "category": remote.get("category"),
+            "updatedAt": remote.get("updatedAt"),
+            "status": remote.get("status"),
+            "available": remote.get("available"),
+            "url": remote.get("url"),
+            "cacheHit": lookup.get("cacheHit", False),
+        }
+        checked.append(item)
+        if remote.get("available") is False or str(remote.get("status") or "").lower() not in {"", "published"}:
+            unavailable.append(item)
+        if local_version and remote_version and local_version != remote_version:
+            stale.append(item)
+
+    return {
+        "available": True,
+        "configured": True,
+        "gameDomain": game_domain,
+        "checkedModCount": len(checked),
+        "availableLocalModCount": len(mod_dirs),
+        "lookupLimit": max_lookup_mods,
+        "skippedLookupLimitCount": len(skipped_lookup_limit),
+        "staleCount": len(stale),
+        "unavailableCount": len(unavailable),
+        "missingSourceMetadataCount": len(missing_source),
+        "checkedMods": checked[:100],
+        "staleMods": stale,
+        "unavailableMods": unavailable,
+        "missingSourceMetadata": missing_source[:100],
+        "skippedLookupLimit": skipped_lookup_limit[:100],
+        "errors": errors[:50],
+        "profileStateAvailable": bool(profile_lookup.get("available")),
+        "notes": [
+            "This report is read-only and compares local/Vortex metadata to current Nexus metadata.",
+            "A version mismatch is a review signal, not an automatic update instruction.",
+            "Do not auto-update or uninstall mods from this report alone.",
+        ],
+    }
+
+
 def staging_candidates(
     vortex_appdata: Optional[Path],
     override: Optional[str] = None,
@@ -860,6 +1467,7 @@ def detect_environment(args: Dict[str, Any]) -> Dict[str, Any]:
         "local_appdata": str(local_appdata) if local_appdata else None,
         "my_games_dir": str(my_games) if my_games else None,
         "plugin_state": paths,
+        "nexus_api": nexus_config_status(args),
         "issues": issues,
     }
 
@@ -879,6 +1487,16 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "in_game_issue_report",
             "safe_session_report",
             "bug_report_bundle",
+            "skyrim_diagnostics_report",
+        ],
+        "nexusMetadataOptional": [
+            "nexus_validate_key",
+            "nexus_mod_lookup",
+            "nexus_mod_files",
+            "nexus_file_info",
+            "nexus_file_by_md5",
+            "nexus_parse_nxm_link",
+            "nexus_update_report",
         ],
         "vortexCliRequired": [
             "vortex_profile_report",
@@ -2524,7 +3142,7 @@ def render_mod_knowledge_markdown(
             "",
             "## How This Report Knows Things",
             "",
-            "This report is based on local evidence: staged files, plugin headers, FOMOD metadata, readme snippets, Vortex profile state when available, duplicate-file checks, and conflict overlaps. It does not download mod-page descriptions by itself.",
+            "This report is based on local evidence: staged files, plugin headers, FOMOD metadata, readme snippets, Vortex profile state when available, duplicate-file checks, conflict overlaps, and optional read-only Nexus metadata when configured.",
             "",
             "For a huge collection, use this as a map. OpenClaw should read the role, evidence, plugin masters, conflict notes, and removal review before suggesting changes.",
             "",
@@ -2636,6 +3254,14 @@ def render_mod_knowledge_markdown(
             lines.append(f"- Vortex profile state: {'enabled' if profile.get('enabled') else 'disabled'}; id `{profile.get('id')}`")
             if profile.get("nexusModId"):
                 lines.append(f"- Nexus ids: mod `{profile.get('nexusModId')}`, file `{profile.get('nexusFileId')}`")
+        nexus = row.get("nexus") if isinstance(row.get("nexus"), dict) else {}
+        if nexus.get("mod"):
+            remote = nexus["mod"]
+            lines.append(f"- Nexus metadata: `{remote.get('name')}` version `{remote.get('version')}`; {remote.get('url')}")
+            if remote.get("summary"):
+                lines.append(f"- Nexus summary: {remote.get('summary')}")
+        elif nexus.get("error"):
+            lines.append(f"- Nexus metadata: {nexus.get('error')}")
         if summary.get("plugins"):
             lines.append("- Plugins:")
             for rel, header in row.get("pluginHeaders", {}).items():
@@ -2678,6 +3304,9 @@ def mod_knowledge_report(args: Dict[str, Any]) -> Dict[str, Any]:
     readme_lines = int(args.get("max_readme_lines", 4))
     readme_bytes = int(args.get("max_readme_bytes", 8000))
     redact_user_paths = bool(args.get("redact_user_paths", True))
+    include_nexus_metadata = bool(args.get("include_nexus_metadata", False))
+    nexus_lookup_limit = int(args.get("nexus_max_lookup_mods", args.get("max_nexus_lookup_mods", 40)))
+    nexus_lookup_count = 0
 
     profile_lookup = profile_lookup_for_staging(args, staging_dir)
     profile_by_path = profile_lookup.get("modsByPath") if isinstance(profile_lookup.get("modsByPath"), dict) else {}
@@ -2747,19 +3376,37 @@ def mod_knowledge_report(args: Dict[str, Any]) -> Dict[str, Any]:
             profile_key = str(mod_dir).lower()
         knowledge = infer_mod_knowledge(summary)
         conflict_stats = mod_conflicts.get(summary["name"], {"count": 0, "examples": []})
-        rows.append(
-            {
-                "summary": summary,
-                "knowledge": knowledge,
-                "pluginHeaders": plugin_headers,
-                "profile": profile_by_path.get(profile_key),
-                "conflictCount": conflict_stats.get("count", 0),
-                "conflictExamples": conflict_stats.get("examples", []),
-                "readmeExcerpts": first_readme_lines(mod_dir, summary.get("readmes", []), readme_lines, readme_bytes)
-                if include_readmes
-                else [],
-            }
-        )
+        profile = profile_by_path.get(profile_key)
+        row = {
+            "summary": summary,
+            "knowledge": knowledge,
+            "pluginHeaders": plugin_headers,
+            "profile": profile,
+            "conflictCount": conflict_stats.get("count", 0),
+            "conflictExamples": conflict_stats.get("examples", []),
+            "readmeExcerpts": first_readme_lines(mod_dir, summary.get("readmes", []), readme_lines, readme_bytes)
+            if include_readmes
+            else [],
+        }
+        if include_nexus_metadata:
+            ids = local_nexus_ids(summary, profile if isinstance(profile, dict) else None)
+            if ids.get("modId") and nexus_lookup_count < nexus_lookup_limit:
+                lookup = nexus_mod_lookup({**args, "mod_id": ids["modId"]})
+                nexus_lookup_count += 1
+                if lookup.get("available"):
+                    row["nexus"] = {
+                        "mod": lookup.get("mod"),
+                        "modId": ids.get("modId"),
+                        "fileId": ids.get("fileId"),
+                        "cacheHit": lookup.get("cacheHit", False),
+                    }
+                else:
+                    row["nexus"] = {"modId": ids.get("modId"), "fileId": ids.get("fileId"), "error": lookup.get("error")}
+            elif ids.get("modId"):
+                row["nexus"] = {"modId": ids.get("modId"), "fileId": ids.get("fileId"), "error": "Nexus lookup limit reached."}
+            else:
+                row["nexus"] = {"error": "No Nexus mod id found in local/Vortex metadata."}
+        rows.append(row)
 
     candidates = knowledge_removal_candidates(rows, redundancy)
     markdown = render_mod_knowledge_markdown(
@@ -2784,11 +3431,13 @@ def mod_knowledge_report(args: Dict[str, Any]) -> Dict[str, Any]:
         "profileStateError": profile_lookup.get("error"),
         "removalCandidateCount": len(candidates),
         "conflictCount": conflicts.get("conflictCount") if isinstance(conflicts, dict) else None,
+        "nexusMetadataIncluded": include_nexus_metadata,
+        "nexusLookupCount": nexus_lookup_count,
         "redactedUserPaths": redact_user_paths,
         "notes": [
             "The Markdown report is evidence-based and read-only.",
             "Disable candidate mods in a cloned profile before uninstalling or deleting anything.",
-            "The tool infers purpose from local files and metadata; it does not fetch Nexus page descriptions.",
+            "The tool infers purpose from local files and metadata; optional Nexus metadata is read-only and cached.",
         ],
     }
 
@@ -3906,6 +4555,55 @@ def skyrim_modded_play_report(args: Dict[str, Any]) -> Dict[str, Any]:
                 failed_ini,
             )
 
+    if bool(args.get("include_nexus_metadata", False)):
+        try:
+            sections["nexusUpdates"] = nexus_update_report(args)
+            nexus_updates = sections["nexusUpdates"]
+            if not nexus_updates.get("available"):
+                add_finding(
+                    findings,
+                    "low",
+                    "nexus_metadata_unavailable",
+                    nexus_updates.get("notes", ["Nexus metadata is unavailable."])[0],
+                    "Set NEXUS_MODS_API_KEY if you want update/source metadata. Local diagnosis can continue without it.",
+                )
+            elif nexus_updates.get("staleCount"):
+                add_finding(
+                    findings,
+                    "medium",
+                    "nexus_updates_available",
+                    f"{nexus_updates.get('staleCount')} locally identified Nexus mod(s) have a different current Nexus version.",
+                    "Review changelogs in Vortex/Nexus before updating; do not auto-update a working collection blindly.",
+                    nexus_updates.get("staleMods", [])[:20],
+                )
+            if nexus_updates.get("missingSourceMetadataCount"):
+                add_finding(
+                    findings,
+                    "low",
+                    "nexus_source_metadata_missing",
+                    f"{nexus_updates.get('missingSourceMetadataCount')} staged mod(s) could not be mapped to a Nexus mod id.",
+                    "This is common for local/manual imports; use MD5 lookup or Vortex metadata if exact source matters.",
+                    nexus_updates.get("missingSourceMetadata", [])[:20],
+                )
+            if nexus_updates.get("skippedLookupLimitCount"):
+                add_finding(
+                    findings,
+                    "low",
+                    "nexus_lookup_limit_reached",
+                    f"{nexus_updates.get('skippedLookupLimitCount')} Nexus-sourced mod(s) were skipped by the lookup limit.",
+                    "Increase nexus_max_lookup_mods for a fuller, slower update/source metadata pass.",
+                    nexus_updates.get("skippedLookupLimit", [])[:20],
+                )
+        except Exception as exc:
+            sections["nexusUpdates"] = {"error": str(exc)}
+            add_finding(
+                findings,
+                "low",
+                "nexus_update_report_failed",
+                str(exc),
+                "Keep using local diagnostics; rerun Nexus metadata checks after configuring the API key/cache.",
+            )
+
     if bool(args.get("include_conflicts", False)):
         try:
             sections["conflictPlan"] = suggest_conflict_fixes(args)
@@ -4017,6 +4715,7 @@ def safe_session_findings(sections: Dict[str, Any]) -> List[Dict[str, Any]]:
         "setupValidationError": ("high", "Fix basic path detection first, then rerun the safe session."),
         "skyrimModdedPlayError": ("high", "Pass explicit skyrim_dir, staging_dir, vortex_exe, or local_appdata and rerun."),
         "inGameIssueError": ("medium", "Rerun with simpler issue text, screenshot/OCR popup text, or console FormID if available."),
+        "nexusUpdateReportError": ("low", "Keep using local diagnostics; rerun Nexus metadata checks after configuring the API key/cache."),
         "logStatusError": ("low", "Pass log_dir explicitly or rerun after MCP Doctor creates logs."),
     }
     for key, (severity, action) in section_error_actions.items():
@@ -4074,6 +4773,34 @@ def safe_session_findings(sections: Dict[str, Any]) -> List[Dict[str, Any]]:
                     "matchedTerms": top.get("matchedTerms"),
                     "vortexModId": top.get("vortexModId"),
                 },
+            )
+    nexus_updates = sections.get("nexusUpdateReport") or sections.get("nexusUpdates")
+    if isinstance(nexus_updates, dict):
+        if not nexus_updates.get("available") and nexus_updates.get("notes"):
+            add_finding(
+                findings,
+                "low",
+                "nexus_metadata_unavailable",
+                str(nexus_updates.get("notes", ["Nexus metadata is unavailable."])[0]),
+                "Set NEXUS_MODS_API_KEY if you want Nexus metadata. Local diagnostics still work without it.",
+            )
+        if nexus_updates.get("staleCount"):
+            add_finding(
+                findings,
+                "medium",
+                "nexus_updates_available",
+                f"{nexus_updates.get('staleCount')} locally identified Nexus mod(s) have a different current Nexus version.",
+                "Review changelogs and collection compatibility before updating.",
+                nexus_updates.get("staleMods", [])[:20],
+            )
+        if nexus_updates.get("skippedLookupLimitCount"):
+            add_finding(
+                findings,
+                "low",
+                "nexus_lookup_limit_reached",
+                f"{nexus_updates.get('skippedLookupLimitCount')} Nexus-sourced mod(s) were skipped by the lookup limit.",
+                "Increase nexus_max_lookup_mods only when you need a fuller metadata pass.",
+                nexus_updates.get("skippedLookupLimit", [])[:20],
             )
     return sort_findings(findings)
 
@@ -4167,6 +4894,24 @@ def safe_session_markdown(session: Dict[str, Any]) -> str:
         else:
             lines.append("- No candidates found. Try screenshot/OCR popup text, console FormID, or deep_scan_files=true.")
 
+    nexus_updates = sections.get("nexusUpdateReport") or sections.get("nexusUpdates")
+    if isinstance(nexus_updates, dict):
+        lines.extend(["", "## Nexus Metadata", ""])
+        if not nexus_updates.get("available"):
+            lines.append("- Nexus metadata was not available or not configured.")
+            for note in nexus_updates.get("notes", [])[:3]:
+                lines.append(f"  - {note}")
+        else:
+            lines.append(f"- Checked mods: {nexus_updates.get('checkedModCount')}")
+            lines.append(f"- Version review candidates: {nexus_updates.get('staleCount')}")
+            lines.append(f"- Missing source metadata: {nexus_updates.get('missingSourceMetadataCount')}")
+            if nexus_updates.get("skippedLookupLimitCount"):
+                lines.append(f"- Skipped by lookup limit: {nexus_updates.get('skippedLookupLimitCount')}")
+            for item in nexus_updates.get("staleMods", [])[:10]:
+                lines.append(
+                    f"- {item.get('mod')}: local `{item.get('localVersion')}`, Nexus `{item.get('currentVersion')}`"
+                )
+
     lines.extend(["", "## Next Actions", ""])
     next_actions = session.get("nextActions", []) if isinstance(session.get("nextActions"), list) else []
     if next_actions:
@@ -4217,6 +4962,8 @@ def safe_session_report(args: Dict[str, Any]) -> Dict[str, Any]:
             sections["skyrimModdedPlay"] = compact_play_report(sections["skyrimModdedPlay"])
     if any(args.get(key) for key in ("description", "location", "object", "form_id", "cell", "base_object", "popup_text", "extra_terms", "issue_kind")):
         collect_section(sections, "inGameIssue", in_game_issue_report, args)
+    if bool(args.get("include_nexus_metadata", False)):
+        collect_section(sections, "nexusUpdateReport", nexus_update_report, args)
     if include_logs:
         collect_section(sections, "logStatus", log_status, {"log_dir": args.get("log_dir"), "max_files": args.get("max_log_files", 12)})
 
@@ -4260,6 +5007,7 @@ def safe_session_report(args: Dict[str, Any]) -> Dict[str, Any]:
             "This is a no-change safe session report.",
             "Profile backup may fail if Vortex.exe is not detected; pass vortex_exe or back up in Vortex.",
             "Use performance_mode=slow_model for smaller outputs on weaker OpenClaw models.",
+            "Use include_nexus_metadata=true with NEXUS_MODS_API_KEY for optional Nexus source/update metadata.",
             "Use deep_scan_files=true for a slower second pass on weak in-game issue results.",
         ],
     }
@@ -4279,6 +5027,16 @@ def safe_session_report(args: Dict[str, Any]) -> Dict[str, Any]:
         "nextActions": session_to_write["nextActions"],
         "sections": list(sections.keys()),
     }
+
+
+def skyrim_diagnostics_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    tuned = dict(args)
+    tuned.setdefault("performance_mode", "slow_model")
+    tuned.setdefault("include_nexus_metadata", bool(nexus_api_key(tuned)))
+    if not tuned.get("output_path"):
+        docs = default_documents() or Path.cwd()
+        tuned["output_path"] = str(docs / "vortex-skyrimse-mcp-reports" / f"skyrim-diagnostics-{now_stamp()}.md")
+    return safe_session_report(tuned)
 
 
 def write_report(args: Dict[str, Any]) -> Dict[str, Any]:
@@ -4428,6 +5186,12 @@ def bug_report_bundle(args: Dict[str, Any]) -> Dict[str, Any]:
             bundle["inGameIssue"] = in_game_issue_report(args)
         except Exception as exc:
             bundle["inGameIssueError"] = str(exc)
+
+    if bool(args.get("include_nexus_metadata", False)):
+        try:
+            bundle["nexusUpdateReport"] = nexus_update_report(args)
+        except Exception as exc:
+            bundle["nexusUpdateReportError"] = str(exc)
 
     if include_profiles:
         try:
@@ -4606,6 +5370,140 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         },
         mod_evidence,
     ),
+    "nexus_validate_key": (
+        "Validate this MCP's Nexus Mods API key without logging the key.",
+        {
+            "type": "object",
+            "properties": {
+                "nexus_api_key": {"type": "string"},
+                "nexus_api_key_file": {"type": "string"},
+                "nexus_game_domain": {"type": "string", "default": NEXUS_GAME_DOMAIN},
+                "nexus_timeout_seconds": {"type": "integer", "default": 20},
+            },
+            "additionalProperties": False,
+        },
+        nexus_validate_key,
+    ),
+    "nexus_mod_lookup": (
+        "Read-only Nexus Mods metadata lookup for one mod id.",
+        {
+            "type": "object",
+            "properties": {
+                "mod_id": {"type": "integer"},
+                "nexus_api_key": {"type": "string"},
+                "nexus_api_key_file": {"type": "string"},
+                "nexus_game_domain": {"type": "string", "default": NEXUS_GAME_DOMAIN},
+                "nexus_cache_dir": {"type": "string"},
+                "nexus_use_cache": {"type": "boolean", "default": True},
+                "nexus_cache_ttl_seconds": {"type": "integer", "default": NEXUS_DEFAULT_CACHE_TTL_SECONDS},
+                "nexus_timeout_seconds": {"type": "integer", "default": 20},
+                "include_raw": {"type": "boolean", "default": False},
+            },
+            "required": ["mod_id"],
+            "additionalProperties": False,
+        },
+        nexus_mod_lookup,
+    ),
+    "nexus_mod_files": (
+        "Read-only Nexus Mods file list for one mod id.",
+        {
+            "type": "object",
+            "properties": {
+                "mod_id": {"type": "integer"},
+                "nexus_api_key": {"type": "string"},
+                "nexus_api_key_file": {"type": "string"},
+                "nexus_game_domain": {"type": "string", "default": NEXUS_GAME_DOMAIN},
+                "nexus_cache_dir": {"type": "string"},
+                "nexus_use_cache": {"type": "boolean", "default": True},
+                "nexus_cache_ttl_seconds": {"type": "integer", "default": NEXUS_DEFAULT_CACHE_TTL_SECONDS},
+                "nexus_timeout_seconds": {"type": "integer", "default": 20},
+                "include_raw": {"type": "boolean", "default": False},
+            },
+            "required": ["mod_id"],
+            "additionalProperties": False,
+        },
+        nexus_mod_files,
+    ),
+    "nexus_file_info": (
+        "Read-only Nexus Mods metadata lookup for one mod file id.",
+        {
+            "type": "object",
+            "properties": {
+                "mod_id": {"type": "integer"},
+                "file_id": {"type": "integer"},
+                "nexus_api_key": {"type": "string"},
+                "nexus_api_key_file": {"type": "string"},
+                "nexus_game_domain": {"type": "string", "default": NEXUS_GAME_DOMAIN},
+                "nexus_cache_dir": {"type": "string"},
+                "nexus_use_cache": {"type": "boolean", "default": True},
+                "nexus_cache_ttl_seconds": {"type": "integer", "default": NEXUS_DEFAULT_CACHE_TTL_SECONDS},
+                "nexus_timeout_seconds": {"type": "integer", "default": 20},
+                "include_raw": {"type": "boolean", "default": False},
+            },
+            "required": ["mod_id", "file_id"],
+            "additionalProperties": False,
+        },
+        nexus_file_info,
+    ),
+    "nexus_file_by_md5": (
+        "Read-only Nexus Mods source lookup for a downloaded archive MD5 hash.",
+        {
+            "type": "object",
+            "properties": {
+                "md5": {"type": "string"},
+                "md5_hash": {"type": "string"},
+                "nexus_api_key": {"type": "string"},
+                "nexus_api_key_file": {"type": "string"},
+                "nexus_game_domain": {"type": "string", "default": NEXUS_GAME_DOMAIN},
+                "nexus_cache_dir": {"type": "string"},
+                "nexus_use_cache": {"type": "boolean", "default": True},
+                "nexus_cache_ttl_seconds": {"type": "integer", "default": NEXUS_DEFAULT_CACHE_TTL_SECONDS},
+                "nexus_timeout_seconds": {"type": "integer", "default": 20},
+                "include_raw": {"type": "boolean", "default": False},
+            },
+            "additionalProperties": False,
+        },
+        nexus_file_by_md5,
+    ),
+    "nexus_parse_nxm_link": (
+        "Parse an nxm:// link into game, mod, file, key, and expiry diagnostics without downloading.",
+        {
+            "type": "object",
+            "properties": {
+                "nxm_link": {"type": "string"},
+                "url": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        nexus_parse_nxm_link,
+    ),
+    "nexus_update_report": (
+        "Compare locally staged Vortex mods to current Nexus metadata when a Nexus API key is configured.",
+        {
+            "type": "object",
+            "properties": {
+                "vortex_appdata": {"type": "string"},
+                "vortex_exe": {"type": "string"},
+                "staging_dir": {"type": "string"},
+                "profile_id": {"type": "string"},
+                "game_id": {"type": "string", "default": GAME_ID},
+                "include_profile_state": {"type": "boolean", "default": True},
+                "max_mods": {"type": "integer", "default": 500},
+                "max_files_per_mod": {"type": "integer", "default": 3000},
+                "nexus_max_lookup_mods": {"type": "integer", "default": 80},
+                "nexus_api_key": {"type": "string"},
+                "nexus_api_key_file": {"type": "string"},
+                "nexus_game_domain": {"type": "string", "default": NEXUS_GAME_DOMAIN},
+                "nexus_cache_dir": {"type": "string"},
+                "nexus_use_cache": {"type": "boolean", "default": True},
+                "nexus_cache_ttl_seconds": {"type": "integer", "default": NEXUS_DEFAULT_CACHE_TTL_SECONDS},
+                "nexus_timeout_seconds": {"type": "integer", "default": 20},
+                "timeout_seconds": {"type": "integer", "default": 60},
+            },
+            "additionalProperties": False,
+        },
+        nexus_update_report,
+    ),
     "mod_knowledge_report": (
         "Write a Markdown knowledge map for a large Skyrim SE mod collection: inferred roles, relationships, conflicts, and safe removal-review candidates.",
         {
@@ -4624,6 +5522,7 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "include_redundancy": {"type": "boolean", "default": True},
                 "include_plugin_report": {"type": "boolean", "default": True},
                 "include_readme_excerpts": {"type": "boolean", "default": True},
+                "include_nexus_metadata": {"type": "boolean", "default": False},
                 "hash_files": {"type": "boolean", "default": False},
                 "redact_user_paths": {"type": "boolean", "default": True},
                 "max_mods": {"type": "integer", "default": 500},
@@ -4634,6 +5533,13 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "max_removal_candidates": {"type": "integer", "default": 80},
                 "max_readme_lines": {"type": "integer", "default": 4},
                 "max_readme_bytes": {"type": "integer", "default": 8000},
+                "nexus_max_lookup_mods": {"type": "integer", "default": 40},
+                "nexus_api_key": {"type": "string"},
+                "nexus_api_key_file": {"type": "string"},
+                "nexus_game_domain": {"type": "string", "default": NEXUS_GAME_DOMAIN},
+                "nexus_cache_dir": {"type": "string"},
+                "nexus_use_cache": {"type": "boolean", "default": True},
+                "nexus_cache_ttl_seconds": {"type": "integer", "default": NEXUS_DEFAULT_CACHE_TTL_SECONDS},
                 "timeout_seconds": {"type": "integer", "default": 60},
             },
             "additionalProperties": False,
@@ -4702,6 +5608,7 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "include_play_report": {"type": "boolean", "default": True},
                 "include_logs": {"type": "boolean", "default": True},
                 "include_conflicts": {"type": "boolean", "default": False},
+                "include_nexus_metadata": {"type": "boolean", "default": False},
                 "redact_user_paths": {"type": "boolean", "default": True},
                 "description": {"type": "string"},
                 "location": {"type": "string"},
@@ -4723,11 +5630,73 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "max_files_per_mod": {"type": "integer", "default": 3000},
                 "max_conflicts": {"type": "integer", "default": 300},
                 "max_log_files": {"type": "integer", "default": 12},
+                "nexus_max_lookup_mods": {"type": "integer", "default": 80},
+                "nexus_api_key": {"type": "string"},
+                "nexus_api_key_file": {"type": "string"},
+                "nexus_game_domain": {"type": "string", "default": NEXUS_GAME_DOMAIN},
+                "nexus_cache_dir": {"type": "string"},
+                "nexus_use_cache": {"type": "boolean", "default": True},
+                "nexus_cache_ttl_seconds": {"type": "integer", "default": NEXUS_DEFAULT_CACHE_TTL_SECONDS},
+                "nexus_timeout_seconds": {"type": "integer", "default": 20},
                 "timeout_seconds": {"type": "integer", "default": 60},
             },
             "additionalProperties": False,
         },
         safe_session_report,
+    ),
+    "skyrim_diagnostics_report": (
+        "One no-change Skyrim SE diagnostics report with setup, deployment, logs, optional issue triage, and optional Nexus metadata.",
+        {
+            "type": "object",
+            "properties": {
+                "output_path": {"type": "string"},
+                "session_json_path": {"type": "string"},
+                "vortex_appdata": {"type": "string"},
+                "vortex_exe": {"type": "string"},
+                "game_id": {"type": "string", "default": GAME_ID},
+                "profile_id": {"type": "string"},
+                "skyrim_dir": {"type": "string"},
+                "staging_dir": {"type": "string"},
+                "local_appdata": {"type": "string"},
+                "my_games_dir": {"type": "string"},
+                "log_dir": {"type": "string"},
+                "include_profile_backup": {"type": "boolean", "default": True},
+                "include_profile_state": {"type": "boolean", "default": True},
+                "include_play_report": {"type": "boolean", "default": True},
+                "include_logs": {"type": "boolean", "default": True},
+                "include_conflicts": {"type": "boolean", "default": False},
+                "include_nexus_metadata": {"type": "boolean", "default": False},
+                "redact_user_paths": {"type": "boolean", "default": True},
+                "description": {"type": "string"},
+                "location": {"type": "string"},
+                "object": {"type": "string"},
+                "form_id": {"type": "string"},
+                "cell": {"type": "string"},
+                "base_object": {"type": "string"},
+                "popup_text": {"type": "string"},
+                "extra_terms": {"type": "string"},
+                "issue_kind": {"type": "string", "enum": ["placed_object", "popup", "general"]},
+                "performance_mode": {"type": "string", "enum": ["normal", "slow_model", "fast", "thorough"], "default": "slow_model"},
+                "response_mode": {"type": "string", "enum": ["standard", "compact"], "default": "compact"},
+                "scan_mode": {"type": "string", "enum": ["quick", "balanced", "deep"], "default": "balanced"},
+                "max_mods": {"type": "integer", "default": 500},
+                "max_candidates": {"type": "integer", "default": 20},
+                "max_files_per_mod": {"type": "integer", "default": 3000},
+                "max_conflicts": {"type": "integer", "default": 300},
+                "max_log_files": {"type": "integer", "default": 12},
+                "nexus_max_lookup_mods": {"type": "integer", "default": 80},
+                "nexus_api_key": {"type": "string"},
+                "nexus_api_key_file": {"type": "string"},
+                "nexus_game_domain": {"type": "string", "default": NEXUS_GAME_DOMAIN},
+                "nexus_cache_dir": {"type": "string"},
+                "nexus_use_cache": {"type": "boolean", "default": True},
+                "nexus_cache_ttl_seconds": {"type": "integer", "default": NEXUS_DEFAULT_CACHE_TTL_SECONDS},
+                "nexus_timeout_seconds": {"type": "integer", "default": 20},
+                "timeout_seconds": {"type": "integer", "default": 60},
+            },
+            "additionalProperties": False,
+        },
+        skyrim_diagnostics_report,
     ),
     "ini_report": (
         "Inspect Skyrim SE INI files and report mod-manager-friendly settings.",
@@ -4949,8 +5918,17 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "my_games_dir": {"type": "string"},
                 "local_appdata": {"type": "string"},
                 "include_conflicts": {"type": "boolean", "default": False},
+                "include_nexus_metadata": {"type": "boolean", "default": False},
                 "max_mods": {"type": "integer", "default": 500},
                 "max_files_per_mod": {"type": "integer", "default": 3000},
+                "nexus_max_lookup_mods": {"type": "integer", "default": 80},
+                "nexus_api_key": {"type": "string"},
+                "nexus_api_key_file": {"type": "string"},
+                "nexus_game_domain": {"type": "string", "default": NEXUS_GAME_DOMAIN},
+                "nexus_cache_dir": {"type": "string"},
+                "nexus_use_cache": {"type": "boolean", "default": True},
+                "nexus_cache_ttl_seconds": {"type": "integer", "default": NEXUS_DEFAULT_CACHE_TTL_SECONDS},
+                "nexus_timeout_seconds": {"type": "integer", "default": 20},
                 "timeout_seconds": {"type": "integer", "default": 60},
             },
             "additionalProperties": False,
@@ -5021,6 +5999,7 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "include_vortex_deployment": {"type": "boolean", "default": True},
                 "include_play_report": {"type": "boolean", "default": True},
                 "include_conflicts": {"type": "boolean", "default": False},
+                "include_nexus_metadata": {"type": "boolean", "default": False},
                 "redact_user_paths": {"type": "boolean", "default": True},
                 "zip_output": {"type": "boolean", "default": False},
                 "zip_path": {"type": "string"},
@@ -5029,6 +6008,14 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "max_log_bytes": {"type": "integer", "default": LOG_TAIL_DEFAULT_BYTES},
                 "max_mods": {"type": "integer", "default": 500},
                 "max_files_per_mod": {"type": "integer", "default": 3000},
+                "nexus_max_lookup_mods": {"type": "integer", "default": 80},
+                "nexus_api_key": {"type": "string"},
+                "nexus_api_key_file": {"type": "string"},
+                "nexus_game_domain": {"type": "string", "default": NEXUS_GAME_DOMAIN},
+                "nexus_cache_dir": {"type": "string"},
+                "nexus_use_cache": {"type": "boolean", "default": True},
+                "nexus_cache_ttl_seconds": {"type": "integer", "default": NEXUS_DEFAULT_CACHE_TTL_SECONDS},
+                "nexus_timeout_seconds": {"type": "integer", "default": 20},
                 "timeout_seconds": {"type": "integer", "default": 60},
             },
             "additionalProperties": False,
@@ -5255,6 +6242,10 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         "performance_mode": parsed.performance_mode,
         "response_mode": parsed.response_mode,
         "scan_mode": parsed.scan_mode,
+        "nexus_api_key": parsed.nexus_api_key,
+        "nexus_api_key_file": parsed.nexus_api_key_file,
+        "nexus_game_domain": parsed.nexus_game_domain,
+        "nexus_cache_dir": parsed.nexus_cache_dir,
     }
     for key, value in common.items():
         if value:
@@ -5265,8 +6256,18 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["max_log_files"] = parsed.max_log_files
     if parsed.balanced_text_files_per_mod is not None:
         tool_args["balanced_text_files_per_mod"] = parsed.balanced_text_files_per_mod
+    if parsed.nexus_cache_ttl_seconds is not None:
+        tool_args["nexus_cache_ttl_seconds"] = parsed.nexus_cache_ttl_seconds
+    if parsed.nexus_timeout_seconds is not None:
+        tool_args["nexus_timeout_seconds"] = parsed.nexus_timeout_seconds
+    if parsed.nexus_max_lookup_mods is not None:
+        tool_args["nexus_max_lookup_mods"] = parsed.nexus_max_lookup_mods
     if parsed.hash_files:
         tool_args["hash_files"] = True
+    if parsed.include_nexus_metadata:
+        tool_args["include_nexus_metadata"] = True
+    if parsed.no_nexus_cache:
+        tool_args["nexus_use_cache"] = False
     if parsed.no_profile_state:
         tool_args["include_profile_state"] = False
     if parsed.no_conflicts:
@@ -5351,6 +6352,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--tool", help="Call one MCP tool directly without an MCP client.")
     parser.add_argument("--mod-knowledge", action="store_true", help="Shortcut for --tool mod_knowledge_report.")
     parser.add_argument("--safe-session", action="store_true", help="Shortcut for --tool safe_session_report.")
+    parser.add_argument("--skyrim-diagnostics", action="store_true", help="Shortcut for --tool skyrim_diagnostics_report.")
     parser.add_argument("--args-json", help="JSON object with tool arguments.")
     parser.add_argument("--args-file", help="Path to a JSON object file with tool arguments.")
     parser.add_argument("--output-json", help="Write the direct tool result JSON to this path.")
@@ -5380,10 +6382,19 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--performance-mode", choices=["normal", "slow_model", "fast", "thorough"], help="Tune work and output size. Use slow_model for smaller OpenClaw-friendly reports.")
     parser.add_argument("--response-mode", choices=["standard", "compact"], help="Use compact to return fewer nested details for slower AI models.")
     parser.add_argument("--scan-mode", choices=["quick", "balanced", "deep"], help="Issue scan mode. balanced is the default first scan.")
+    parser.add_argument("--nexus-api-key", help="Nexus Mods API key. Prefer NEXUS_MODS_API_KEY or --nexus-api-key-file to avoid shell history.")
+    parser.add_argument("--nexus-api-key-file", help="Path to a local file containing a Nexus Mods API key.")
+    parser.add_argument("--nexus-game-domain", help="Nexus game domain, default skyrimspecialedition.")
+    parser.add_argument("--nexus-cache-dir", help="Override local Nexus metadata cache folder.")
+    parser.add_argument("--nexus-cache-ttl-seconds", type=int, help="Nexus metadata cache TTL in seconds.")
+    parser.add_argument("--nexus-timeout-seconds", type=int, help="Timeout for Nexus API calls.")
+    parser.add_argument("--nexus-max-lookup-mods", type=int, help="Maximum local mods to enrich with Nexus metadata.")
     parser.add_argument("--max-mods", type=int, help="Maximum mods to scan for supported tools.")
     parser.add_argument("--max-log-files", type=int, help="Maximum recent log files for support reports.")
     parser.add_argument("--balanced-text-files-per-mod", type=int, help="For balanced issue scans, max config/text files to read per mod.")
     parser.add_argument("--hash-files", action="store_true", help="Hash files for stronger duplicate evidence. Slower.")
+    parser.add_argument("--include-nexus-metadata", action="store_true", help="Include optional read-only Nexus metadata in supported reports.")
+    parser.add_argument("--no-nexus-cache", action="store_true", help="Disable the local Nexus metadata cache for this call.")
     parser.add_argument("--apply", action="store_true", help="Apply a write-capable tool. Most tools are dry-run without this.")
     parser.add_argument("--allow-running-vortex", action="store_true", help="Allow Vortex profile writes while Vortex.exe is running.")
     parser.add_argument("--include-all-profiles", action="store_true", help="For profile backup, include every detected Skyrim SE profile.")
@@ -5409,9 +6420,17 @@ def cli_main(argv: List[str]) -> int:
         print_json({"server": SERVER_NAME, "version": SERVER_VERSION, "tools": tool_list()}, pretty=not parsed.compact)
         return 0
 
-    tool_name = "safe_session_report" if parsed.safe_session else "mod_knowledge_report" if parsed.mod_knowledge else parsed.tool
+    tool_name = (
+        "skyrim_diagnostics_report"
+        if parsed.skyrim_diagnostics
+        else "safe_session_report"
+        if parsed.safe_session
+        else "mod_knowledge_report"
+        if parsed.mod_knowledge
+        else parsed.tool
+    )
     if not tool_name:
-        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, or --safe-session")
+        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, or --skyrim-diagnostics")
 
     try:
         tool_args = load_cli_tool_args(parsed)

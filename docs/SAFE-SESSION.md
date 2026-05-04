@@ -2,6 +2,11 @@
 
 `safe_session_report` is the easiest first button when Vortex, Skyrim, SKSE, deployment, profiles, or an in-game problem feels confusing.
 
+For the newest broad no-hassle entry point, prefer
+[SKYRIM-DIAGNOSTICS.md](SKYRIM-DIAGNOSTICS.md). `skyrim_diagnostics_report`
+wraps this same no-change safe-session flow, defaults to compact slow-model
+output, and can include optional Nexus metadata.
+
 It writes two files:
 
 - `safe-session-YYYYMMDD-HHMMSS.md`: human-readable report.
@@ -13,6 +18,7 @@ It writes two files:
 - `vortex_profile_backup`: a backup of Skyrim SE Vortex profiles when Vortex CLI is available.
 - `skyrim_modded_play_report`: deployment, plugins, INI, audio archive, SKSE, and profile health.
 - `in_game_issue_report`: only when you pass a problem description, location, object, optional popup text, or FormID.
+- `nexus_update_report`: only when `include_nexus_metadata=true` or the broader `skyrim_diagnostics_report` sees a configured Nexus key.
 - `log_status`: recent MCP logs and channels.
 
 In-game issue triage uses the balanced first scan by default. That means it
@@ -93,6 +99,12 @@ Slow-model prompt:
 
 ```text
 Use safe_session_report with performance_mode=slow_model. Read summary, findings, and nextActions first. Do not apply changes.
+```
+
+Broad diagnostics prompt:
+
+```text
+Use skyrim_diagnostics_report with performance_mode=slow_model and include Nexus metadata if available. Do not apply changes.
 ```
 
 ## How OpenClaw Should Read It

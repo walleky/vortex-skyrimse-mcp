@@ -9,13 +9,13 @@ how much the model has to read.
 Ask OpenClaw to use:
 
 ```text
-safe_session_report with performance_mode=slow_model
+skyrim_diagnostics_report with performance_mode=slow_model
 ```
 
 Or from PowerShell:
 
 ```powershell
-py -3 .\server.py --safe-session --performance-mode slow_model
+py -3 .\server.py --skyrim-diagnostics --performance-mode slow_model
 ```
 
 `slow_model` keeps the balanced first scan for in-game issues, but returns
@@ -51,7 +51,7 @@ Use it after a compact first pass points to a specific area.
 
 `response_mode=compact` returns the short OpenClaw-friendly shape for
 `in_game_issue_report`, and trims the play-health section inside
-`safe_session_report` and `bug_report_bundle`.
+`safe_session_report`, `skyrim_diagnostics_report`, and `bug_report_bundle`.
 
 Compact issue candidates keep:
 
@@ -71,7 +71,7 @@ paths and long evidence arrays.
 
 For large collections:
 
-1. Start with `safe_session_report performance_mode=slow_model`.
+1. Start with `skyrim_diagnostics_report performance_mode=slow_model`.
 2. Read `summary`, `findings`, and `nextActions` before reading nested sections.
 3. If the issue is in game, read `sections.inGameIssue.diagnosticQuality` and
    `sections.inGameIssue.nextBestInputs`.
@@ -85,6 +85,8 @@ For large collections:
 - Use `--no-profile-state` if Vortex CLI is slow or Vortex is open/locked.
 - Use `--no-logs` if logs are not relevant.
 - Use `--max-mods 200` for rough triage on massive collections.
+- Keep `nexus_max_lookup_mods` modest for the first pass; increase it only when
+  you need a fuller Nexus metadata review.
 - Use exact evidence when you have it: FormID, cell name, base object, popup
   text, or screenshot/OCR text.
 - Use `scan_mode=quick` only for rough triage; use balanced or deep for final

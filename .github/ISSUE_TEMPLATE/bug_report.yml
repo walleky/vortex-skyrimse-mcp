@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Before filing, ask OpenClaw to run `log_status` and `bug_report_bundle`.
+        Before filing, ask OpenClaw to run `skyrim_diagnostics_report`, then `log_status` and `bug_report_bundle` if a maintainer needs attachments.
         Review the bundle before posting publicly because it may include local paths and mod/plugin names.
   - type: textarea
     id: summary
@@ -65,8 +65,18 @@ body:
   - type: textarea
     id: bundle
     attributes:
-      label: bug_report_bundle output
-      description: Attach the generated JSON file, or paste the highest-risk findings if you cannot attach it.
+      label: Diagnostics or bug_report_bundle output
+      description: Attach the generated Markdown/JSON/zip, or paste the highest-risk findings if you cannot attach it.
+  - type: dropdown
+    id: nexus-api
+    attributes:
+      label: Nexus API metadata configured?
+      options:
+        - "No"
+        - "Yes"
+        - "Not sure"
+    validations:
+      required: true
   - type: textarea
     id: logs
     attributes:

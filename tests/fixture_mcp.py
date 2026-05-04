@@ -68,6 +68,7 @@ def main() -> int:
         write(staging / "Weather Mod" / "scripts" / "shared.pex", "weather")
         write(staging / "Lighting Mod" / "scripts" / "shared.pex", "lighting")
         write(staging / "Lighting Mod" / "readme.txt", "Lighting tweaks")
+        write(staging / "Lighting Mod" / "meta.ini", "modId=200\nfileId=777\nversion=1.0.0\n")
         write(staging / "Readme Pack" / "readme.txt", "Just a note file for cleanup testing")
         write(
             staging / "Whiterun Tavern Overhaul" / "WhiterunTavern.esp",
@@ -98,6 +99,107 @@ def main() -> int:
         assert not [issue for issue in env["issues"] if "SkyrimSE.exe" in issue], env
         setup = server.validate_setup(base_args)
         assert setup["ready"] is True, setup
+        assert setup["environment"]["nexus_api"]["configured"] is False, setup
+
+        assert server.compact_for_log({"nexus_api_key": "secret"})["nexus_api_key"] == "<redacted>"
+        previous_nexus_key = os.environ.pop("NEXUS_MODS_API_KEY", None)
+        try:
+            assert server.nexus_validate_key({})["available"] is False
+            os.environ["NEXUS_MODS_API_KEY"] = "fixture-secret"
+            assert "fixture-secret" not in server.redact_text("token=fixture-secret")
+        finally:
+            if previous_nexus_key is None:
+                os.environ.pop("NEXUS_MODS_API_KEY", None)
+            else:
+                os.environ["NEXUS_MODS_API_KEY"] = previous_nexus_key
+
+        original_nexus_http_get = server.nexus_http_get
+
+        def fake_nexus_http_get(args, path, params=None, cache_namespace=None):
+            if path == "/users/validate":
+                return {
+                    "ok": True,
+                    "available": True,
+                    "cacheHit": False,
+                    "statusCode": 200,
+                    "data": {"user_id": 42, "name": "tester", "is_premium": True, "is_supporter": False},
+                    "rateLimit": {"dailyRemaining": 999, "hourlyRemaining": 99},
+                }
+            if path.endswith("/mods/200/files/777"):
+                return {
+                    "ok": True,
+                    "available": True,
+                    "cacheHit": False,
+                    "statusCode": 200,
+                    "data": {"file_id": 777, "name": "Main File", "file_name": "lighting.7z", "version": "1.1.0", "size": 1234},
+                    "rateLimit": {},
+                }
+            if path.endswith("/mods/200/files"):
+                return {
+                    "ok": True,
+                    "available": True,
+                    "cacheHit": False,
+                    "statusCode": 200,
+                    "data": {"files": [{"file_id": 777, "name": "Main File", "file_name": "lighting.7z", "version": "1.1.0"}]},
+                    "rateLimit": {},
+                }
+            if path.endswith("/mods/200"):
+                return {
+                    "ok": True,
+                    "available": True,
+                    "cacheHit": False,
+                    "statusCode": 200,
+                    "data": {
+                        "mod_id": 200,
+                        "name": "Official Lighting Mod",
+                        "summary": "Improves interior lighting.",
+                        "version": "1.1.0",
+                        "author": "Fixture Author",
+                        "category_name": "Visuals",
+                        "status": "published",
+                        "available": True,
+                    },
+                    "rateLimit": {},
+                }
+            if "md5_search" in path:
+                return {
+                    "ok": True,
+                    "available": True,
+                    "cacheHit": False,
+                    "statusCode": 200,
+                    "data": [{"mod_id": 200, "file_id": 777, "name": "Official Lighting Mod", "file_name": "lighting.7z"}],
+                    "rateLimit": {},
+                }
+            return {"ok": False, "available": False, "error": f"unexpected path {path}", "statusCode": 404}
+
+        server.nexus_http_get = fake_nexus_http_get
+        try:
+            validated_key = server.nexus_validate_key({"nexus_api_key": "secret"})
+            assert validated_key["available"] is True, validated_key
+            assert validated_key["user"]["name"] == "tester", validated_key
+            mod_lookup = server.nexus_mod_lookup({"nexus_api_key": "secret", "mod_id": 200})
+            assert mod_lookup["mod"]["name"] == "Official Lighting Mod", mod_lookup
+            mod_files = server.nexus_mod_files({"nexus_api_key": "secret", "mod_id": 200})
+            assert mod_files["fileCount"] == 1, mod_files
+            file_info = server.nexus_file_info({"nexus_api_key": "secret", "mod_id": 200, "file_id": 777})
+            assert file_info["file"]["fileName"] == "lighting.7z", file_info
+            md5_lookup = server.nexus_file_by_md5({"nexus_api_key": "secret", "md5": "0" * 32})
+            assert md5_lookup["matchCount"] == 1, md5_lookup
+            nxm = server.nexus_parse_nxm_link(
+                {"nxm_link": "nxm://skyrimspecialedition/mods/200/files/777?key=abc&expires=9999999999"}
+            )
+            assert nxm["gameDomain"] == "skyrimspecialedition", nxm
+            assert nxm["modId"] == 200, nxm
+            assert nxm["fileId"] == 777, nxm
+            assert nxm["hasDownloadKey"] is True, nxm
+            update_report = server.nexus_update_report(
+                {**base_args, "nexus_api_key": "secret", "include_profile_state": False, "max_mods": 10}
+            )
+            assert update_report["available"] is True, update_report
+            assert update_report["staleCount"] == 1, update_report
+            assert update_report["staleMods"][0]["mod"] == "Lighting Mod", update_report
+        finally:
+            server.nexus_http_get = original_nexus_http_get
 
         inventory = server.inventory_mods({**base_args, "include_files": True})
         assert inventory["modCount"] == 5, inventory

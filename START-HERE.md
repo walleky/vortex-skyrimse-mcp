@@ -67,13 +67,13 @@ To let it register the server through the OpenClaw CLI:
 Start read-only:
 
 ```text
-Use safe_session_report to write a no-change first report with setup validation, profile backup if possible, modded play health, and logs. Summarize the top findings and do not apply changes.
+Use skyrim_diagnostics_report to write a no-change first report with setup validation, profile backup if possible, modded play health, logs, and Nexus metadata if available. Summarize the top findings and do not apply changes.
 ```
 
 If OpenClaw is using a slower model or the collection is huge:
 
 ```text
-Use safe_session_report with performance_mode=slow_model. Read the summary, findings, and nextActions first. Do not apply changes.
+Use skyrim_diagnostics_report with performance_mode=slow_model. Read the summary, findings, and nextActions first. Do not apply changes.
 ```
 
 Or start with only setup:
@@ -86,6 +86,21 @@ Then check whether Vortex's active profile is really deployed:
 
 ```text
 Use skyrim_modded_play_report to tell me why my modded Skyrim SE setup is not launching with the expected Vortex profile. Do not apply changes.
+```
+
+Optional Nexus metadata:
+
+```powershell
+setx NEXUS_MODS_API_KEY "paste-your-key-here"
+```
+
+Close and reopen OpenClaw after setting the variable. The MCP uses your
+explicit key only; it does not copy Vortex's key.
+
+To validate the key:
+
+```powershell
+py -3 .\server.py --tool nexus_validate_key
 ```
 
 For redundant mods and conflicts:
@@ -103,7 +118,7 @@ Use the vortex-skyrimse MCP to run mod_knowledge_report. Write the Markdown repo
 For something weird inside the game:
 
 ```text
-Use safe_session_report with this issue: there is a bed outside the tavern room in the Whiterun Bannered Mare. Include in-game issue candidates and do not apply changes.
+Use skyrim_diagnostics_report with this issue: there is a bed outside the tavern room in the Whiterun Bannered Mare. Include in-game issue candidates and do not apply changes.
 ```
 
 For annoying popups, just say "popup", "notification", "warning", or similar in the description. The first scan is balanced and checks local file/path/config clues automatically. Exact popup text or a screenshot/OCR can help later, but it is not required for the first scan.

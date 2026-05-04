@@ -37,8 +37,15 @@ an MCP client.
   profile.
 - Write a no-change safe session report that combines setup validation, optional
   profile backup, play health, in-game issue triage, and log status.
+- Write a one-button `skyrim_diagnostics_report` for OpenClaw or local CLI use:
+  setup, deployment, SKSE/audio/INI health, profile state, logs, issue triage,
+  and optional Nexus metadata in one no-change report.
 - Use `performance_mode=slow_model` or `response_mode=compact` so slower
   OpenClaw models get smaller, easier-to-read diagnostics.
+- Use optional read-only Nexus Mods API metadata with this MCP's own configured
+  key, not Vortex's key: validate the key, parse NXM links, lookup mod/file
+  metadata, MD5-match archives, and compare local staged mods to current Nexus
+  versions/source metadata.
 - Check whether plugins from the selected Vortex profile appear in Skyrim
   `Data` and are enabled in `plugins.txt`.
 - Produce a one-shot modded play report that combines environment, SKSE, audio
@@ -57,7 +64,11 @@ an MCP client.
 - [docs/CLI.md](docs/CLI.md): direct command-line mode without an MCP client.
 - [docs/LOCAL-MENU.md](docs/LOCAL-MENU.md): local no-hassle menu for report generation.
 - [docs/SAFE-SESSION.md](docs/SAFE-SESSION.md): one safe first report for OpenClaw or local troubleshooting.
+- [docs/SKYRIM-DIAGNOSTICS.md](docs/SKYRIM-DIAGNOSTICS.md): broad one-button Skyrim SE diagnostics.
 - [docs/PERFORMANCE.md](docs/PERFORMANCE.md): compact outputs and slow-model guidance.
+- [docs/NEXUS-API.md](docs/NEXUS-API.md): optional read-only Nexus Mods API setup and tools.
+- [docs/NEXUS-MODS-API-DESIGN.md](docs/NEXUS-MODS-API-DESIGN.md): Nexus API metadata design and roadmap.
+- [docs/ADR-0001-NEXUS-API-KEYS.md](docs/ADR-0001-NEXUS-API-KEYS.md): why this MCP uses its own explicit Nexus key instead of Vortex's key.
 - [docs/SAFETY-UNDO.md](docs/SAFETY-UNDO.md): backup, restore-preview, and dry-run rules.
 - [docs/IN-GAME-DIAGNOSIS.md](docs/IN-GAME-DIAGNOSIS.md): how to ask OpenClaw about misplaced objects, popups, FormIDs, and future live Skyrim bridging.
 - [docs/OPENCLAW-AGENT-GUIDE.md](docs/OPENCLAW-AGENT-GUIDE.md): how an OpenClaw agent should use the tools safely.
@@ -67,6 +78,7 @@ an MCP client.
 - [docs/MOD-KNOWLEDGE.md](docs/MOD-KNOWLEDGE.md): collection knowledge reports and safe removal review.
 - [docs/SAMPLE-BUG-BUNDLE.md](docs/SAMPLE-BUG-BUNDLE.md): sanitized example support bundle shape.
 - [docs/ROADMAP.md](docs/ROADMAP.md): improvement notes and what not to automate yet.
+- [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and [SUPPORT.md](SUPPORT.md): maintainer, security, and support process.
 
 ## What It Will Not Do Automatically
 
@@ -152,6 +164,7 @@ You can run tools without OpenClaw:
 ```powershell
 py -3 .\server.py --tool detect_environment
 py -3 .\server.py --tool validate_setup
+py -3 .\server.py --skyrim-diagnostics
 py -3 .\server.py --safe-session
 py -3 .\server.py --mod-knowledge
 ```
@@ -172,7 +185,7 @@ and `--no-profile-state`.
 Try:
 
 ```text
-Use safe_session_report to write a no-change first report with setup validation, profile backup if possible, modded play health, and logs. Summarize the top findings and do not apply changes.
+Use skyrim_diagnostics_report to write a no-change first report with setup validation, profile backup if possible, modded play health, logs, and Nexus metadata if available. Summarize the top findings and do not apply changes.
 ```
 
 Or start narrower:
@@ -214,13 +227,13 @@ Use vortex_profile_deployment_report to check whether my active Skyrim SE Vortex
 For a single no-hassle diagnosis:
 
 ```text
-Use skyrim_modded_play_report to tell me why my modded Skyrim SE setup is not launching with the expected Vortex profile. Do not apply changes.
+Use skyrim_diagnostics_report to tell me why my modded Skyrim SE setup is not launching with the expected Vortex profile. Do not apply changes.
 ```
 
 For slower OpenClaw models or very large collections:
 
 ```text
-Use safe_session_report with performance_mode=slow_model. Start from the summary, findings, and nextActions. Do not apply changes.
+Use skyrim_diagnostics_report with performance_mode=slow_model. Start from the summary, findings, and nextActions. Do not apply changes.
 ```
 
 For a large collection map:
@@ -259,8 +272,16 @@ Use apply_ini_fixes with dry_run=false and make_backup=true.
 - `plugin_report`
 - `mod_evidence`
 - `mod_knowledge_report`
+- `nexus_validate_key`
+- `nexus_mod_lookup`
+- `nexus_mod_files`
+- `nexus_file_info`
+- `nexus_file_by_md5`
+- `nexus_parse_nxm_link`
+- `nexus_update_report`
 - `in_game_issue_report`
 - `safe_session_report`
+- `skyrim_diagnostics_report`
 - `ini_report`
 - `apply_ini_fixes`
 - `read_text_file`
@@ -310,8 +331,9 @@ If detection misses your setup, pass `skyrim_dir`, `staging_dir`,
 
 - `detect_environment`, `validate_setup`, `inventory_mods`, `analyze_conflicts`,
   `redundant_mod_report`, `plugin_report`, `mod_evidence`,
-  `mod_knowledge_report`, `in_game_issue_report`, `ini_report`,
-  `safe_session_report`, `read_text_file`, `vortex_cli_get`, `vortex_profile_report`,
+  `mod_knowledge_report`, Nexus metadata tools, `in_game_issue_report`,
+  `ini_report`, `safe_session_report`, `skyrim_diagnostics_report`,
+  `read_text_file`, `vortex_cli_get`, `vortex_profile_report`,
   `vortex_profile_mods`, `vortex_compare_profiles`,
   `vortex_profile_deployment_report`, `skyrim_modded_play_report`,
   `suggest_conflict_fixes`, `log_status`, `bug_report_bundle`, and

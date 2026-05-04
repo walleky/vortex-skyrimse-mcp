@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.2.14
+
+- Adds optional read-only Nexus Mods API metadata support with explicit MCP-owned key handling via `NEXUS_MODS_API_KEY`, `nexus_api_key_file`, or private tool arguments.
+- Adds Nexus tools: `nexus_validate_key`, `nexus_mod_lookup`, `nexus_mod_files`, `nexus_file_info`, `nexus_file_by_md5`, `nexus_parse_nxm_link`, and `nexus_update_report`.
+- Adds `skyrim_diagnostics_report`, a broad no-change report for setup, deployment, profile state, SKSE/audio/INI health, logs, in-game issue triage, and optional Nexus metadata.
+- Enriches safe-session, play, bug-bundle, and mod-knowledge reports with optional Nexus source/update metadata while keeping Vortex responsible for downloads, installs, collections, and deployment.
+- Redacts Nexus API keys and token-like fields from compact logs and documents why the MCP must not copy Vortex's key.
+- Adds local menu and direct CLI support for Skyrim diagnostics, Nexus metadata options, and lookup limits.
+- Adds industry-standard support, security, contributing, diagnostics, Nexus API, and ADR documentation.
+- Extends fixture and smoke tests for Nexus metadata tools, redaction, and new MCP tool registration.
+
 ## v0.2.13
 
 - Adds `performance_mode` for slower OpenClaw models: `slow_model`, `fast`, `normal`, and `thorough`.

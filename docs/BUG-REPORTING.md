@@ -11,7 +11,7 @@ Good bug reports should let OpenClaw or a maintainer answer three questions:
 Ask OpenClaw:
 
 ```text
-Use safe_session_report to write a no-change first report, summarize the highest-risk findings, and tell me where the Markdown and JSON files were written. Do not apply changes.
+Use skyrim_diagnostics_report to write a no-change first report, summarize the highest-risk findings, and tell me where the Markdown and JSON files were written. Do not apply changes.
 ```
 
 If a maintainer needs the full attachable bundle:
@@ -81,6 +81,7 @@ Use `zip_output=true` when you want one attachable file. The zip contains:
 - server name/version
 - setup validation blockers
 - environment detection
+- Nexus API configuration status, and optional update/source metadata when requested
 - modded play report
 - Vortex profile report if available
 - Vortex profile deployment report if available
@@ -130,6 +131,7 @@ Start with:
 - `vortexProfilesError`
 - recent `tool_error` or `exception` log events
 - recent `vortex-cli` nonzero return codes or timeouts
+- `nexusUpdateReport` errors, stale mods, missing source metadata, or lookup-limit skips
 - `backupPath` fields from any profile write result
 
 Common next actions:
