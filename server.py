@@ -40,7 +40,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.23"
+SERVER_VERSION = "0.2.24"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -1716,6 +1716,8 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "skyrim_safe_experiment_plan",
             "skyrim_case_what_now",
             "skyrim_live_bridge_status",
+            "skyrim_case_evidence_import",
+            "skyrim_case_bundle",
         ],
         "nexusMetadataOptional": [
             "nexus_validate_key",
@@ -1802,7 +1804,7 @@ def workflow_catalog() -> List[Dict[str, Any]]:
             "title": "Weird Object Or Location Problem",
             "matchTerms": ["object", "bed", "door", "tavern", "whiterun", "cell", "formid", "placed", "outside", "room"],
             "userPrompt": "Use skyrim_issue_case_packet with my description, location, object, and any FormID/base object I provide. Then use skyrim_issue_case_status after I run the generated xEdit script. Do not edit plugins.",
-            "tools": ["skyrim_issue_case_packet", "skyrim_issue_case_status", "skyrim_case_what_now", "skyrim_safe_experiment_plan", "skyrim_issue_case_note", "in_game_issue_report", "xedit_diagnostics_report", "xedit_inspection_script", "xedit_inspection_result_report", "vortex_profile_backup"],
+            "tools": ["skyrim_issue_case_packet", "skyrim_issue_case_status", "skyrim_case_evidence_import", "skyrim_case_what_now", "skyrim_safe_experiment_plan", "skyrim_issue_case_note", "in_game_issue_report", "xedit_diagnostics_report", "xedit_inspection_script", "xedit_inspection_result_report", "vortex_profile_backup"],
             "whatToRead": ["candidateCount", "candidates", "formIdHint", "diagnosticQuality", "scriptPath", "reportPath"],
             "humanSteps": ["Use the console-clicked FormID if available.", "Generate a read-only xEdit inspection script for the top candidate.", "Back up or clone the profile before testing.", "Disable one candidate in a cloned profile, deploy, and test."],
             "directCli": ["py -3 .\\server.py --tool in_game_issue_report --description \"bed outside tavern room\" --location \"Whiterun Bannered Mare\" --object \"bed\""],
@@ -3521,6 +3523,169 @@ def skyrim_issue_case_note(args: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def issue_case_evidence_paths(case_dir: Path) -> Tuple[Path, Path, Path]:
+    return case_dir / "live-evidence.md", case_dir / "live-evidence.jsonl", case_dir / "live-evidence-latest.json"
+
+
+def evidence_suggested_args(entry: Dict[str, Any]) -> Dict[str, Any]:
+    issue_args: Dict[str, Any] = {}
+    if entry.get("popupText"):
+        issue_args["popup_text"] = entry["popupText"]
+        issue_args["description"] = entry.get("summary") or "popup captured from live evidence"
+        issue_args["issue_kind"] = "popup"
+    if entry.get("cell"):
+        issue_args["cell"] = entry["cell"]
+    if entry.get("objectName"):
+        issue_args["object"] = entry["objectName"]
+    if entry.get("referenceFormId"):
+        issue_args["form_id"] = entry["referenceFormId"]
+    elif entry.get("baseFormId"):
+        issue_args["form_id"] = entry["baseFormId"]
+    if entry.get("baseFormId"):
+        issue_args["base_object"] = entry["baseFormId"]
+    if entry.get("ocrText") and "popup_text" not in issue_args:
+        issue_args["description"] = entry["ocrText"][:500]
+    suggestions: Dict[str, Any] = {}
+    if issue_args:
+        suggestions["in_game_issue_report"] = issue_args
+        suggestions["skyrim_issue_case_packet"] = issue_args
+    if issue_args.get("form_id"):
+        suggestions["xedit_diagnostics_report"] = {"form_id": issue_args["form_id"]}
+    return suggestions
+
+
+def skyrim_case_evidence_import(args: Dict[str, Any]) -> Dict[str, Any]:
+    case_dir = expand_path(args.get("case_dir") or args.get("path"))
+    if not case_dir or not case_dir.exists() or not case_dir.is_dir():
+        raise ToolError("case_dir/path must point to an existing issue case folder.")
+    evidence_type = str(args.get("evidence_type") or args.get("kind") or "manual").strip() or "manual"
+    text = str(args.get("text") or args.get("evidence_text") or "").strip()
+    popup_text = str(args.get("popup_text") or "").strip()
+    ocr_text = str(args.get("ocr_text") or "").strip()
+    note = str(args.get("note") or "").strip()
+    if not any([text, popup_text, ocr_text, note, args.get("form_id"), args.get("reference_form_id"), args.get("base_form_id"), args.get("cell")]):
+        raise ToolError("Pass at least one evidence value: text, popup_text, ocr_text, note, form_id, reference_form_id, base_form_id, or cell.")
+    reference_form_id = normalize_form_id(str(args.get("reference_form_id") or args.get("form_id") or "").strip())
+    base_form_id = normalize_form_id(str(args.get("base_form_id") or "").strip())
+    if evidence_type in {"popup", "popup_text"} and text and not popup_text:
+        popup_text = text
+    if evidence_type in {"popup_ocr", "ocr"} and text and not ocr_text:
+        ocr_text = text
+    summary = popup_text or ocr_text or text or note or reference_form_id or base_form_id or str(args.get("cell") or "")
+    entry = {
+        "timestamp": iso_now(),
+        "type": evidence_type,
+        "source": str(args.get("source") or "manual").strip() or "manual",
+        "summary": summary[:500],
+        "text": text,
+        "popupText": popup_text,
+        "ocrText": ocr_text,
+        "referenceFormId": reference_form_id,
+        "baseFormId": base_form_id,
+        "cell": str(args.get("cell") or "").strip(),
+        "objectName": str(args.get("object") or args.get("object_name") or "").strip(),
+        "screenshotPath": str(args.get("screenshot_path") or "").strip(),
+        "confidence": str(args.get("confidence") or "").strip(),
+        "note": note,
+        "suggestedToolArgs": {},
+    }
+    entry["suggestedToolArgs"] = evidence_suggested_args(entry)
+    md_path, jsonl_path, latest_path = issue_case_evidence_paths(case_dir)
+    md_lines = [
+        f"## {entry['timestamp']} - {entry['type']}",
+        "",
+        f"- Source: {entry['source']}",
+    ]
+    if entry["confidence"]:
+        md_lines.append(f"- Confidence: {entry['confidence']}")
+    if entry["popupText"]:
+        md_lines.append(f"- Popup text: {entry['popupText']}")
+    if entry["ocrText"]:
+        md_lines.append(f"- OCR text: {entry['ocrText']}")
+    if entry["referenceFormId"]:
+        md_lines.append(f"- Reference FormID: {entry['referenceFormId']}")
+    if entry["baseFormId"]:
+        md_lines.append(f"- Base FormID: {entry['baseFormId']}")
+    if entry["cell"]:
+        md_lines.append(f"- Cell: {entry['cell']}")
+    if entry["objectName"]:
+        md_lines.append(f"- Object: {entry['objectName']}")
+    if entry["screenshotPath"]:
+        md_lines.append(f"- Screenshot path: {entry['screenshotPath']}")
+    if entry["note"]:
+        md_lines.extend(["", entry["note"]])
+    write_header = not md_path.exists() or md_path.stat().st_size == 0
+    with md_path.open("a", encoding="utf-8", newline="\n") as handle:
+        if write_header:
+            handle.write("# Skyrim Live Evidence\n\n")
+        handle.write("\n".join(md_lines) + "\n\n")
+    jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+    with jsonl_path.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+    write_text(latest_path, json.dumps(entry, indent=2, ensure_ascii=False, default=str))
+    log_event("support", "skyrim_case_evidence_imported", {"case_dir": str(case_dir), "type": evidence_type})
+    return {
+        "caseDir": str(case_dir),
+        "evidencePath": str(md_path),
+        "evidenceJsonlPath": str(jsonl_path),
+        "latestJsonPath": str(latest_path),
+        "entry": entry,
+        "writesOnlyCaseEvidence": True,
+        "readOnly": False,
+        "nextSteps": [
+            "Use suggestedToolArgs to rerun in_game_issue_report or xEdit diagnostics with stronger captured evidence.",
+            "Run skyrim_case_what_now after importing important evidence.",
+            "Keep live evidence append-only so OpenClaw can audit what changed between tests.",
+        ],
+    }
+
+
+def skyrim_case_bundle(args: Dict[str, Any]) -> Dict[str, Any]:
+    case_dir = expand_path(args.get("case_dir") or args.get("path"))
+    if not case_dir or not case_dir.exists() or not case_dir.is_dir():
+        raise ToolError("case_dir/path must point to an existing issue case folder.")
+    output_path = expand_path(args.get("output_path"))
+    if not output_path:
+        output_path = case_dir.with_name(f"{case_dir.name}-bundle-{now_stamp()}.zip")
+    if output_path.suffix.lower() != ".zip":
+        output_path = output_path.with_suffix(".zip")
+    max_files = max(1, int(args.get("max_files", 500)))
+    max_file_bytes = max(1_000, int(args.get("max_file_bytes", 5_000_000)))
+    entries: List[str] = []
+    skipped: List[Dict[str, Any]] = []
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as bundle:
+        for path in sorted(case_dir.rglob("*"), key=lambda item: str(item).lower()):
+            if len(entries) >= max_files:
+                skipped.append({"path": str(path), "reason": "max_files reached"})
+                continue
+            if not path.is_file():
+                continue
+            if path.resolve() == output_path.resolve():
+                continue
+            try:
+                size = path.stat().st_size
+            except OSError as exc:
+                skipped.append({"path": str(path), "reason": str(exc)})
+                continue
+            if size > max_file_bytes:
+                skipped.append({"path": str(path), "size": size, "reason": "larger than max_file_bytes"})
+                continue
+            rel = rel_to(path, case_dir)
+            bundle.write(path, rel)
+            entries.append(rel)
+    log_event("support", "skyrim_case_bundle_written", {"case_dir": str(case_dir), "output_path": str(output_path), "entries": len(entries)})
+    return {
+        "caseDir": str(case_dir),
+        "zipPath": str(output_path),
+        "entryCount": len(entries),
+        "entries": entries,
+        "skipped": skipped[:50],
+        "privacyNote": "The bundle can include local paths, mod/plugin names, notes, and captured popup/OCR text. Review before posting publicly.",
+        "readOnly": True,
+    }
+
+
 def issue_case_top_evidence(case_dir: Path, packet: Dict[str, Any], status: Dict[str, Any]) -> Dict[str, Any]:
     in_game = packet.get("inGameIssue") if isinstance(packet.get("inGameIssue"), dict) else {}
     candidates = in_game.get("candidates") if isinstance(in_game.get("candidates"), list) else []
@@ -3773,7 +3938,7 @@ def skyrim_live_bridge_status(args: Dict[str, Any]) -> Dict[str, Any]:
         "caseFolderIntegration": {
             "implemented": True,
             "neededFor": ["storing captured evidence", "letting OpenClaw continue from the same folder"],
-            "requirements": ["skyrim_issue_case_packet", "skyrim_issue_case_note", "skyrim_issue_case_status"],
+            "requirements": ["skyrim_issue_case_packet", "skyrim_case_evidence_import", "skyrim_issue_case_note", "skyrim_issue_case_status"],
         },
     }
     design_lines = [
@@ -3783,7 +3948,7 @@ def skyrim_live_bridge_status(args: Dict[str, Any]) -> Dict[str, Any]:
         "",
         "## Implemented Now",
         "",
-        "- Case folders, notes, xEdit CSV parsing, and safe experiment plans.",
+        "- Case folders, live evidence import, notes, xEdit CSV parsing, and safe experiment plans.",
         "",
         "## Needed For True Live Diagnosis",
         "",
@@ -8706,6 +8871,49 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         },
         skyrim_issue_case_note,
     ),
+    "skyrim_case_evidence_import": (
+        "Append live-game evidence such as popup OCR text, console FormIDs, current cell, or screenshot notes to an issue case folder.",
+        {
+            "type": "object",
+            "properties": {
+                "case_dir": {"type": "string"},
+                "path": {"type": "string"},
+                "evidence_type": {"type": "string", "enum": ["manual", "popup_text", "popup_ocr", "console", "screenshot_note", "skse_telemetry"]},
+                "kind": {"type": "string"},
+                "text": {"type": "string"},
+                "evidence_text": {"type": "string"},
+                "popup_text": {"type": "string"},
+                "ocr_text": {"type": "string"},
+                "form_id": {"type": "string"},
+                "reference_form_id": {"type": "string"},
+                "base_form_id": {"type": "string"},
+                "cell": {"type": "string"},
+                "object": {"type": "string"},
+                "object_name": {"type": "string"},
+                "screenshot_path": {"type": "string"},
+                "confidence": {"type": "string"},
+                "source": {"type": "string"},
+                "note": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        skyrim_case_evidence_import,
+    ),
+    "skyrim_case_bundle": (
+        "Zip an issue case folder for OpenClaw review or bug reports. Does not modify mods, profiles, or plugins.",
+        {
+            "type": "object",
+            "properties": {
+                "case_dir": {"type": "string"},
+                "path": {"type": "string"},
+                "output_path": {"type": "string"},
+                "max_files": {"type": "integer", "default": 500},
+                "max_file_bytes": {"type": "integer", "default": 5000000},
+            },
+            "additionalProperties": False,
+        },
+        skyrim_case_bundle,
+    ),
     "skyrim_safe_experiment_plan": (
         "Write a dry-run cloned-profile experiment plan from an issue case folder. It does not disable mods or change Vortex.",
         {
@@ -9834,6 +10042,13 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         "source": parsed.note_source,
         "result": parsed.note_result,
         "next_action": parsed.next_action,
+        "evidence_type": parsed.evidence_kind,
+        "evidence_text": parsed.evidence_text,
+        "ocr_text": parsed.ocr_text,
+        "reference_form_id": parsed.reference_form_id,
+        "base_form_id": parsed.base_form_id,
+        "screenshot_path": parsed.screenshot_path,
+        "confidence": parsed.confidence,
         "target_mod": parsed.target_mod,
         "target_mod_id": parsed.target_mod_id,
         "test_profile_name": parsed.test_profile_name,
@@ -9848,6 +10063,8 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["max_mods"] = parsed.max_mods
     if parsed.max_log_files is not None:
         tool_args["max_log_files"] = parsed.max_log_files
+    if parsed.max_file_bytes is not None:
+        tool_args["max_file_bytes"] = parsed.max_file_bytes
     if parsed.max_runtime_log_files is not None:
         tool_args["max_runtime_log_files"] = parsed.max_runtime_log_files
     if parsed.max_log_bytes_per_file is not None:
@@ -10001,6 +10218,8 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--safe-experiment-plan", action="store_true", help="Shortcut for --tool skyrim_safe_experiment_plan.")
     parser.add_argument("--what-now", action="store_true", help="Shortcut for --tool skyrim_case_what_now.")
     parser.add_argument("--live-bridge-status", action="store_true", help="Shortcut for --tool skyrim_live_bridge_status.")
+    parser.add_argument("--case-evidence", action="store_true", help="Shortcut for --tool skyrim_case_evidence_import.")
+    parser.add_argument("--case-bundle", action="store_true", help="Shortcut for --tool skyrim_case_bundle.")
     parser.add_argument("--args-json", help="JSON object with tool arguments.")
     parser.add_argument("--args-file", help="Path to a JSON object file with tool arguments.")
     parser.add_argument("--output-json", help="Write the direct tool result JSON to this path.")
@@ -10039,6 +10258,13 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--note-source", help="Case note source, such as user or openclaw.")
     parser.add_argument("--note-result", help="Short result label for a case note.")
     parser.add_argument("--next-action", help="Next action text for case notes.")
+    parser.add_argument("--evidence-kind", choices=["manual", "popup_text", "popup_ocr", "console", "screenshot_note", "skse_telemetry"], help="Evidence kind for skyrim_case_evidence_import.")
+    parser.add_argument("--evidence-text", help="Evidence text for skyrim_case_evidence_import.")
+    parser.add_argument("--ocr-text", help="OCR text for skyrim_case_evidence_import.")
+    parser.add_argument("--reference-form-id", help="Clicked reference FormID for skyrim_case_evidence_import.")
+    parser.add_argument("--base-form-id", help="Clicked base FormID for skyrim_case_evidence_import.")
+    parser.add_argument("--screenshot-path", help="Screenshot path for skyrim_case_evidence_import.")
+    parser.add_argument("--confidence", help="Confidence label for imported evidence.")
     parser.add_argument("--target-mod", help="Target mod name for safe experiment planning.")
     parser.add_argument("--target-mod-id", help="Exact Vortex mod id for safe experiment planning.")
     parser.add_argument("--test-profile-name", help="Name for the cloned test profile in safe experiment planning.")
@@ -10066,6 +10292,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--max-preview-rows", type=int, help="Maximum preview rows returned by xedit_inspection_result_report.")
     parser.add_argument("--max-mods", type=int, help="Maximum mods to scan for supported tools.")
     parser.add_argument("--max-log-files", type=int, help="Maximum recent log files for support reports.")
+    parser.add_argument("--max-file-bytes", type=int, help="Maximum bytes per file for case bundle output.")
     parser.add_argument("--max-runtime-log-files", type=int, help="Maximum recent Skyrim runtime log files to scan.")
     parser.add_argument("--max-log-bytes-per-file", type=int, help="Maximum tail bytes read from each Skyrim runtime log.")
     parser.add_argument("--max-runtime-findings", type=int, help="Maximum runtime log findings to return.")
@@ -10136,10 +10363,14 @@ def cli_main(argv: List[str]) -> int:
         if parsed.what_now
         else "skyrim_live_bridge_status"
         if parsed.live_bridge_status
+        else "skyrim_case_evidence_import"
+        if parsed.case_evidence
+        else "skyrim_case_bundle"
+        if parsed.case_bundle
         else parsed.tool
     )
     if not tool_name:
-        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, or --live-bridge-status")
+        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, or --case-bundle")
 
     try:
         tool_args = load_cli_tool_args(parsed)

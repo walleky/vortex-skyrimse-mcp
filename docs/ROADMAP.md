@@ -20,6 +20,7 @@ These are useful next steps, ordered by value and risk.
 - Case-folder status updates that read the generated xEdit CSV and write `issue-case-status.md` without changing mods.
 - Case notes, safe experiment plans, and one-step `what now` summaries for issue folders.
 - Live bridge capability/status documentation for future screenshot/OCR, console FormID, and SKSE telemetry helpers.
+- Append-only live evidence import plus case-folder zip bundling for handoff and bug reports.
 - Read-only Vortex collection-state inspection and collection manifest matching.
 - Local mod-summary scan cache for repeated large-collection diagnostics.
 - Conflict risk explanations and safer next-action text.

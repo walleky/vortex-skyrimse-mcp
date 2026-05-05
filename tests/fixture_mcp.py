@@ -437,6 +437,34 @@ def main() -> int:
         assert live_bridge["canSeeRunningGameNow"] is False, live_bridge
         assert live_bridge["capabilities"]["caseFolderIntegration"]["implemented"] is True, live_bridge
 
+        evidence = server.skyrim_case_evidence_import(
+            {
+                "case_dir": case_packet["caseDir"],
+                "evidence_type": "popup_ocr",
+                "ocr_text": "Bannered Mare bed warning popup",
+                "reference_form_id": "0100ABCD",
+                "base_form_id": "00001234",
+                "cell": "WhiterunBanneredMare",
+                "object": "bed",
+                "confidence": "captured",
+            }
+        )
+        assert Path(evidence["evidencePath"]).exists(), evidence
+        assert evidence["entry"]["suggestedToolArgs"]["xedit_diagnostics_report"]["form_id"] == "0100ABCD", evidence
+        assert "popup" in Path(evidence["evidencePath"]).read_text(encoding="utf-8").lower(), evidence
+
+        bundle = server.skyrim_case_bundle(
+            {
+                "case_dir": case_packet["caseDir"],
+                "output_path": str(root / "Reports" / "CaseBed.zip"),
+            }
+        )
+        assert Path(bundle["zipPath"]).exists(), bundle
+        with zipfile.ZipFile(bundle["zipPath"]) as archive:
+            names = set(archive.namelist())
+        assert "issue-case.md" in names, names
+        assert "live-evidence.jsonl" in names, names
+
         popup_issue = server.in_game_issue_report(
             {
                 **base_args,

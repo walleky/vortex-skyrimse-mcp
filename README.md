@@ -206,6 +206,8 @@ py -3 .\server.py --issue-case-status --case-dir "C:\path\to\issue-case-folder"
 py -3 .\server.py --what-now --case-dir "C:\path\to\issue-case-folder"
 py -3 .\server.py --safe-experiment-plan --case-dir "C:\path\to\issue-case-folder"
 py -3 .\server.py --case-note --case-dir "C:\path\to\issue-case-folder" --note "Tested candidate in cloned profile; issue still appears."
+py -3 .\server.py --case-evidence --case-dir "C:\path\to\issue-case-folder" --evidence-kind popup_ocr --ocr-text "captured popup text"
+py -3 .\server.py --case-bundle --case-dir "C:\path\to\issue-case-folder"
 py -3 .\server.py --tool vortex_collection_report
 py -3 .\server.py --runtime-logs --description "popup says file was not configured properly"
 py -3 .\server.py --skyrim-diagnostics
@@ -278,6 +280,12 @@ During testing:
 
 ```text
 Append this to the case notes: disabled the candidate in a cloned profile and the bed disappeared.
+```
+
+For captured popup/FormID evidence:
+
+```text
+Import this live evidence into the case: OCR text says "file was not configured properly" and clicked FormID is 0100ABCD.
 ```
 
 To make a safer test profile:

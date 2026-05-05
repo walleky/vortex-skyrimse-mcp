@@ -64,7 +64,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - scan cache: `scan_cache_status`, `mod_summary_cached`, `load_scan_cache`, `write_scan_cache`.
 - Nexus metadata: `nexus_validate_key`, `nexus_mod_lookup`, `nexus_mod_files`, `nexus_file_info`, `nexus_file_by_md5`, `nexus_parse_nxm_link`, `nexus_update_report`.
 - xEdit/SSEEdit read-only tooling: `xedit_diagnostics_report`, `xedit_inspection_script`, `xedit_inspection_result_report`, `xedit_candidates`, `form_id_load_order_hint`.
-- issue case packets: `skyrim_issue_case_packet`, `skyrim_issue_case_status`, `skyrim_issue_case_note`, `skyrim_safe_experiment_plan`, `skyrim_case_what_now`, `skyrim_live_bridge_status`, `issue_case_default_dir`, `issue_case_markdown`, `issue_case_status_markdown`.
+- issue case packets: `skyrim_issue_case_packet`, `skyrim_issue_case_status`, `skyrim_issue_case_note`, `skyrim_case_evidence_import`, `skyrim_case_bundle`, `skyrim_safe_experiment_plan`, `skyrim_case_what_now`, `skyrim_live_bridge_status`, `issue_case_default_dir`, `issue_case_markdown`, `issue_case_status_markdown`.
 - collection diagnostics: `vortex_collection_report`, `collection_local_match_report`, `extract_manifest_mod_refs`.
 - in-game issue triage: `in_game_issue_report`, `scan_mod_for_issue`, `extract_plugin_strings`.
 - runtime log diagnosis: `skyrim_runtime_log_report`, `collect_skyrim_runtime_log_files`, `runtime_issue_groups`, `match_runtime_references_to_staged_files`, `runtime_config_candidates`.
@@ -89,6 +89,8 @@ Most tools are read-only. The write tools are narrow and opt-in:
 - `vortex_clone_profile` and `vortex_set_profile_mods` write a profile backup before `apply=true` unless `backup_before_apply=false`.
 - `skyrim_safe_experiment_plan` is always dry-run and writes only plan files.
 - `skyrim_issue_case_note` appends case notes only.
+- `skyrim_case_evidence_import` appends evidence files only.
+- `skyrim_case_bundle` writes a zip copy of case files only.
 - `vortex_profile_restore_plan` writes only when `apply=true` and previews by default.
 - `in_game_issue_report` is read-only and heuristic. It does not edit plugins,
   delete placed objects, or disable mods.

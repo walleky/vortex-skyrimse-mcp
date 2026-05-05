@@ -20,6 +20,8 @@ into a status report.
 Then call `skyrim_case_what_now` for a concise recommendation and
 `skyrim_safe_experiment_plan` before any cloned-profile disable test. Use
 `skyrim_issue_case_note` to record every test result.
+Use `skyrim_case_evidence_import` when the user, a screenshot/OCR helper, or a
+console helper provides popup text, current cell, or clicked FormIDs.
 Both are no-change Markdown/JSON reports with setup validation, optional profile
 backup, modded play health, optional in-game issue triage, and logs.
 
@@ -155,11 +157,15 @@ skyrim_issue_case_status with case_dir after the user runs the generated xEdit s
 skyrim_case_what_now with case_dir
 skyrim_safe_experiment_plan with case_dir
 skyrim_issue_case_note with case_dir and note
+skyrim_case_evidence_import with case_dir and captured popup/FormID/cell evidence
+skyrim_case_bundle with case_dir when the user wants to share the case
 ```
 
 `skyrim_live_bridge_status` is not a live capture tool yet. Use it to explain
 that screenshot/OCR, console FormID capture, or SKSE telemetry need a separate
 read-only helper before OpenClaw can truly see popups or clicked objects.
+When such a helper exists, have it write through `skyrim_case_evidence_import`
+instead of overwriting the original case report.
 
 Tell the user to apply the generated script only to selected candidate plugins
 or records in xEdit/SSEEdit, then close xEdit without saving plugin changes.

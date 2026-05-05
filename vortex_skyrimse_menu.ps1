@@ -25,6 +25,13 @@ param(
   [string]$IssueCaseDir = "",
   [string]$CaseNote = "",
   [string]$CaseNoteKind = "observation",
+  [string]$EvidenceText = "",
+  [string]$EvidenceKind = "manual",
+  [string]$OcrText = "",
+  [string]$ReferenceFormId = "",
+  [string]$BaseFormId = "",
+  [string]$ScreenshotPath = "",
+  [string]$EvidenceConfidence = "",
   [string]$ExperimentTargetMod = "",
   [string]$ExperimentTargetModId = "",
   [string]$TestProfileName = "OpenClaw Safe Test",
@@ -239,6 +246,8 @@ function Show-Actions {
   Write-Host "25. Safe experiment plan"
   Write-Host "26. What should I do now?"
   Write-Host "27. Live Skyrim bridge status"
+  Write-Host "28. Import case evidence"
+  Write-Host "29. Bundle issue case"
   Write-Host "Q. Quit"
 }
 
@@ -889,6 +898,77 @@ function Invoke-MenuAction {
       Invoke-Server (@("--live-bridge-status", "--args-file", $argsFile, "--output-json", $out) + $common)
       Write-Host "Wrote live bridge status report." -ForegroundColor Green
       Write-Host "This describes what is implemented now and what a future screenshot/OCR/SKSE bridge needs." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("28", "case-evidence", "evidence", "import-evidence", "live-evidence") } {
+      $caseDir = $IssueCaseDir
+      if (!$caseDir) {
+        if ($script:StartedWithAction) {
+          throw "Pass -IssueCaseDir with -Action case-evidence."
+        }
+        $caseDir = Read-Host "Paste the issue case folder path"
+      }
+      $text = $EvidenceText
+      if (!$text -and !$PopupText -and !$OcrText -and !$ReferenceFormId -and !$BaseFormId -and !$FormId -and !$Cell) {
+        if ($script:StartedWithAction) {
+          throw "Pass -EvidenceText, -PopupText, -OcrText, -ReferenceFormId, -BaseFormId, -FormId, or -Cell with -Action case-evidence."
+        }
+        $text = Read-Host "Evidence text, popup OCR, or note"
+      }
+      $argsData = @{
+        case_dir = $caseDir
+        evidence_type = $EvidenceKind
+      }
+      if ($text) {
+        $argsData.evidence_text = $text
+      }
+      if ($PopupText) {
+        $argsData.popup_text = $PopupText
+      }
+      if ($OcrText) {
+        $argsData.ocr_text = $OcrText
+      }
+      if ($ReferenceFormId) {
+        $argsData.reference_form_id = $ReferenceFormId
+      } elseif ($FormId) {
+        $argsData.reference_form_id = $FormId
+      }
+      if ($BaseFormId) {
+        $argsData.base_form_id = $BaseFormId
+      }
+      if ($Cell) {
+        $argsData.cell = $Cell
+      }
+      if ($IssueObject) {
+        $argsData.object = $IssueObject
+      }
+      if ($ScreenshotPath) {
+        $argsData.screenshot_path = $ScreenshotPath
+      }
+      if ($EvidenceConfidence) {
+        $argsData.confidence = $EvidenceConfidence
+      }
+      $argsFile = Write-JsonArgs "case-evidence" $argsData
+      $out = Join-Path $script:ReportDir "case-evidence-$stamp.result.json"
+      Invoke-Server (@("--case-evidence", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Imported live/case evidence into: $caseDir" -ForegroundColor Green
+      Write-Host "This action wrote only case evidence files." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("29", "case-bundle", "bundle-case", "zip-case") } {
+      $caseDir = $IssueCaseDir
+      if (!$caseDir) {
+        if ($script:StartedWithAction) {
+          throw "Pass -IssueCaseDir with -Action case-bundle."
+        }
+        $caseDir = Read-Host "Paste the issue case folder path"
+      }
+      $argsData = @{ case_dir = $caseDir }
+      $argsFile = Write-JsonArgs "case-bundle" $argsData
+      $out = Join-Path $script:ReportDir "case-bundle-$stamp.result.json"
+      Invoke-Server (@("--case-bundle", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Bundled issue case folder: $caseDir" -ForegroundColor Green
+      Write-Host "Review the zip before posting publicly; it can include mod names, paths, notes, and popup/OCR text." -ForegroundColor Green
       return
     }
     { $_ -in @("q", "quit", "exit") } {

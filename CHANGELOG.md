@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.24
+
+- Adds `skyrim_case_evidence_import` for append-only popup OCR, console FormID, current-cell, screenshot-note, and future live-bridge evidence intake.
+- Adds `skyrim_case_bundle` to zip a case folder for OpenClaw review or bug reports with a privacy warning.
+- Adds direct CLI shortcuts and local menu actions 28-29 for evidence import and case bundling.
+- Extends tests and docs for the live-evidence handoff workflow.
+
 ## v0.2.23
 
 - Adds `skyrim_issue_case_note` for append-only case notes and decision/test logs.

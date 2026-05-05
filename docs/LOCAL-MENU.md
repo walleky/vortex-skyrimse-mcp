@@ -43,6 +43,8 @@ Vortex-SkyrimSE-Menu.cmd
 25. Safe experiment plan
 26. What should I do now?
 27. Live Skyrim bridge status
+28. Import case evidence
+29. Bundle issue case
 
 Reports are written to:
 
@@ -85,6 +87,8 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action safe-experiment -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
 .\vortex_skyrimse_menu.ps1 -Action what-now -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
 .\vortex_skyrimse_menu.ps1 -Action live-bridge -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
+.\vortex_skyrimse_menu.ps1 -Action case-evidence -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS" -EvidenceKind popup_ocr -OcrText "file was not configured properly"
+.\vortex_skyrimse_menu.ps1 -Action case-bundle -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
 ```
 
 If Windows cannot find Python, pass the executable once:
@@ -147,6 +151,10 @@ Actions 24-27 keep the case tidy: notes append to `case-notes.md`, the safe
 experiment plan writes a dry-run cloned-profile test plan, `what-now` writes one
 short recommendation, and live bridge status explains what screenshot/OCR or
 SKSE telemetry would need.
+
+Actions 28-29 are for handoff. Evidence import appends popup OCR, console
+FormIDs, cell names, and future helper output to `live-evidence.md/jsonl`.
+Bundle zips the case folder for review; inspect the zip before posting it.
 
 ## Safety
 

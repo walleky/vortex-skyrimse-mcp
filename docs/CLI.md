@@ -108,6 +108,14 @@ py -3 .\server.py --safe-experiment-plan --case-dir ".\reports\popup-case" --tar
 py -3 .\server.py --live-bridge-status --case-dir ".\reports\popup-case"
 ```
 
+Import live/captured evidence and bundle the case:
+
+```powershell
+py -3 .\server.py --case-evidence --case-dir ".\reports\popup-case" --evidence-kind popup_ocr --ocr-text "file was not configured properly"
+py -3 .\server.py --case-evidence --case-dir ".\reports\bed-case" --evidence-kind console --reference-form-id "0100ABCD" --base-form-id "00001234" --cell "WhiterunBanneredMare"
+py -3 .\server.py --case-bundle --case-dir ".\reports\popup-case"
+```
+
 Triage an annoying popup:
 
 ```powershell
