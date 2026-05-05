@@ -46,6 +46,9 @@ if (($MenuOutput -join "`n") -notmatch "xEdit inspection script") {
 if (($MenuOutput -join "`n") -notmatch "xEdit inspection result") {
   throw "Menu did not list the xEdit inspection result action."
 }
+if (($MenuOutput -join "`n") -notmatch "Skyrim issue case packet") {
+  throw "Menu did not list the Skyrim issue case packet action."
+}
 
 $PythonForMenu = $env:VORTEX_SKYRIMSE_MCP_TEST_PYTHON
 if ($PythonForMenu) {

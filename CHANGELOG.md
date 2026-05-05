@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.21
+
+- Adds `skyrim_issue_case_packet`, a no-change investigation folder generator that combines issue triage, xEdit/SSEEdit target hints, a generated read-only xEdit script, and OpenClaw next steps.
+- Adds `--issue-case` direct CLI mode and local menu action 22 for one-command case packet creation.
+- Adds fixture, smoke, and PowerShell menu coverage for the case-packet workflow.
+
 ## v0.2.20
 
 - Adds `xedit_inspection_script`, a read-only xEdit/SSEEdit Pascal script generator that exports matching selected records to CSV for OpenClaw.

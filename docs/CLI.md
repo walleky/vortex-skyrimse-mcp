@@ -85,6 +85,13 @@ py -3 .\server.py --tool xedit_inspection_script --description "bed outside tave
 py -3 .\server.py --tool xedit_inspection_result_report --report-path "C:\path\to\OpenClawSkyrimInspector.csv" --allow-any-path
 ```
 
+Create a one-folder issue investigation packet:
+
+```powershell
+py -3 .\server.py --issue-case --description "bed outside tavern room" --location "Whiterun Bannered Mare" --object "bed" --form-id "1200ABCD"
+py -3 .\server.py --issue-case --description "popup after loading a save" --include-runtime-logs --case-dir ".\reports\popup-case"
+```
+
 Triage an annoying popup:
 
 ```powershell

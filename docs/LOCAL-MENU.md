@@ -37,6 +37,7 @@ Vortex-SkyrimSE-Menu.cmd
 19. Config file validator
 20. xEdit inspection script
 21. xEdit inspection result
+22. Skyrim issue case packet
 
 Reports are written to:
 
@@ -73,6 +74,7 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action config -ConfigPath "C:\path\to\config\popup.json"
 .\vortex_skyrimse_menu.ps1 -Action xedit-script -IssueDescription "bed outside tavern room" -IssueLocation "Whiterun Bannered Mare" -IssueObject "bed" -FormId "0100ABCD"
 .\vortex_skyrimse_menu.ps1 -Action xedit-result -XeditReportPath "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\xedit-inspection-YYYYMMDD-HHMMSS.csv"
+.\vortex_skyrimse_menu.ps1 -Action issue-case -IssueDescription "bed outside tavern room" -IssueLocation "Whiterun Bannered Mare" -IssueObject "bed" -FormId "0100ABCD"
 ```
 
 If Windows cannot find Python, pass the executable once:
@@ -123,8 +125,12 @@ will produce after you run it inside SSEEdit/xEdit with Apply Script. The
 `xedit-result` action reads that CSV and summarizes likely plugin/record
 candidates for OpenClaw.
 
+The `issue-case` action creates one folder with `issue-case.md`,
+`issue-case.json`, and an xEdit inspection script when enough clues are
+available. Open the Markdown file first.
+
 ## Safety
 
 The menu runs read-only report actions plus profile backup and restore preview. It does not delete mods, sort load order, write INI fixes, edit plugins, install collections, or apply restore plans.
 
-The safe session and diagnostics actions write Markdown and JSON reports and try to include a profile backup unless `-NoProfileBackup` is passed. They include Skyrim runtime log scanning by default unless `-NoRuntimeLogs` is passed. The backup action writes a JSON backup file. The restore action previews what would be restored; it does not change Vortex. The in-game issue action searches for likely mod candidates; it does not fix records automatically. The runtime log action is read-only and points OpenClaw at config candidates when logs reference them. The config validator is read-only and checks parse/health clues before any patch. The xEdit inspection actions generate/read evidence only; do not save plugin edits from xEdit unless you intentionally made separate manual changes.
+The safe session and diagnostics actions write Markdown and JSON reports and try to include a profile backup unless `-NoProfileBackup` is passed. They include Skyrim runtime log scanning by default unless `-NoRuntimeLogs` is passed. The backup action writes a JSON backup file. The restore action previews what would be restored; it does not change Vortex. The in-game issue action searches for likely mod candidates; it does not fix records automatically. The runtime log action is read-only and points OpenClaw at config candidates when logs reference them. The config validator is read-only and checks parse/health clues before any patch. The xEdit inspection and issue-case actions generate/read evidence only; do not save plugin edits from xEdit unless you intentionally made separate manual changes.

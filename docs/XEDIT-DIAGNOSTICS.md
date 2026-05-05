@@ -45,6 +45,13 @@ Generate a read-only xEdit inspection script:
 py -3 .\server.py --tool xedit_inspection_script --description "bed outside tavern room" --location "Whiterun Bannered Mare" --object "bed" --form-id 0100ABCD
 ```
 
+If you want one folder with issue triage, xEdit hints, the generated script,
+and next steps:
+
+```powershell
+py -3 .\server.py --issue-case --description "bed outside tavern room" --location "Whiterun Bannered Mare" --object "bed" --form-id 0100ABCD
+```
+
 Then in xEdit/SSEEdit:
 
 1. Load the active Skyrim SE load order or the candidate plugin(s).
@@ -81,6 +88,10 @@ mutating xEdit calls in generated scripts.
 - repeated record signatures such as `REFR`, `CELL`, `MESG`, or `QUST`
 - matched search terms
 - preview rows for OpenClaw
+
+`skyrim_issue_case_packet` wraps the common flow. It creates a folder with
+`issue-case.md`, `issue-case.json`, and `xedit-inspection.pas` so the user and
+OpenClaw can come back to the same evidence later.
 
 ## Important Limits
 

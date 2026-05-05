@@ -132,6 +132,12 @@ Better if you have console evidence:
 Use in_game_issue_report with description "bed outside tavern room", location "Whiterun Bannered Mare", object "bed", form_id "0100ABCD", and base_object "CommonBed01". Then use xedit_diagnostics_report for the same FormID. If candidates are still ambiguous, generate xedit_inspection_script and parse the CSV with xedit_inspection_result_report. Do not edit plugins.
 ```
 
+Low-friction version:
+
+```text
+Use skyrim_issue_case_packet with description "bed outside tavern room", location "Whiterun Bannered Mare", object "bed", form_id "0100ABCD", and base_object "CommonBed01". Do not edit plugins.
+```
+
 What OpenClaw should call:
 
 ```text
@@ -139,6 +145,7 @@ in_game_issue_report
 xedit_diagnostics_report
 xedit_inspection_script
 xedit_inspection_result_report
+skyrim_issue_case_packet
 vortex_profile_backup
 ```
 

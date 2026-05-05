@@ -201,6 +201,7 @@ py -3 .\server.py --tool validate_setup
 py -3 .\server.py --workflow-guide --problem "mods downloaded but not working"
 py -3 .\server.py --tool scan_cache_status
 py -3 .\server.py --tool xedit_diagnostics_report --form-id 0100ABCD
+py -3 .\server.py --issue-case --description "bed outside tavern room" --location "Whiterun Bannered Mare" --object "bed" --form-id 0100ABCD
 py -3 .\server.py --tool vortex_collection_report
 py -3 .\server.py --runtime-logs --description "popup says file was not configured properly"
 py -3 .\server.py --skyrim-diagnostics
@@ -249,6 +250,12 @@ Before any profile experiment:
 
 ```text
 Use vortex_profile_backup with include_all_profiles=true and tell me where the backup was written. Do not apply other changes.
+```
+
+For a visible in-game issue:
+
+```text
+Use skyrim_issue_case_packet for this issue: there is a bed outside the tavern room in Whiterun. Include location Whiterun Bannered Mare and object bed. Do not apply changes.
 ```
 
 To make a safer test profile:

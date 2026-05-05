@@ -22,6 +22,7 @@ param(
   [string]$ConfigPath = "",
   [string]$Problem = "",
   [string]$WorkflowKey = "",
+  [string]$IssueCaseDir = "",
   [int]$MaxMods = 500,
   [int]$XeditMaxRecords = 2000,
   [int]$XeditMaxPreviewRows = 50,
@@ -227,6 +228,7 @@ function Show-Actions {
   Write-Host "19. Config file validator"
   Write-Host "20. xEdit inspection script"
   Write-Host "21. xEdit inspection result"
+  Write-Host "22. Skyrim issue case packet"
   Write-Host "Q. Quit"
 }
 
@@ -700,6 +702,77 @@ function Invoke-MenuAction {
       Invoke-Server (@("--tool", "xedit_inspection_result_report", "--args-file", $argsFile, "--output-json", $out) + $common)
       Write-Host "Wrote xEdit/SSEEdit inspection result report: $out" -ForegroundColor Green
       Write-Host "This action only read the CSV and did not edit plugins." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("22", "issue-case", "case", "case-packet", "investigate", "investigation") } {
+      $description = $IssueDescription
+      $location = $IssueLocation
+      $objectName = $IssueObject
+      $formId = $FormId
+      $cellName = $Cell
+      $baseObjectName = $BaseObject
+      $popup = $PopupText
+      $plugin = $PluginName
+      if (!$description -and !$script:StartedWithAction) {
+        $description = Read-Host "Problem description, such as 'bed outside tavern room' or 'popup after loading a save'"
+      }
+      if (!$location -and !$script:StartedWithAction) {
+        $location = Read-Host "Location, if known (press Enter to skip)"
+      }
+      if (!$objectName -and !$script:StartedWithAction) {
+        $objectName = Read-Host "Object or symptom, if known (press Enter to skip)"
+      }
+      if (!$formId -and !$script:StartedWithAction) {
+        $formId = Read-Host "Console-clicked FormID, if any (press Enter to skip)"
+      }
+      if (!$popup -and !$script:StartedWithAction) {
+        $popup = Read-Host "Popup text, if relevant (press Enter to skip)"
+      }
+      if (!$description -and !$location -and !$objectName -and !$formId -and !$cellName -and !$baseObjectName -and !$popup -and !$plugin) {
+        throw "Pass at least one clue, such as -IssueDescription, -IssueLocation, -IssueObject, -FormId, -PopupText, or -PluginName."
+      }
+      $caseDir = $IssueCaseDir
+      if (!$caseDir) {
+        $caseDir = Join-Path $script:ReportDir "issue-case-$stamp"
+      }
+      $argsData = @{
+        case_dir = $caseDir
+        include_runtime_logs = (-not $NoRuntimeLogs)
+        max_mods = $MaxMods
+      }
+      if ($description) {
+        $argsData.description = $description
+      }
+      if ($location) {
+        $argsData.location = $location
+      }
+      if ($objectName) {
+        $argsData.object = $objectName
+      }
+      if ($formId) {
+        $argsData.form_id = $formId
+      }
+      if ($cellName) {
+        $argsData.cell = $cellName
+      }
+      if ($baseObjectName) {
+        $argsData.base_object = $baseObjectName
+      }
+      if ($popup) {
+        $argsData.popup_text = $popup
+      }
+      if ($plugin) {
+        $argsData.plugin_name = $plugin
+      }
+      if ($XeditExe) {
+        $argsData.xedit_exe = $XeditExe
+      }
+      $argsFile = Write-JsonArgs "issue-case" $argsData
+      $out = Join-Path $script:ReportDir "issue-case-$stamp.result.json"
+      Invoke-Server (@("--issue-case", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Wrote Skyrim issue case folder: $caseDir" -ForegroundColor Green
+      Write-Host "Open issue-case.md in that folder first. If an xEdit script was generated, run it in SSEEdit and parse the CSV with action 21." -ForegroundColor Green
+      Write-Host "This action wrote reports and a read-only inspection script only; it did not change Vortex, Skyrim, or plugins." -ForegroundColor Green
       return
     }
     { $_ -in @("q", "quit", "exit") } {

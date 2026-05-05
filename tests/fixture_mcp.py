@@ -352,6 +352,34 @@ def main() -> int:
         assert "modsByPath" not in issue["profileState"], issue
         assert issue["formIdHint"]["pluginName"] == "MYMOD.ESP", issue
 
+        case_packet = server.skyrim_issue_case_packet(
+            {
+                **base_args,
+                "description": "There is a bed outside the tavern room and it is messing things up.",
+                "location": "Whiterun Bannered Mare",
+                "object": "bed",
+                "form_id": "0100ABCD",
+                "base_object": "CommonBed01",
+                "cell": "WhiterunBanneredMare",
+                "include_profile_state": False,
+                "case_dir": str(root / "Reports" / "CaseBed"),
+                "include_runtime_logs": False,
+                "max_records": 25,
+            }
+        )
+        assert case_packet["readOnly"] is True, case_packet
+        assert case_packet["dryRunOnly"] is True, case_packet
+        assert case_packet["candidateCount"] >= 1, case_packet
+        assert case_packet["topCandidate"]["mod"] == "Whiterun Tavern Overhaul", case_packet
+        assert case_packet["xeditPluginHint"] == "MYMOD.ESP", case_packet
+        assert Path(case_packet["markdownPath"]).exists(), case_packet
+        assert Path(case_packet["jsonPath"]).exists(), case_packet
+        assert Path(case_packet["xeditScriptPath"]).exists(), case_packet
+        case_markdown = Path(case_packet["markdownPath"]).read_text(encoding="utf-8")
+        assert "Skyrim Issue Case Packet" in case_markdown, case_markdown
+        assert "Whiterun Tavern Overhaul" in case_markdown, case_markdown
+        assert not case_packet["errors"], case_packet
+
         popup_issue = server.in_game_issue_report(
             {
                 **base_args,

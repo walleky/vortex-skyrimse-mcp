@@ -10,6 +10,10 @@ Start read-only. Do not apply INI fixes or Vortex profile writes unless the user
 
 For a confused or frustrated user, first call `skyrim_diagnostics_report` when
 available, or `safe_session_report` if you need the older narrower baseline.
+
+For a user-described visible issue, prefer `skyrim_issue_case_packet` when you
+want one folder that OpenClaw and the user can revisit. It writes Markdown/JSON,
+creates a read-only xEdit inspection script, and keeps next steps together.
 Both are no-change Markdown/JSON reports with setup validation, optional profile
 backup, modded play health, optional in-game issue triage, and logs.
 
@@ -135,6 +139,12 @@ For stronger read-only record evidence:
 ```text
 xedit_inspection_script with description/location/object/form_id
 xedit_inspection_result_report with the generated CSV path
+```
+
+Or, for less tool juggling:
+
+```text
+skyrim_issue_case_packet with description/location/object/form_id
 ```
 
 Tell the user to apply the generated script only to selected candidate plugins
