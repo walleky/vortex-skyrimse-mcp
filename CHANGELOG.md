@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.2.20
+
+- Adds `xedit_inspection_script`, a read-only xEdit/SSEEdit Pascal script generator that exports matching selected records to CSV for OpenClaw.
+- Adds `xedit_inspection_result_report` to summarize generated xEdit CSV output by plugin, record signature, matched term, and preview rows.
+- Expands xEdit diagnostics and workflow guidance from FormID/plugin hints into a safer read-only inspection loop before cloned-profile testing.
+- Adds local menu actions for generating xEdit inspection scripts and summarizing the CSV result.
+- Lets the local menu use `-PythonCommand` or `VORTEX_SKYRIMSE_MCP_PYTHON` when Windows does not expose `py`/`python` on PATH.
+- Adds fixture and smoke coverage for xEdit script generation, static safety checks, and CSV parsing.
+
 ## v0.2.19
 
 - Adds `tests/config_runtime_mcp.py`, a focused regression suite for config parsing, root restrictions, exact-text patch suggestions, repeated replacement safety, runtime log issue grouping, config candidate validation, and stale/fresh log handling.

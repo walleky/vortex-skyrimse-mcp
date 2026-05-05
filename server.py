@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import configparser
+import csv
 import datetime as _dt
 import hashlib
 import json
@@ -39,7 +40,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.19"
+SERVER_VERSION = "0.2.20"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -1707,6 +1708,8 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "skyrim_diagnostics_report",
             "scan_cache_status",
             "xedit_diagnostics_report",
+            "xedit_inspection_script",
+            "xedit_inspection_result_report",
         ],
         "nexusMetadataOptional": [
             "nexus_validate_key",
@@ -1792,10 +1795,10 @@ def workflow_catalog() -> List[Dict[str, Any]]:
             "key": "weird_object",
             "title": "Weird Object Or Location Problem",
             "matchTerms": ["object", "bed", "door", "tavern", "whiterun", "cell", "formid", "placed", "outside", "room"],
-            "userPrompt": "Use in_game_issue_report with my description, location, object, and any FormID/base object I provide. Then use xedit_diagnostics_report for the same FormID. Do not edit plugins.",
-            "tools": ["in_game_issue_report", "xedit_diagnostics_report", "vortex_profile_backup"],
-            "whatToRead": ["candidateCount", "candidates", "formIdHint", "diagnosticQuality"],
-            "humanSteps": ["Use the console-clicked FormID if available.", "Back up or clone the profile before testing.", "Disable one candidate in a cloned profile, deploy, and test."],
+            "userPrompt": "Use in_game_issue_report with my description, location, object, and any FormID/base object I provide. Then use xedit_diagnostics_report and, if needed, xedit_inspection_script for read-only xEdit evidence. Do not edit plugins.",
+            "tools": ["in_game_issue_report", "xedit_diagnostics_report", "xedit_inspection_script", "xedit_inspection_result_report", "vortex_profile_backup"],
+            "whatToRead": ["candidateCount", "candidates", "formIdHint", "diagnosticQuality", "scriptPath", "reportPath"],
+            "humanSteps": ["Use the console-clicked FormID if available.", "Generate a read-only xEdit inspection script for the top candidate.", "Back up or clone the profile before testing.", "Disable one candidate in a cloned profile, deploy, and test."],
             "directCli": ["py -3 .\\server.py --tool in_game_issue_report --description \"bed outside tavern room\" --location \"Whiterun Bannered Mare\" --object \"bed\""],
             "menuAction": "10. In-game issue triage",
         },
@@ -2522,13 +2525,363 @@ def xedit_diagnostics_report(args: Dict[str, Any]) -> Dict[str, Any]:
         "suggestedWorkflow": [
             "Open xEdit/SSEEdit manually with the active Skyrim load order.",
             "If a FormID hint points to a plugin, inspect that plugin first.",
+            "For stronger read-only evidence, generate xedit_inspection_script, run it in xEdit on selected candidate records/plugins, then parse the CSV with xedit_inspection_result_report.",
             "For placed objects, inspect the current cell and reference/base record before disabling mods.",
             "For popups, inspect message, quest, script, and MCM/config records related to the candidate mod.",
             "Do not clean, delete records, or save plugin changes from this diagnostic alone.",
         ],
+        "nextLeapTools": ["xedit_inspection_script", "xedit_inspection_result_report"],
         "notes": [
             "This MCP does not automate xEdit writes. It only points OpenClaw at the safest read-only inspection target.",
             "ESL/light plugins and runtime-created references can make FormID prefix hints incomplete.",
+        ],
+    }
+
+
+XEDIT_MUTATING_SCRIPT_TERMS = (
+    "SetElementEditValues",
+    "SetElementNativeValues",
+    "SetEditValue",
+    "SetNativeValue",
+    "SetLoadOrderFormID",
+    "SetIsESM",
+    "SetIsDeleted",
+    "SetIsInitiallyDisabled",
+    "SetIsPersistent",
+    "SetIsVisibleWhenDistant",
+    "MarkModifiedRecursive",
+    "Remove(",
+    "ElementAssign",
+    "InsertElement",
+    "wbCopyElement",
+    "SortMasters",
+)
+
+
+def pascal_string(value: Any) -> str:
+    return "'" + str(value or "").replace("'", "''") + "'"
+
+
+def pascal_identifier(value: str, fallback: str = "OpenClawSkyrimInspector") -> str:
+    raw = re.sub(r"[^A-Za-z0-9_]", "_", value or "")
+    raw = re.sub(r"_+", "_", raw).strip("_")
+    if not raw:
+        raw = fallback
+    if raw[0].isdigit():
+        raw = "_" + raw
+    return raw[:80]
+
+
+def xedit_default_script_path(args: Dict[str, Any]) -> Path:
+    output_path = expand_path(args.get("output_path"))
+    if output_path:
+        return output_path
+    docs = default_documents() or Path.cwd()
+    return docs / "vortex-skyrimse-mcp-reports" / "xedit-scripts" / f"OpenClawSkyrimInspector-{now_stamp()}.pas"
+
+
+def xedit_terms(args: Dict[str, Any]) -> List[str]:
+    raw_terms = tokenize_issue_terms(
+        args.get("description"),
+        args.get("location"),
+        args.get("object"),
+        args.get("cell"),
+        args.get("base_object"),
+        args.get("popup_text"),
+        args.get("extra_terms"),
+        args.get("plugin_name"),
+        args.get("form_id"),
+    )
+    extra = args.get("terms")
+    if isinstance(extra, list):
+        raw_terms.extend(str(item) for item in extra if str(item).strip())
+    elif isinstance(extra, str):
+        raw_terms.extend(tokenize_issue_terms(extra))
+    seen: set[str] = set()
+    terms: List[str] = []
+    for term in raw_terms:
+        cleaned = str(term).strip()
+        key = cleaned.lower()
+        if len(cleaned) < 2 or key in seen:
+            continue
+        seen.add(key)
+        terms.append(cleaned)
+    return terms[: int(args.get("max_terms", 40))]
+
+
+def xedit_command_preview(xedit_exe: Optional[Path], script_path: Path) -> Optional[str]:
+    if not xedit_exe:
+        return None
+    return f'"{xedit_exe}" -SSE -script:"{script_path}" -nobuildrefs'
+
+
+def xedit_inspection_script_text(args: Dict[str, Any], script_path: Path, report_path: Path) -> str:
+    unit_name = pascal_identifier(script_path.stem)
+    terms = xedit_terms(args)
+    max_records = max(1, min(50_000, int(args.get("max_records", 2000))))
+    term_lines = "\n".join(f"  Terms.Add({pascal_string(term)});" for term in terms)
+    if not term_lines:
+        term_lines = "  // No search terms supplied; every selected main record is exported."
+    return f"""unit {unit_name};
+
+interface
+implementation
+uses xEditAPI, Classes, SysUtils;
+
+var
+  Report: TStringList;
+  Terms: TStringList;
+  RowCount: integer;
+  MaxRows: integer;
+
+function Csv(s: string): string;
+begin
+  Result := '"' + StringReplace(s, '"', '""', [rfReplaceAll]) + '"';
+end;
+
+function SafeSignature(e: IInterface): string;
+begin
+  Result := '';
+  try
+    Result := Signature(e);
+  except
+    Result := '';
+  end;
+end;
+
+function SafeEditorID(e: IInterface): string;
+begin
+  Result := '';
+  try
+    Result := EditorID(e);
+  except
+    Result := '';
+  end;
+end;
+
+function SafeValue(e: IInterface; p: string): string;
+begin
+  Result := '';
+  try
+    Result := GetElementEditValues(e, p);
+  except
+    Result := '';
+  end;
+end;
+
+function SafeName(e: IInterface): string;
+begin
+  Result := '';
+  try
+    Result := Name(e);
+  except
+    Result := '';
+  end;
+end;
+
+function SafeFullPath(e: IInterface): string;
+begin
+  Result := '';
+  try
+    Result := FullPath(e);
+  except
+    Result := '';
+  end;
+end;
+
+function SafeFileName(e: IInterface): string;
+begin
+  Result := '';
+  try
+    Result := GetFileName(GetFile(e));
+  except
+    Result := '';
+  end;
+end;
+
+function SafeFormID(e: IInterface): string;
+begin
+  Result := '';
+  try
+    Result := IntToHex(GetLoadOrderFormID(e), 8);
+  except
+    Result := '';
+  end;
+end;
+
+function MatchedTerm(text: string): string;
+var
+  i: integer;
+  t: string;
+  lower: string;
+begin
+  Result := '';
+  lower := LowerCase(text);
+  for i := 0 to Terms.Count - 1 do begin
+    t := LowerCase(Terms[i]);
+    if (t <> '') and (Pos(t, lower) > 0) then begin
+      Result := Terms[i];
+      exit;
+    end;
+  end;
+end;
+
+function Initialize: integer;
+begin
+  Result := 0;
+  Report := TStringList.Create;
+  Terms := TStringList.Create;
+  RowCount := 0;
+  MaxRows := {max_records};
+{term_lines}
+  Report.Add('sourcePlugin,signature,formId,editorId,name,full,cell,base,model,script,matchedTerm,fullPath');
+  AddMessage('OpenClaw Skyrim inspector is read-only. It writes a CSV report and does not modify records.');
+  AddMessage('Report path: ' + {pascal_string(report_path)});
+end;
+
+function Process(e: IInterface): integer;
+var
+  sig, fileName, formId, edid, recName, fullValue, cellValue, baseValue, modelValue, scriptValue, fullPath, searchText, hit: string;
+begin
+  Result := 0;
+  if RowCount >= MaxRows then exit;
+  sig := SafeSignature(e);
+  if sig = '' then exit;
+  fileName := SafeFileName(e);
+  formId := SafeFormID(e);
+  edid := SafeEditorID(e);
+  recName := SafeName(e);
+  fullValue := SafeValue(e, 'FULL');
+  cellValue := SafeValue(e, 'Cell');
+  baseValue := SafeValue(e, 'NAME - Base');
+  if baseValue = '' then baseValue := SafeValue(e, 'NAME');
+  modelValue := SafeValue(e, 'Model\\MODL');
+  scriptValue := SafeValue(e, 'VMAD');
+  fullPath := SafeFullPath(e);
+  searchText := sig + ' ' + fileName + ' ' + formId + ' ' + edid + ' ' + recName + ' ' + fullValue + ' ' + cellValue + ' ' + baseValue + ' ' + modelValue + ' ' + scriptValue + ' ' + fullPath;
+  if Terms.Count > 0 then begin
+    hit := MatchedTerm(searchText);
+    if hit = '' then exit;
+  end else begin
+    hit := '';
+  end;
+  Report.Add(Csv(fileName) + ',' + Csv(sig) + ',' + Csv(formId) + ',' + Csv(edid) + ',' + Csv(recName) + ',' + Csv(fullValue) + ',' + Csv(cellValue) + ',' + Csv(baseValue) + ',' + Csv(modelValue) + ',' + Csv(scriptValue) + ',' + Csv(hit) + ',' + Csv(fullPath));
+  Inc(RowCount);
+end;
+
+function Finalize: integer;
+begin
+  Result := 0;
+  Report.SaveToFile({pascal_string(report_path)});
+  AddMessage('OpenClaw Skyrim inspector wrote ' + IntToStr(RowCount) + ' row(s) to: ' + {pascal_string(report_path)});
+  Report.Free;
+  Terms.Free;
+end;
+
+end.
+"""
+
+
+def xedit_script_safety_report(script_text: str) -> Dict[str, Any]:
+    found = [term for term in XEDIT_MUTATING_SCRIPT_TERMS if term.lower() in script_text.lower()]
+    return {
+        "readOnlyIntended": not found,
+        "mutatingTermsFound": found,
+        "notes": [
+            "This is a static string check. It does not prove the xEdit script is safe, but it catches obvious write/edit calls.",
+            "Generated scripts should inspect selected records and write CSV output only.",
+        ],
+    }
+
+
+def xedit_inspection_script(args: Dict[str, Any]) -> Dict[str, Any]:
+    script_path = xedit_default_script_path(args)
+    if script_path.suffix.lower() != ".pas":
+        script_path = script_path.with_suffix(".pas")
+    report_path = expand_path(args.get("report_path")) or script_path.with_suffix(".csv")
+    if not report_path:
+        raise ToolError("report_path resolved to an empty path.")
+    include_script_text = bool(args.get("include_script_text", False))
+    script_text = xedit_inspection_script_text(args, script_path, report_path)
+    safety = xedit_script_safety_report(script_text)
+    if safety["mutatingTermsFound"]:
+        raise ToolError(f"Generated xEdit script failed static safety check: {safety['mutatingTermsFound']}")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    write_text(script_path, script_text)
+    found = xedit_candidates(args)
+    command = xedit_command_preview(found[0] if found else None, script_path)
+    result = {
+        "scriptPath": str(script_path),
+        "reportPath": str(report_path),
+        "xeditExe": str(found[0]) if found else None,
+        "xeditCommandPreview": command,
+        "terms": xedit_terms(args),
+        "maxRecords": max(1, min(50_000, int(args.get("max_records", 2000)))),
+        "readOnly": True,
+        "safety": safety,
+        "manualSteps": [
+            "Open SSEEdit/xEdit with the same load order Vortex deploys.",
+            "Load the candidate plugin(s), or load the full order if you are chasing overrides/conflicts.",
+            "Right-click the plugin or selected records, choose Apply Script, and select the generated script.",
+            "Do not save plugin changes when closing xEdit unless you intentionally made separate manual edits.",
+            "Run xedit_inspection_result_report on the CSV report path after the script finishes.",
+        ],
+        "notes": [
+            "This tool writes a read-only xEdit Pascal script. It does not launch xEdit or edit plugins.",
+            "The script exports matching selected records to CSV using xEdit read APIs.",
+        ],
+        "sources": [
+            "https://tes5edit.github.io/docs/13-Scripting-Functions.html",
+            "https://github.com/TES5Edit/TES5Edit",
+        ],
+    }
+    if include_script_text:
+        result["scriptText"] = script_text
+    return result
+
+
+def summarize_xedit_rows(rows: List[Dict[str, str]], key: str, limit: int = 20) -> List[Dict[str, Any]]:
+    counts: Dict[str, int] = {}
+    for row in rows:
+        value = str(row.get(key) or "").strip() or "(blank)"
+        counts[value] = counts.get(value, 0) + 1
+    items = [{"value": value, "count": count} for value, count in counts.items()]
+    items.sort(key=lambda item: (-int(item["count"]), str(item["value"]).lower()))
+    return items[:limit]
+
+
+def xedit_inspection_result_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    path = expand_path(args.get("report_path") or args.get("path"))
+    if not path or not path.exists() or not path.is_file():
+        raise ToolError("report_path/path must point to an existing xEdit inspection CSV file.")
+    path_allowed_for_text_tool(path, args, "read xEdit inspection reports")
+    max_rows = max(1, min(50_000, int(args.get("max_rows", 2000))))
+    rows: List[Dict[str, str]] = []
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            rows.append({str(key): str(value or "") for key, value in row.items() if key is not None})
+            if len(rows) >= max_rows:
+                break
+    top_plugins = summarize_xedit_rows(rows, "sourcePlugin")
+    top_signatures = summarize_xedit_rows(rows, "signature")
+    top_terms = summarize_xedit_rows(rows, "matchedTerm")
+    candidate_plugins = [item["value"] for item in top_plugins if item["value"] != "(blank)"][:10]
+    return {
+        "path": str(path),
+        "rowCount": len(rows),
+        "truncated": len(rows) >= max_rows,
+        "topPlugins": top_plugins,
+        "topSignatures": top_signatures,
+        "topMatchedTerms": top_terms,
+        "candidatePlugins": candidate_plugins,
+        "rows": rows[: int(args.get("max_preview_rows", 50))],
+        "readOnly": True,
+        "recommendedActions": [
+            "Start with plugins/signatures that repeat most often in the report.",
+            "For placed-object issues, inspect REFR/CELL/WRLD records and compare overrides before disabling mods.",
+            "For popup/message issues, inspect MESG/QUST/MGEF/VMAD/script-related rows and mod config evidence.",
+            "Do not save xEdit plugin edits from this report alone. Test changes in a cloned Vortex profile first.",
         ],
     }
 
@@ -7299,6 +7652,56 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         },
         xedit_diagnostics_report,
     ),
+    "xedit_inspection_script": (
+        "Generate a read-only xEdit/SSEEdit Pascal script that exports matching selected records to CSV for OpenClaw analysis.",
+        {
+            "type": "object",
+            "properties": {
+                "xedit_exe": {"type": "string"},
+                "sseedit_exe": {"type": "string"},
+                "output_path": {"type": "string"},
+                "report_path": {"type": "string"},
+                "description": {"type": "string"},
+                "location": {"type": "string"},
+                "object": {"type": "string"},
+                "cell": {"type": "string"},
+                "base_object": {"type": "string"},
+                "popup_text": {"type": "string"},
+                "extra_terms": {"type": "string"},
+                "terms": {"type": "array", "items": {"type": "string"}},
+                "form_id": {"type": "string"},
+                "plugin_name": {"type": "string"},
+                "skyrim_dir": {"type": "string"},
+                "staging_dir": {"type": "string"},
+                "local_appdata": {"type": "string"},
+                "max_records": {"type": "integer", "default": 2000},
+                "max_terms": {"type": "integer", "default": 40},
+                "include_script_text": {"type": "boolean", "default": False},
+            },
+            "additionalProperties": False,
+        },
+        xedit_inspection_script,
+    ),
+    "xedit_inspection_result_report": (
+        "Read the CSV produced by xedit_inspection_script and summarize candidate plugins, record signatures, and matching rows.",
+        {
+            "type": "object",
+            "properties": {
+                "report_path": {"type": "string"},
+                "path": {"type": "string"},
+                "max_rows": {"type": "integer", "default": 2000},
+                "max_preview_rows": {"type": "integer", "default": 50},
+                "allow_any_path": {"type": "boolean", "default": False},
+                "allowed_roots": {"type": "array", "items": {"type": "string"}},
+                "vortex_appdata": {"type": "string"},
+                "skyrim_dir": {"type": "string"},
+                "staging_dir": {"type": "string"},
+                "my_games_dir": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        xedit_inspection_result_report,
+    ),
     "vortex_collection_report": (
         "Read-only inspection of collection-like state and mod collection markers exposed by Vortex CLI.",
         {
@@ -8374,6 +8777,8 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         "problem": parsed.problem,
         "workflow_key": parsed.workflow_key,
         "path": parsed.path,
+        "report_path": parsed.report_path,
+        "terms": parsed.terms,
         "old_text": parsed.old_text,
         "new_text": parsed.new_text,
     }
@@ -8408,6 +8813,10 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["max_collection_items"] = parsed.max_collection_items
     if parsed.max_workflows is not None:
         tool_args["max_workflows"] = parsed.max_workflows
+    if parsed.max_records is not None:
+        tool_args["max_records"] = parsed.max_records
+    if parsed.max_preview_rows is not None:
+        tool_args["max_preview_rows"] = parsed.max_preview_rows
     if parsed.hash_files:
         tool_args["hash_files"] = True
     if parsed.include_nexus_metadata:
@@ -8541,6 +8950,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--session-json-path", help="JSON output path for --safe-session.")
     parser.add_argument("--log-dir", help="Override MCP log folder for log_status and support reports.")
     parser.add_argument("--path", help="Target path for read_text_file or apply_config_text_patch.")
+    parser.add_argument("--report-path", help="CSV report path for xedit_inspection_script or xedit_inspection_result_report.")
     parser.add_argument("--old-text", help="Exact text to replace for apply_config_text_patch.")
     parser.add_argument("--new-text", help="Replacement text for apply_config_text_patch.")
     parser.add_argument("--description", help="In-game issue description for in_game_issue_report.")
@@ -8553,6 +8963,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--base-object", help="Console-clicked base object name/id for in_game_issue_report.")
     parser.add_argument("--popup-text", help="Exact popup/notification text for in_game_issue_report.")
     parser.add_argument("--extra-terms", help="Extra search terms for in_game_issue_report.")
+    parser.add_argument("--terms", nargs="*", help="Explicit search terms for xedit_inspection_script.")
     parser.add_argument("--issue-kind", choices=["placed_object", "popup", "general"], help="Issue type for in_game_issue_report.")
     parser.add_argument("--performance-mode", choices=["normal", "slow_model", "fast", "thorough"], help="Tune work and output size. Use slow_model for smaller OpenClaw-friendly reports.")
     parser.add_argument("--response-mode", choices=["standard", "compact"], help="Use compact to return fewer nested details for slower AI models.")
@@ -8572,6 +8983,8 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--collection-manifest-json", help="Inline JSON object for collection_local_match_report.")
     parser.add_argument("--max-collection-items", type=int, help="Maximum collection-like entries or manifest refs to scan.")
     parser.add_argument("--max-workflows", type=int, help="Maximum workflows returned by workflow_guide.")
+    parser.add_argument("--max-records", type=int, help="Maximum records exported by xedit_inspection_script.")
+    parser.add_argument("--max-preview-rows", type=int, help="Maximum preview rows returned by xedit_inspection_result_report.")
     parser.add_argument("--max-mods", type=int, help="Maximum mods to scan for supported tools.")
     parser.add_argument("--max-log-files", type=int, help="Maximum recent log files for support reports.")
     parser.add_argument("--max-runtime-log-files", type=int, help="Maximum recent Skyrim runtime log files to scan.")

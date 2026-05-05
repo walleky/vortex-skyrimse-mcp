@@ -16,11 +16,15 @@ param(
   [string]$PopupText = "",
   [string]$XeditExe = "",
   [string]$PluginName = "",
+  [string]$XeditScriptPath = "",
+  [string]$XeditReportPath = "",
   [string]$CollectionManifestPath = "",
   [string]$ConfigPath = "",
   [string]$Problem = "",
   [string]$WorkflowKey = "",
   [int]$MaxMods = 500,
+  [int]$XeditMaxRecords = 2000,
+  [int]$XeditMaxPreviewRows = 50,
   [switch]$HashFiles,
   [switch]$NoProfileState,
   [switch]$NoConflicts,
@@ -35,6 +39,7 @@ param(
   [switch]$IncludeAllWorkflows,
   [string]$NexusApiKeyFile = "",
   [int]$NexusMaxLookupMods = 80,
+  [string]$PythonCommand = "",
   [switch]$NoNexusCache,
   [switch]$NoScanCache
 )
@@ -42,6 +47,22 @@ param(
 $ErrorActionPreference = "Stop"
 
 function Find-Python {
+  $explicit = $PythonCommand
+  if (!$explicit -and $env:VORTEX_SKYRIMSE_MCP_PYTHON) {
+    $explicit = $env:VORTEX_SKYRIMSE_MCP_PYTHON
+  }
+  if ($explicit) {
+    if ($explicit -ieq "py") {
+      return @{
+        Command = "py"
+        Args = @("-3")
+      }
+    }
+    return @{
+      Command = $explicit
+      Args = @()
+    }
+  }
   if (Get-Command py -ErrorAction SilentlyContinue) {
     return @{
       Command = "py"
@@ -204,6 +225,8 @@ function Show-Actions {
   Write-Host "17. Workflow guide"
   Write-Host "18. Skyrim runtime logs"
   Write-Host "19. Config file validator"
+  Write-Host "20. xEdit inspection script"
+  Write-Host "21. xEdit inspection result"
   Write-Host "Q. Quit"
 }
 
@@ -572,6 +595,111 @@ function Invoke-MenuAction {
       Invoke-Server (@("--tool", "config_file_report", "--path", $config, "--output-json", $out) + $common)
       Write-Host "Wrote config file validation report: $out" -ForegroundColor Green
       Write-Host "This action did not edit the config file." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("20", "xedit-script", "xedit-inspection", "sseedit-script", "sseedit-inspection") } {
+      $description = $IssueDescription
+      $location = $IssueLocation
+      $objectName = $IssueObject
+      $formId = $FormId
+      $cellName = $Cell
+      $baseObjectName = $BaseObject
+      $popup = $PopupText
+      $plugin = $PluginName
+      if (!$description -and !$script:StartedWithAction) {
+        $description = Read-Host "Problem description, such as 'bed outside tavern room'"
+      }
+      if (!$location -and !$script:StartedWithAction) {
+        $location = Read-Host "Location, if known (press Enter to skip)"
+      }
+      if (!$objectName -and !$script:StartedWithAction) {
+        $objectName = Read-Host "Object or symptom, if known (press Enter to skip)"
+      }
+      if (!$formId -and !$script:StartedWithAction) {
+        $formId = Read-Host "Console-clicked FormID, if any (press Enter to skip)"
+      }
+      if (!$plugin -and !$script:StartedWithAction) {
+        $plugin = Read-Host "Plugin filename, if known (press Enter to skip)"
+      }
+      if (!$cellName -and !$script:StartedWithAction) {
+        $cellName = Read-Host "Cell name/id, if known (press Enter to skip)"
+      }
+      if (!$baseObjectName -and !$script:StartedWithAction) {
+        $baseObjectName = Read-Host "Base object name/id, if known (press Enter to skip)"
+      }
+      if (!$popup -and !$script:StartedWithAction) {
+        $popup = Read-Host "Popup text, if relevant (press Enter to skip)"
+      }
+      if (!$description -and !$location -and !$objectName -and !$formId -and !$cellName -and !$baseObjectName -and !$popup -and !$plugin) {
+        throw "Pass at least one clue, such as -IssueDescription, -IssueLocation, -IssueObject, -FormId, -PopupText, or -PluginName."
+      }
+      $scriptPath = $XeditScriptPath
+      if (!$scriptPath) {
+        $scriptPath = Join-Path $script:ReportDir "xedit-inspection-$stamp.pas"
+      }
+      $reportPath = $XeditReportPath
+      if (!$reportPath) {
+        $reportPath = Join-Path $script:ReportDir "xedit-inspection-$stamp.csv"
+      }
+      $argsData = @{
+        output_path = $scriptPath
+        report_path = $reportPath
+        max_records = $XeditMaxRecords
+      }
+      if ($description) {
+        $argsData.description = $description
+      }
+      if ($location) {
+        $argsData.location = $location
+      }
+      if ($objectName) {
+        $argsData.object = $objectName
+      }
+      if ($formId) {
+        $argsData.form_id = $formId
+      }
+      if ($cellName) {
+        $argsData.cell = $cellName
+      }
+      if ($baseObjectName) {
+        $argsData.base_object = $baseObjectName
+      }
+      if ($popup) {
+        $argsData.popup_text = $popup
+      }
+      if ($plugin) {
+        $argsData.plugin_name = $plugin
+      }
+      if ($XeditExe) {
+        $argsData.xedit_exe = $XeditExe
+      }
+      $argsFile = Write-JsonArgs "xedit-inspection" $argsData
+      $out = Join-Path $script:ReportDir "xedit-inspection-$stamp.result.json"
+      Invoke-Server (@("--tool", "xedit_inspection_script", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Wrote xEdit/SSEEdit inspection script: $scriptPath" -ForegroundColor Green
+      Write-Host "The script will write CSV evidence here after you run it in xEdit: $reportPath" -ForegroundColor Green
+      Write-Host "Next: open SSEEdit, load the candidate plugin or full load order, right-click selected records/plugin, Apply Script, then choose this .pas file." -ForegroundColor Green
+      Write-Host "This action wrote only a read-only inspection script; it did not launch xEdit or edit plugins." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("21", "xedit-result", "xedit-results", "xedit-csv", "sseedit-result") } {
+      $report = $XeditReportPath
+      if (!$report) {
+        if ($script:StartedWithAction) {
+          throw "Pass -XeditReportPath with -Action xedit-result."
+        }
+        $report = Read-Host "Paste the xEdit inspection CSV path"
+      }
+      $argsData = @{
+        report_path = $report
+        max_preview_rows = $XeditMaxPreviewRows
+        allow_any_path = $true
+      }
+      $argsFile = Write-JsonArgs "xedit-result" $argsData
+      $out = Join-Path $script:ReportDir "xedit-result-$stamp.json"
+      Invoke-Server (@("--tool", "xedit_inspection_result_report", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Wrote xEdit/SSEEdit inspection result report: $out" -ForegroundColor Green
+      Write-Host "This action only read the CSV and did not edit plugins." -ForegroundColor Green
       return
     }
     { $_ -in @("q", "quit", "exit") } {

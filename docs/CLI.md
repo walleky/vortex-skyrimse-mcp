@@ -77,6 +77,14 @@ Get a read-only xEdit/SSEEdit target hint from the same FormID:
 py -3 .\server.py --tool xedit_diagnostics_report --form-id "1200ABCD"
 ```
 
+Generate a read-only xEdit inspection script and parse its CSV after running it
+inside xEdit:
+
+```powershell
+py -3 .\server.py --tool xedit_inspection_script --description "bed outside tavern room" --location "Whiterun Bannered Mare" --object "bed" --form-id "1200ABCD"
+py -3 .\server.py --tool xedit_inspection_result_report --report-path "C:\path\to\OpenClawSkyrimInspector.csv" --allow-any-path
+```
+
 Triage an annoying popup:
 
 ```powershell

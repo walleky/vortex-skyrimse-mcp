@@ -141,6 +141,12 @@ If you have a console FormID, add it and ask for the xEdit target:
 Use xedit_diagnostics_report with form_id 0100ABCD and tell me the likely plugin to inspect. Do not edit plugins.
 ```
 
+If OpenClaw still needs stronger record evidence:
+
+```text
+Use xedit_inspection_script for this issue, then after I run the generated script in SSEEdit, use xedit_inspection_result_report on the CSV. Do not save plugin edits.
+```
+
 For annoying popups, just say "popup", "notification", "warning", or similar in the description. The first scan is balanced and checks local file/path/config clues automatically. Exact popup text or a screenshot/OCR can help later, but it is not required for the first scan.
 
 If the popup says a file was not configured properly, reproduce it once and ask:

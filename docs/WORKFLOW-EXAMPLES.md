@@ -129,7 +129,7 @@ Use skyrim_diagnostics_report with this issue: there is a bed outside the tavern
 Better if you have console evidence:
 
 ```text
-Use in_game_issue_report with description "bed outside tavern room", location "Whiterun Bannered Mare", object "bed", form_id "0100ABCD", and base_object "CommonBed01". Then use xedit_diagnostics_report for the same FormID. Do not edit plugins.
+Use in_game_issue_report with description "bed outside tavern room", location "Whiterun Bannered Mare", object "bed", form_id "0100ABCD", and base_object "CommonBed01". Then use xedit_diagnostics_report for the same FormID. If candidates are still ambiguous, generate xedit_inspection_script and parse the CSV with xedit_inspection_result_report. Do not edit plugins.
 ```
 
 What OpenClaw should call:
@@ -137,6 +137,8 @@ What OpenClaw should call:
 ```text
 in_game_issue_report
 xedit_diagnostics_report
+xedit_inspection_script
+xedit_inspection_result_report
 vortex_profile_backup
 ```
 

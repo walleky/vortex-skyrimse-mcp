@@ -34,7 +34,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - `MCP-Doctor.cmd`: double-click wrapper around `mcp_doctor.ps1`.
 - `make_mod_knowledge.ps1`: direct PowerShell wrapper for writing the Markdown collection knowledge report.
 - `Make-Mod-Knowledge.cmd`: double-click wrapper around `make_mod_knowledge.ps1`.
-- `vortex_skyrimse_menu.ps1`: local helper menu for common diagnosis/report actions plus profile backup and restore preview.
+- `vortex_skyrimse_menu.ps1`: local helper menu for common diagnosis/report actions plus profile backup, restore preview, and read-only xEdit inspection script/result actions.
 - `Vortex-SkyrimSE-Menu.cmd`: double-click wrapper around `vortex_skyrimse_menu.ps1`.
 - `tests/smoke_mcp.py`: verifies JSON-RPC initialize, tools/list, and a basic tools/call.
 - `tests/fixture_mcp.py`: synthetic Skyrim/Vortex fixture for plugin, staging, conflict, logging, and bug-report behavior.
@@ -63,7 +63,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - filesystem and mod inspection: `safe_walk`, `mod_summary`, `inventory_mods`, `analyze_conflicts`, `redundant_mod_report`, `mod_knowledge_report`.
 - scan cache: `scan_cache_status`, `mod_summary_cached`, `load_scan_cache`, `write_scan_cache`.
 - Nexus metadata: `nexus_validate_key`, `nexus_mod_lookup`, `nexus_mod_files`, `nexus_file_info`, `nexus_file_by_md5`, `nexus_parse_nxm_link`, `nexus_update_report`.
-- xEdit/SSEEdit target hints: `xedit_diagnostics_report`, `xedit_candidates`, `form_id_load_order_hint`.
+- xEdit/SSEEdit read-only tooling: `xedit_diagnostics_report`, `xedit_inspection_script`, `xedit_inspection_result_report`, `xedit_candidates`, `form_id_load_order_hint`.
 - collection diagnostics: `vortex_collection_report`, `collection_local_match_report`, `extract_manifest_mod_refs`.
 - in-game issue triage: `in_game_issue_report`, `scan_mod_for_issue`, `extract_plugin_strings`.
 - runtime log diagnosis: `skyrim_runtime_log_report`, `collect_skyrim_runtime_log_files`, `runtime_issue_groups`, `match_runtime_references_to_staged_files`, `runtime_config_candidates`.
@@ -91,7 +91,7 @@ Most tools are read-only. The write tools are narrow and opt-in:
   delete placed objects, or disable mods.
 - Nexus API tools are read-only. They use this MCP's configured key and must not
   copy or reuse Vortex's key.
-- xEdit/SSEEdit tools are read-only hints. They do not launch xEdit or save plugin edits.
+- xEdit/SSEEdit tools are read-only helpers. They can write generated scripts/CSV summaries, but they do not launch xEdit, clean plugins, or save plugin edits.
 - Collection diagnostics are read-only. They do not install, update, remove, or deploy collection mods.
 - Scan-cache write failures are logged and do not fail diagnostics.
 - Vortex profile writes refuse to run while `Vortex.exe` is open unless `allow_running_vortex=true`.

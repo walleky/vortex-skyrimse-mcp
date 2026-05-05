@@ -77,6 +77,8 @@ def main() -> int:
     assert "skyrim_diagnostics_report" in listed_names, listed_names
     assert "scan_cache_status" in listed_names, listed_names
     assert "xedit_diagnostics_report" in listed_names, listed_names
+    assert "xedit_inspection_script" in listed_names, listed_names
+    assert "xedit_inspection_result_report" in listed_names, listed_names
     assert "vortex_collection_report" in listed_names, listed_names
     assert "collection_local_match_report" in listed_names, listed_names
     assert "nexus_validate_key" in listed_names, listed_names
@@ -93,6 +95,8 @@ def main() -> int:
     assert "include_nexus_metadata" in listed_by_name["skyrim_diagnostics_report"]["inputSchema"]["properties"], listed_by_name
     assert "scan_cache_dir" in listed_by_name["mod_knowledge_report"]["inputSchema"]["properties"], listed_by_name
     assert "include_xedit_report" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
+    assert "report_path" in listed_by_name["xedit_inspection_script"]["inputSchema"]["properties"], listed_by_name
+    assert "max_preview_rows" in listed_by_name["xedit_inspection_result_report"]["inputSchema"]["properties"], listed_by_name
     assert "include_collection_report" in listed_by_name["bug_report_bundle"]["inputSchema"]["properties"], listed_by_name
     assert "workflow_key" in listed_by_name["workflow_guide"]["inputSchema"]["properties"], listed_by_name
 
@@ -166,6 +170,8 @@ def main() -> int:
             assert "skyrim_diagnostics_report" in names, names
             assert "scan_cache_status" in names, names
             assert "xedit_diagnostics_report" in names, names
+            assert "xedit_inspection_script" in names, names
+            assert "xedit_inspection_result_report" in names, names
             assert "vortex_collection_report" in names, names
             assert "collection_local_match_report" in names, names
             assert "nexus_validate_key" in names, names

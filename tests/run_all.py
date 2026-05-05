@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 import argparse
 import shutil
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 
-def run_step(name: str, command: list[str], cwd: Path) -> None:
+def run_step(name: str, command: list[str], cwd: Path, env: dict[str, str] | None = None) -> None:
     print(f"\n== {name} ==", flush=True)
     print(" ".join(command), flush=True)
-    subprocess.run(command, cwd=str(cwd), check=True)
+    subprocess.run(command, cwd=str(cwd), env=env, check=True)
 
 
 def main() -> int:
@@ -36,11 +37,13 @@ def main() -> int:
     if args.skip_powershell:
         print("\n== PowerShell helper tests skipped by flag ==", flush=True)
     elif shell:
+        ps_env = os.environ.copy()
+        ps_env["VORTEX_SKYRIMSE_MCP_TEST_PYTHON"] = py
         if Path(shell).name.lower().startswith("powershell"):
             command = [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tests/check_powershell.ps1"]
         else:
             command = [shell, "-NoProfile", "-File", "tests/check_powershell.ps1"]
-        run_step("PowerShell helper tests", command, repo)
+        run_step("PowerShell helper tests", command, repo, env=ps_env)
     else:
         print("\n== PowerShell helper tests skipped: pwsh/powershell not found ==", flush=True)
 

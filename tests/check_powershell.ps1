@@ -40,3 +40,26 @@ if (($MenuOutput -join "`n") -notmatch "Skyrim runtime logs") {
 if (($MenuOutput -join "`n") -notmatch "Config file validator") {
   throw "Menu did not list the config file validator action."
 }
+if (($MenuOutput -join "`n") -notmatch "xEdit inspection script") {
+  throw "Menu did not list the xEdit inspection script action."
+}
+if (($MenuOutput -join "`n") -notmatch "xEdit inspection result") {
+  throw "Menu did not list the xEdit inspection result action."
+}
+
+$PythonForMenu = $env:VORTEX_SKYRIMSE_MCP_TEST_PYTHON
+if ($PythonForMenu) {
+  $ActionOutput = powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "..\vortex_skyrimse_menu.ps1") -Action xedit-script -ReportDir $MenuReportDir -PythonCommand $PythonForMenu -IssueDescription "bed outside tavern room" -IssueLocation "Whiterun Bannered Mare" -IssueObject "bed" -XeditMaxRecords 5
+  $ActionOutput
+  $GeneratedScripts = @(Get-ChildItem -LiteralPath $MenuReportDir -Filter "xedit-inspection-*.pas" | Sort-Object LastWriteTime -Descending)
+  if ($GeneratedScripts.Count -lt 1) {
+    throw "Menu xEdit script action did not write a .pas script."
+  }
+  $ScriptText = Get-Content -LiteralPath $GeneratedScripts[0].FullName -Raw
+  if ($ScriptText -notmatch "OpenClaw Skyrim inspector is read-only") {
+    throw "Generated xEdit script did not include the read-only warning."
+  }
+  if (($ActionOutput -join "`n") -notmatch "xEdit/SSEEdit inspection script") {
+    throw "Menu xEdit script action did not print the expected success text."
+  }
+}

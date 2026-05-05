@@ -35,6 +35,8 @@ Vortex-SkyrimSE-Menu.cmd
 17. Workflow guide
 18. Skyrim runtime logs
 19. Config file validator
+20. xEdit inspection script
+21. xEdit inspection result
 
 Reports are written to:
 
@@ -69,7 +71,17 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action workflow -Problem "mods downloaded but not working"
 .\vortex_skyrimse_menu.ps1 -Action runtime -IssueDescription "popup says file was not configured properly"
 .\vortex_skyrimse_menu.ps1 -Action config -ConfigPath "C:\path\to\config\popup.json"
+.\vortex_skyrimse_menu.ps1 -Action xedit-script -IssueDescription "bed outside tavern room" -IssueLocation "Whiterun Bannered Mare" -IssueObject "bed" -FormId "0100ABCD"
+.\vortex_skyrimse_menu.ps1 -Action xedit-result -XeditReportPath "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\xedit-inspection-YYYYMMDD-HHMMSS.csv"
 ```
+
+If Windows cannot find Python, pass the executable once:
+
+```powershell
+.\vortex_skyrimse_menu.ps1 -Action validate -PythonCommand "C:\Path\To\python.exe"
+```
+
+You can also set `VORTEX_SKYRIMSE_MCP_PYTHON` to the same executable path.
 
 Custom paths:
 
@@ -103,10 +115,16 @@ Optional xEdit and collection context:
 .\vortex_skyrimse_menu.ps1 -Action diagnostics -IncludeXeditReport -FormId "0100ABCD"
 .\vortex_skyrimse_menu.ps1 -Action diagnostics -IncludeCollectionReport
 .\vortex_skyrimse_menu.ps1 -Action xedit -XeditExe "C:\Tools\SSEEdit\SSEEdit.exe" -FormId "0100ABCD"
+.\vortex_skyrimse_menu.ps1 -Action xedit-script -XeditExe "C:\Tools\SSEEdit\SSEEdit.exe" -IssueDescription "bed outside tavern room" -IssueLocation "Whiterun Bannered Mare" -IssueObject "bed"
 ```
+
+The `xedit-script` action writes a `.pas` script and tells you the CSV path it
+will produce after you run it inside SSEEdit/xEdit with Apply Script. The
+`xedit-result` action reads that CSV and summarizes likely plugin/record
+candidates for OpenClaw.
 
 ## Safety
 
 The menu runs read-only report actions plus profile backup and restore preview. It does not delete mods, sort load order, write INI fixes, edit plugins, install collections, or apply restore plans.
 
-The safe session and diagnostics actions write Markdown and JSON reports and try to include a profile backup unless `-NoProfileBackup` is passed. They include Skyrim runtime log scanning by default unless `-NoRuntimeLogs` is passed. The backup action writes a JSON backup file. The restore action previews what would be restored; it does not change Vortex. The in-game issue action searches for likely mod candidates; it does not fix records automatically. The runtime log action is read-only and points OpenClaw at config candidates when logs reference them. The config validator is read-only and checks parse/health clues before any patch.
+The safe session and diagnostics actions write Markdown and JSON reports and try to include a profile backup unless `-NoProfileBackup` is passed. They include Skyrim runtime log scanning by default unless `-NoRuntimeLogs` is passed. The backup action writes a JSON backup file. The restore action previews what would be restored; it does not change Vortex. The in-game issue action searches for likely mod candidates; it does not fix records automatically. The runtime log action is read-only and points OpenClaw at config candidates when logs reference them. The config validator is read-only and checks parse/health clues before any patch. The xEdit inspection actions generate/read evidence only; do not save plugin edits from xEdit unless you intentionally made separate manual changes.

@@ -121,6 +121,45 @@ def main() -> int:
         assert xedit["available"] is True, xedit
         assert xedit["pluginName"] == "MYMOD.ESP", xedit
         assert xedit["readOnly"] is True, xedit
+        assert "xedit_inspection_script" in xedit["nextLeapTools"], xedit
+
+        xedit_script = server.xedit_inspection_script(
+            {
+                **base_args,
+                "description": "bed outside tavern room",
+                "location": "Whiterun Bannered Mare",
+                "object": "bed",
+                "form_id": "0100ABCD",
+                "output_path": str(root / "Reports" / "OpenClawSkyrimInspector.pas"),
+                "report_path": str(root / "Reports" / "OpenClawSkyrimInspector.csv"),
+                "max_records": 25,
+            }
+        )
+        assert xedit_script["readOnly"] is True, xedit_script
+        assert xedit_script["safety"]["readOnlyIntended"] is True, xedit_script
+        assert Path(xedit_script["scriptPath"]).exists(), xedit_script
+        script_text = Path(xedit_script["scriptPath"]).read_text(encoding="utf-8")
+        assert "OpenClaw Skyrim inspector is read-only" in script_text, script_text
+        assert "whiterun" in script_text, script_text
+        assert "scriptValue" in script_text and "VMAD" in script_text, script_text
+        assert "-script:" in xedit_script["xeditCommandPreview"], xedit_script
+
+        write(
+            Path(xedit_script["reportPath"]),
+            'sourcePlugin,signature,formId,editorId,name,full,cell,base,model,script,matchedTerm,fullPath\n'
+            '"WhiterunTavern.esp","REFR","0100ABCD","TavernBedRef","[REFR:0100ABCD]","Bed","WhiterunBanneredMare","CommonBed01","","","bed","Full\\Path"\n'
+            '"WhiterunTavern.esp","CELL","01000AAA","WhiterunBanneredMare","Cell","","","","","","Whiterun","Full\\Cell"\n',
+        )
+        xedit_result = server.xedit_inspection_result_report(
+            {
+                **base_args,
+                "report_path": xedit_script["reportPath"],
+                "allowed_roots": [str(root)],
+            }
+        )
+        assert xedit_result["rowCount"] == 2, xedit_result
+        assert xedit_result["topPlugins"][0]["value"] == "WhiterunTavern.esp", xedit_result
+        assert xedit_result["topSignatures"][0]["value"] in {"CELL", "REFR"}, xedit_result
 
         assert server.compact_for_log({"nexus_api_key": "secret"})["nexus_api_key"] == "<redacted>"
         previous_nexus_key = os.environ.pop("NEXUS_MODS_API_KEY", None)

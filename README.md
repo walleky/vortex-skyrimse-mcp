@@ -38,7 +38,9 @@ an MCP client.
   harmless duplicates.
 - Detect missing masters and enabled plugins that are missing on disk.
 - Use a local scan cache to make repeated large-collection diagnostics faster.
-- Give read-only xEdit/SSEEdit target hints from FormIDs and plugin names.
+- Give read-only xEdit/SSEEdit target hints from FormIDs and plugin names, and
+  generate read-only xEdit inspection scripts that export matching selected
+  records to CSV for OpenClaw to summarize.
 - Inspect Vortex collection-like state when Vortex exposes it, and compare a
   manifest-like collection JSON file to locally staged Nexus mod/file metadata.
 - Inspect Skyrim INI settings and apply a narrow safe set of INI fixes with
@@ -91,7 +93,7 @@ an MCP client.
 - [docs/NEXUS-API.md](docs/NEXUS-API.md): optional read-only Nexus Mods API setup and tools.
 - [docs/NEXUS-MODS-API-DESIGN.md](docs/NEXUS-MODS-API-DESIGN.md): Nexus API metadata design and roadmap.
 - [docs/SCAN-CACHE.md](docs/SCAN-CACHE.md): local scan cache behavior, safety, and performance tips.
-- [docs/XEDIT-DIAGNOSTICS.md](docs/XEDIT-DIAGNOSTICS.md): read-only xEdit/SSEEdit target hints.
+- [docs/XEDIT-DIAGNOSTICS.md](docs/XEDIT-DIAGNOSTICS.md): read-only xEdit/SSEEdit target hints, inspection scripts, and CSV result parsing.
 - [docs/COLLECTION-DIAGNOSTICS.md](docs/COLLECTION-DIAGNOSTICS.md): Vortex collection-state and manifest matching.
 - [docs/CONFLICT-EXPLAINER.md](docs/CONFLICT-EXPLAINER.md): conflict risk levels and safe interpretation.
 - [docs/ADR-0001-NEXUS-API-KEYS.md](docs/ADR-0001-NEXUS-API-KEYS.md): why this MCP uses its own explicit Nexus key instead of Vortex's key.

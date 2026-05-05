@@ -130,6 +130,16 @@ For xEdit/SSEEdit read-only target hints:
 xedit_diagnostics_report with form_id or plugin_name
 ```
 
+For stronger read-only record evidence:
+
+```text
+xedit_inspection_script with description/location/object/form_id
+xedit_inspection_result_report with the generated CSV path
+```
+
+Tell the user to apply the generated script only to selected candidate plugins
+or records in xEdit/SSEEdit, then close xEdit without saving plugin changes.
+
 Use this to point the user at the likely plugin or record to inspect. Do not
 tell the MCP to clean plugins or save xEdit edits.
 
@@ -265,6 +275,8 @@ of files or the diagnosis looks stale, rerun the same tool with
 Explain that FormID prefix mapping can be incomplete with ESL/light plugins and
 runtime references. Ask for an in-game console reference, base object, or xEdit
 inspection confirmation before changing mods.
+If the user can run xEdit/SSEEdit, generate `xedit_inspection_script` for the
+top candidate and parse the CSV with `xedit_inspection_result_report`.
 
 `vortex_collection_report found no collection state`
 
