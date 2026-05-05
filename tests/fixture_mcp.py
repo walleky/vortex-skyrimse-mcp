@@ -335,6 +335,77 @@ def main() -> int:
         finally:
             server.vortex_state_get = original_vortex_state_get
 
+        original_load_profile_state = server.load_vortex_profile_state
+        original_vortex_state_set = server.vortex_state_set
+        applied_profile_changes = []
+
+        def fake_load_profile_state(args, include_mods=False):
+            return {
+                "gameId": "skyrimse",
+                "vortex_exe": "Vortex.exe",
+                "profiles": {
+                    "source": {
+                        "id": "source",
+                        "name": "Original Profile",
+                        "gameId": "skyrimse",
+                        "lastActivated": 1,
+                        "modState": {
+                            "bad-mod": {"enabled": True, "enabledTime": 1},
+                            "off-mod": {"enabled": False},
+                            "keep-mod": {"enabled": True},
+                        },
+                    }
+                },
+                "allProfiles": {},
+                "mods": {
+                    "bad-mod": {"attributes": {"name": "Bad Mod"}},
+                    "off-mod": {"attributes": {"name": "Off Mod"}},
+                    "keep-mod": {"attributes": {"name": "Keep Mod"}},
+                },
+                "activeProfileId": "source",
+                "activeFromSettings": "source",
+                "activeFromLastActivated": "source",
+                "rawPaths": [],
+            }
+
+        def fake_vortex_state_set(changes, vortex_exe_override=None, timeout_seconds=60, allow_running_vortex=False):
+            applied_profile_changes.extend(changes)
+            return {"vortex_exe": "Vortex.exe", "changeCount": len(changes), "batchCount": 1, "calls": []}
+
+        server.load_vortex_profile_state = fake_load_profile_state
+        server.vortex_state_set = fake_vortex_state_set
+        try:
+            safe_fix_preview = server.vortex_safe_profile_fix(
+                {
+                    "source_profile_id": "source",
+                    "new_profile_id": "clone",
+                    "new_name": "Fixed Clone",
+                    "disable_mod_ids": ["bad-mod"],
+                    "enable_mod_ids": ["off-mod"],
+                }
+            )
+            assert safe_fix_preview["dryRun"] is True, safe_fix_preview
+            assert safe_fix_preview["cloneOnly"] is True, safe_fix_preview
+            assert safe_fix_preview["sourceProfileModified"] is False, safe_fix_preview
+            assert safe_fix_preview["disableModIds"] == ["bad-mod"], safe_fix_preview
+            assert safe_fix_preview["enableModIds"] == ["off-mod"], safe_fix_preview
+            safe_fix_apply = server.vortex_safe_profile_fix(
+                {
+                    "source_profile_id": "source",
+                    "new_profile_id": "clone-applied",
+                    "new_name": "Fixed Clone Applied",
+                    "disable_mod_ids": ["bad-mod"],
+                    "apply": True,
+                    "backup_before_apply": False,
+                }
+            )
+            assert safe_fix_apply["applied"] is True, safe_fix_apply
+            assert applied_profile_changes, safe_fix_apply
+            assert all(str(change["path"]).startswith("persistent.profiles.clone-applied") for change in applied_profile_changes), applied_profile_changes
+        finally:
+            server.load_vortex_profile_state = original_load_profile_state
+            server.vortex_state_set = original_vortex_state_set
+
         issue = server.in_game_issue_report(
             {
                 **base_args,
@@ -426,7 +497,7 @@ def main() -> int:
         )
         assert experiment["dryRunOnly"] is True, experiment
         assert experiment["target"]["vortexModId"] == "whiterun-tavern-overhaul", experiment
-        assert any(call["tool"] == "vortex_set_profile_mods" for call in experiment["dryRunToolCalls"]), experiment
+        assert any(call["tool"] == "vortex_safe_profile_fix" for call in experiment["dryRunToolCalls"]), experiment
         assert Path(experiment["planPath"]).exists(), experiment
 
         what_now = server.skyrim_case_what_now({"case_dir": case_packet["caseDir"]})

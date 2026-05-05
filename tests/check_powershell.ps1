@@ -73,6 +73,9 @@ if (($MenuOutput -join "`n") -notmatch "Bundle issue case") {
 if (($MenuOutput -join "`n") -notmatch "Import case inbox") {
   throw "Menu did not list the case inbox import action."
 }
+if (($MenuOutput -join "`n") -notmatch "Clone profile and apply fixes") {
+  throw "Menu did not list the safe profile fix action."
+}
 
 $PythonForMenu = $env:VORTEX_SKYRIMSE_MCP_TEST_PYTHON
 if ($PythonForMenu) {

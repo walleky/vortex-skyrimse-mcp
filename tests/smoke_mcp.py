@@ -52,6 +52,25 @@ def main() -> int:
     assert any(change["path"] == "persistent.profiles.source.name" for change in restore_changes), restore_changes
     assert any(change["path"] == "persistent.profiles.source.modState.keep" for change in restore_changes), restore_changes
     assert any(change["path"] == "persistent.profiles.source.modState.extra.enabled" for change in restore_changes), restore_changes
+    fixed_clone, fixed_changes, fix_preview = mcp_server.clone_profile_with_fix_changes(
+        "clonefix",
+        "Fixed Clone",
+        {
+            "id": "source",
+            "gameId": "skyrimse",
+            "name": "Source",
+            "modState": {"bad": {"enabled": True}, "off": {"enabled": False}},
+        },
+        False,
+        ["off"],
+        ["bad"],
+    )
+    assert fixed_clone["id"] == "clonefix", fixed_clone
+    bad_change = next(change for change in fixed_changes if change["path"] == "persistent.profiles.clonefix.modState.bad")
+    off_change = next(change for change in fixed_changes if change["path"] == "persistent.profiles.clonefix.modState.off")
+    assert bad_change["value"]["enabled"] is False, bad_change
+    assert off_change["value"]["enabled"] is True, off_change
+    assert {item["action"] for item in fix_preview} == {"enable", "disable"}, fix_preview
     findings = []
     mcp_server.add_finding(findings, "low", "later", "later", "later")
     mcp_server.add_finding(findings, "critical", "first", "first", "first")
@@ -94,6 +113,7 @@ def main() -> int:
     assert "nexus_update_report" in listed_names, listed_names
     assert "vortex_profile_backup" in listed_names, listed_names
     assert "vortex_profile_restore_plan" in listed_names, listed_names
+    assert "vortex_safe_profile_fix" in listed_names, listed_names
     assert "apply_config_text_patch" in listed_names, listed_names
     assert "performance_mode" in listed_by_name["in_game_issue_report"]["inputSchema"]["properties"], listed_by_name
     assert "response_mode" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
@@ -110,6 +130,7 @@ def main() -> int:
     assert "case_dir" in listed_by_name["skyrim_issue_case_status"]["inputSchema"]["properties"], listed_by_name
     assert "note" in listed_by_name["skyrim_issue_case_note"]["inputSchema"]["properties"], listed_by_name
     assert "target_mod_id" in listed_by_name["skyrim_safe_experiment_plan"]["inputSchema"]["properties"], listed_by_name
+    assert "disable_mod_ids" in listed_by_name["vortex_safe_profile_fix"]["inputSchema"]["properties"], listed_by_name
     assert "evidence_type" in listed_by_name["skyrim_case_evidence_import"]["inputSchema"]["properties"], listed_by_name
     assert "inbox_dir" in listed_by_name["skyrim_case_inbox_import"]["inputSchema"]["properties"], listed_by_name
     assert "max_file_bytes" in listed_by_name["skyrim_case_bundle"]["inputSchema"]["properties"], listed_by_name
@@ -211,6 +232,7 @@ def main() -> int:
             assert "vortex_profile_restore_plan" in names, names
             assert "vortex_clone_profile" in names, names
             assert "vortex_set_profile_mods" in names, names
+            assert "vortex_safe_profile_fix" in names, names
             assert "skyrim_modded_play_report" in names, names
             assert "log_status" in names, names
             assert "bug_report_bundle" in names, names

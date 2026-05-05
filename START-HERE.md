@@ -209,6 +209,12 @@ Before changing a Vortex profile:
 Use vortex_profile_backup with include_all_profiles=true and tell me where the backup was written. Then show any requested profile change as a dry run first.
 ```
 
+To test a fix without touching the original profile:
+
+```text
+Use vortex_safe_profile_fix to clone my active profile as "OpenClaw Fixed Test" and disable the exact candidate mod id in the clone only. Preview first.
+```
+
 ## Bug Reports
 
 If OpenClaw gets stuck or a tool fails:
@@ -225,6 +231,7 @@ The bundle redacts normal user profile paths by default, but it may still includ
 - `apply_ini_fixes` writes only when `dry_run=false`.
 - `apply_config_text_patch` writes only when `apply=true` or `dry_run=false`; it replaces exact text and backs up by default.
 - `vortex_clone_profile` and `vortex_set_profile_mods` write only when `apply=true`.
+- `vortex_safe_profile_fix` clones a profile and applies exact mod-id fixes to the clone only; dry-run is the default.
 - Profile write tools create a profile backup before `apply=true` by default.
 - `vortex_profile_restore_plan` previews undo actions by default.
 - `xedit_diagnostics_report` is read-only and does not launch xEdit or save plugins.

@@ -22,6 +22,7 @@ These are useful next steps, ordered by value and risk.
 - Live bridge capability/status documentation for future screenshot/OCR, console FormID, and SKSE telemetry helpers.
 - Append-only live evidence import plus case-folder zip bundling for handoff and bug reports.
 - Case `incoming` inbox import with SHA-256 de-duplication for helper-generated evidence files.
+- One-step cloned-profile fix previews with `vortex_safe_profile_fix`, so exact mod-id fixes can be tested without touching the original profile.
 - Read-only Vortex collection-state inspection and collection manifest matching.
 - Local mod-summary scan cache for repeated large-collection diagnostics.
 - Conflict risk explanations and safer next-action text.

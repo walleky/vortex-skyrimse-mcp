@@ -278,6 +278,22 @@ py -3 .\server.py --tool vortex_profile_restore_plan --backup-path .\profile-bac
 
 That preview does not change Vortex. Applying a restore requires `--apply`, and Vortex should be closed first.
 
+Clone the active profile and preview a fix on the clone only:
+
+```powershell
+py -3 .\server.py --safe-profile-fix --new-profile-name "OpenClaw Fixed Test" --disable-mod-id "exact-vortex-mod-id"
+```
+
+After reviewing the preview and closing Vortex, apply the clone-only fix:
+
+```powershell
+py -3 .\server.py --safe-profile-fix --new-profile-name "OpenClaw Fixed Test" --disable-mod-id "exact-vortex-mod-id" --apply
+```
+
+This creates a backup by default, writes a new profile, changes only that new
+profile's mod enabled state, and leaves the original profile alone. Open Vortex
+afterward, select the clone, deploy mods, and test.
+
 ## JSON Arguments
 
 For advanced calls, pass tool arguments as JSON:

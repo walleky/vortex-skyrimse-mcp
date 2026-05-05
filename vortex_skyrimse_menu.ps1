@@ -36,6 +36,10 @@ param(
   [string]$ExperimentTargetMod = "",
   [string]$ExperimentTargetModId = "",
   [string]$TestProfileName = "OpenClaw Safe Test",
+  [string]$SafeProfileName = "OpenClaw Fixed Test",
+  [string]$EnableModIds = "",
+  [string]$DisableModIds = "",
+  [switch]$ApplyProfileFix,
   [int]$MaxMods = 500,
   [int]$XeditMaxRecords = 2000,
   [int]$XeditMaxPreviewRows = 50,
@@ -215,6 +219,14 @@ function Write-JsonArgs {
   return $path
 }
 
+function Convert-IdList {
+  param([string]$Value)
+  if (!$Value) {
+    return @()
+  }
+  return @($Value -split "[,;]" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+
 function Show-Actions {
   Write-Host ""
   Write-Host "Vortex Skyrim SE Helper Menu" -ForegroundColor Cyan
@@ -250,6 +262,7 @@ function Show-Actions {
   Write-Host "28. Import case evidence"
   Write-Host "29. Bundle issue case"
   Write-Host "30. Import case inbox"
+  Write-Host "31. Clone profile and apply fixes"
   Write-Host "Q. Quit"
 }
 
@@ -990,6 +1003,42 @@ function Invoke-MenuAction {
       Invoke-Server (@("--case-inbox", "--args-file", $argsFile, "--output-json", $out) + $common)
       Write-Host "Imported new helper evidence from the case inbox." -ForegroundColor Green
       Write-Host "Default inbox: <case folder>\incoming. Reruns skip files already imported by hash." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("31", "safe-profile-fix", "clone-fix", "profile-fix") } {
+      $disableIds = Convert-IdList $DisableModIds
+      $enableIds = Convert-IdList $EnableModIds
+      if ($disableIds.Count -eq 0 -and $enableIds.Count -eq 0) {
+        if ($script:StartedWithAction) {
+          throw "Pass -DisableModIds and/or -EnableModIds with -Action safe-profile-fix. Use exact Vortex mod ids."
+        }
+        $entered = Read-Host "Exact Vortex mod ids to disable in the clone (comma-separated)"
+        $disableIds = Convert-IdList $entered
+      }
+      if ($disableIds.Count -eq 0 -and $enableIds.Count -eq 0) {
+        throw "No mod ids were provided. Run profile mods/report first to find exact Vortex mod ids."
+      }
+      $argsData = @{
+        new_name = $SafeProfileName
+        disable_mod_ids = $disableIds
+        enable_mod_ids = $enableIds
+      }
+      if ($ProfileId) {
+        $argsData.source_profile_id = $ProfileId
+      }
+      if ($ApplyProfileFix) {
+        $argsData.apply = $true
+      }
+      $argsFile = Write-JsonArgs "safe-profile-fix" $argsData
+      $out = Join-Path $script:ReportDir "safe-profile-fix-$stamp.result.json"
+      Invoke-Server (@("--safe-profile-fix", "--args-file", $argsFile, "--output-json", $out) + $common)
+      if ($ApplyProfileFix) {
+        Write-Host "Created a cloned profile and applied the requested mod-id fixes to the clone." -ForegroundColor Green
+        Write-Host "Open Vortex, select the cloned profile, deploy mods, and test. The original profile was not edited." -ForegroundColor Green
+      } else {
+        Write-Host "Wrote cloned-profile fix preview." -ForegroundColor Green
+        Write-Host "Preview only. Add -ApplyProfileFix after reviewing the result and closing Vortex." -ForegroundColor Green
+      }
       return
     }
     { $_ -in @("q", "quit", "exit") } {

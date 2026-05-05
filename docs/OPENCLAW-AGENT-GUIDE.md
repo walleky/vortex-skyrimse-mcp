@@ -217,13 +217,14 @@ For "make me a safe test profile":
 
 ```text
 vortex_profile_backup with include_all_profiles=true
-vortex_clone_profile with apply=false
+vortex_safe_profile_fix with apply=false when exact enable/disable mod ids are known
+vortex_clone_profile with apply=false when you only need a clone plan
 ```
 
 Only after the user approves:
 
 ```text
-vortex_clone_profile with apply=true
+vortex_safe_profile_fix with apply=true, or vortex_clone_profile with apply=true
 ```
 
 ## Bug Report Flow
@@ -381,10 +382,21 @@ Before `vortex_clone_profile apply=true`:
 
 Before `vortex_set_profile_mods apply=true`:
 
+- prefer `vortex_safe_profile_fix` unless the user explicitly wants to change an existing profile
 - call `vortex_profile_backup` first, or confirm the dry-run result already shows a `backupPath`
 - call `vortex_profile_mods` first
 - use exact mod ids
 - do not guess ids from display names
+- tell the user to deploy mods afterward
+
+Before `vortex_safe_profile_fix apply=true`:
+
+- call `vortex_profile_backup` first, or confirm the dry-run result already shows a `backupPath`
+- call `vortex_profile_mods` first
+- use exact mod ids
+- do not guess ids from display names
+- verify the dry-run says `cloneOnly=true` and `sourceProfileModified=false`
+- tell the user to close Vortex
 - tell the user to deploy mods afterward
 
 Before `vortex_profile_restore_plan apply=true`:

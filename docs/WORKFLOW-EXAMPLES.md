@@ -308,20 +308,21 @@ Use this before testing mod disables or profile changes.
 Ask OpenClaw:
 
 ```text
-Use vortex_profile_backup with include_all_profiles=true. Then create a dry-run plan to clone my active profile as "OpenClaw Safe Test". Do not apply until I approve.
+Use vortex_profile_backup with include_all_profiles=true. Then use vortex_safe_profile_fix to clone my active profile as "OpenClaw Fixed Test" and disable exact mod id <id> in the clone only. Preview first.
 ```
 
 What OpenClaw should call:
 
 ```text
 vortex_profile_backup
-vortex_clone_profile with apply=false
+vortex_profile_mods if exact ids are not known
+vortex_safe_profile_fix with apply=false
 ```
 
 After approval:
 
 ```text
-vortex_clone_profile with apply=true
+vortex_safe_profile_fix with apply=true
 ```
 
 Undo preview:

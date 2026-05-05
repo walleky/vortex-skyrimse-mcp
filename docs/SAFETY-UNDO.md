@@ -50,6 +50,7 @@ These tools write a backup automatically before `apply=true` unless `backup_befo
 
 - `vortex_clone_profile`
 - `vortex_set_profile_mods`
+- `vortex_safe_profile_fix`
 
 The result includes `backupPath`. Keep that path if you need to undo the change.
 
@@ -116,7 +117,7 @@ For any profile-changing request, OpenClaw should use this order:
 1. `validate_setup`
 2. `vortex_profile_report`
 3. `vortex_profile_backup`
-4. dry-run plan for the requested change
+4. `vortex_safe_profile_fix apply=false` for clone-only mod-id fixes, or another dry-run plan for the requested change
 5. user approval
 6. apply with Vortex closed
 7. `vortex_profile_deployment_report`

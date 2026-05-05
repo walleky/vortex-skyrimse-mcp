@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.26
+
+- Adds `vortex_safe_profile_fix`, a high-level dry-run-first tool that clones the selected Vortex profile and applies exact mod enable/disable fixes to the clone only.
+- Adds CLI shortcut `--safe-profile-fix` with repeated `--disable-mod-id` / `--enable-mod-id` arguments.
+- Adds local menu action 31 for cloned-profile fix previews and optional apply after Vortex is closed.
+- Updates safe experiment planning to point at the one-step cloned-profile fix tool.
+
 ## v0.2.25
 
 - Adds `skyrim_case_inbox_import` for importing helper-generated JSON/TXT/LOG evidence from a case `incoming` folder.

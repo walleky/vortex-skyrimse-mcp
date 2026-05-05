@@ -209,6 +209,7 @@ py -3 .\server.py --case-note --case-dir "C:\path\to\issue-case-folder" --note "
 py -3 .\server.py --case-evidence --case-dir "C:\path\to\issue-case-folder" --evidence-kind popup_ocr --ocr-text "captured popup text"
 py -3 .\server.py --case-inbox --case-dir "C:\path\to\issue-case-folder"
 py -3 .\server.py --case-bundle --case-dir "C:\path\to\issue-case-folder"
+py -3 .\server.py --safe-profile-fix --new-profile-name "OpenClaw Fixed Test" --disable-mod-id "exact-vortex-mod-id"
 py -3 .\server.py --tool vortex_collection_report
 py -3 .\server.py --runtime-logs --description "popup says file was not configured properly"
 py -3 .\server.py --skyrim-diagnostics

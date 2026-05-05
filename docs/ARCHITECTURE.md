@@ -73,7 +73,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - INI/config checks and writes: `ini_report`, `config_file_report`, `config_patch_suggestions`, `apply_ini_fixes`, `read_text_file`, `apply_config_text_patch`.
 - setup validation: `validate_setup`.
 - workflow routing: `workflow_guide`, `workflow_catalog`, `workflow_score`.
-- profile tools: `vortex_profile_report`, `vortex_profile_mods`, `vortex_compare_profiles`, `vortex_profile_deployment_report`, `vortex_profile_backup`, `vortex_profile_restore_plan`, `vortex_clone_profile`, `vortex_set_profile_mods`.
+- profile tools: `vortex_profile_report`, `vortex_profile_mods`, `vortex_compare_profiles`, `vortex_profile_deployment_report`, `vortex_profile_backup`, `vortex_profile_restore_plan`, `vortex_clone_profile`, `vortex_set_profile_mods`, `vortex_safe_profile_fix`.
 - play readiness: `skyrim_modded_play_report`, `suggest_conflict_fixes`.
 - support/report tools: `safe_session_report`, `skyrim_diagnostics_report`, `mod_knowledge_report`, `log_status`, `bug_report_bundle`, `write_report`.
 - MCP registration, CLI, and loop: `TOOLS`, `tool_list`, `handle_call`, `cli_main`, `handle_message`, `serve_stdio`.
@@ -86,7 +86,8 @@ Most tools are read-only. The write tools are narrow and opt-in:
 - `apply_config_text_patch` writes only when `apply=true` or `dry_run=false`, replaces exact text only, restricts paths to detected roots by default, and backs up before writing.
 - `vortex_clone_profile` writes only when `apply=true`.
 - `vortex_set_profile_mods` writes only when `apply=true`.
-- `vortex_clone_profile` and `vortex_set_profile_mods` write a profile backup before `apply=true` unless `backup_before_apply=false`.
+- `vortex_safe_profile_fix` writes only when `apply=true`; it creates a cloned profile and applies exact mod-id fixes to that clone only.
+- `vortex_clone_profile`, `vortex_set_profile_mods`, and `vortex_safe_profile_fix` write a profile backup before `apply=true` unless `backup_before_apply=false`.
 - `skyrim_safe_experiment_plan` is always dry-run and writes only plan files.
 - `skyrim_issue_case_note` appends case notes only.
 - `skyrim_case_evidence_import` appends evidence files only.

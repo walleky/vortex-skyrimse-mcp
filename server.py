@@ -40,7 +40,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.25"
+SERVER_VERSION = "0.2.26"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -1742,12 +1742,14 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "vortex_profile_restore_plan",
             "vortex_clone_profile",
             "vortex_set_profile_mods",
+            "vortex_safe_profile_fix",
         ],
         "writeCapableDryRunFirst": [
             "apply_ini_fixes",
             "apply_config_text_patch",
             "vortex_clone_profile",
             "vortex_set_profile_mods",
+            "vortex_safe_profile_fix",
             "vortex_profile_restore_plan",
         ],
     }
@@ -1770,7 +1772,7 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
         "safetyDefaults": [
             "Profile writes are dry-run unless apply=true.",
             "Profile writes refuse to run while Vortex.exe is open unless allow_running_vortex=true.",
-            "vortex_set_profile_mods and vortex_clone_profile write a profile backup before apply=true by default.",
+            "vortex_set_profile_mods, vortex_clone_profile, and vortex_safe_profile_fix write a profile backup before apply=true by default.",
             "Use vortex_profile_restore_plan with apply=false first to preview undo/restore actions.",
         ],
     }
@@ -1860,10 +1862,10 @@ def workflow_catalog() -> List[Dict[str, Any]]:
             "title": "Safe Profile Experiment And Undo",
             "matchTerms": ["profile", "clone", "backup", "undo", "restore", "disable", "test profile", "safe test"],
             "userPrompt": "Use vortex_profile_backup with include_all_profiles=true. Then create a dry-run plan to clone my active profile as \"OpenClaw Safe Test\". Do not apply until I approve.",
-            "tools": ["vortex_profile_backup", "vortex_clone_profile", "vortex_profile_restore_plan"],
+            "tools": ["vortex_profile_backup", "vortex_clone_profile", "vortex_safe_profile_fix", "vortex_profile_restore_plan"],
             "whatToRead": ["backupPath", "plannedChangeCount", "plannedChanges"],
             "humanSteps": ["Close Vortex before profile writes.", "Reopen Vortex, pick the intended profile, deploy, and test.", "Keep the backup path."],
-            "directCli": ["py -3 .\\server.py --tool vortex_profile_backup --include-all-profiles", "py -3 .\\server.py --tool vortex_clone_profile --args-json \"{\\\"new_name\\\":\\\"OpenClaw Safe Test\\\"}\""],
+            "directCli": ["py -3 .\\server.py --tool vortex_profile_backup --include-all-profiles", "py -3 .\\server.py --safe-profile-fix --new-profile-name \"OpenClaw Safe Test\" --disable-mod-id exact-mod-id"],
             "menuAction": "2. Create Vortex profile backup",
         },
         {
@@ -4062,10 +4064,18 @@ def skyrim_safe_experiment_plan(args: Dict[str, Any]) -> Dict[str, Any]:
     )
     dry_run_calls = [
         {"tool": "vortex_profile_backup", "args": {"include_all_profiles": True}},
-        {"tool": "vortex_clone_profile", "args": {"new_name": test_profile_name, "apply": False}},
     ]
     if target_mod_id:
-        dry_run_calls.append({"tool": "vortex_set_profile_mods", "args": {"disable_mod_ids": [target_mod_id], "apply": False}})
+        dry_run_calls.append(
+            {
+                "tool": "vortex_safe_profile_fix",
+                "args": {
+                    "new_name": test_profile_name,
+                    "disable_mod_ids": [target_mod_id],
+                    "apply": False,
+                },
+            }
+        )
     plan = {
         "server": SERVER_NAME,
         "version": SERVER_VERSION,
@@ -7759,6 +7769,162 @@ def vortex_set_profile_mods(args: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+PROFILE_FIX_DISABLE_ACTIONS = {"disable", "disable_mod", "disable_mod_id", "turn_off", "off", "remove_from_profile"}
+PROFILE_FIX_ENABLE_ACTIONS = {"enable", "enable_mod", "enable_mod_id", "turn_on", "on", "add_to_profile"}
+
+
+def normalize_id_list(value: Any) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [item.strip() for item in re.split(r"[;,]", value) if item.strip()]
+    if isinstance(value, list):
+        result: List[str] = []
+        for item in value:
+            if isinstance(item, str):
+                result.extend(normalize_id_list(item))
+            elif item is not None:
+                result.append(str(item).strip())
+        return [item for item in result if item]
+    return [str(value).strip()] if str(value).strip() else []
+
+
+def profile_fix_requests(args: Dict[str, Any]) -> Tuple[List[str], List[str], List[Dict[str, Any]]]:
+    enable_ids = normalize_id_list(args.get("enable_mod_ids"))
+    disable_ids = normalize_id_list(args.get("disable_mod_ids"))
+    unsupported: List[Dict[str, Any]] = []
+    fixes = args.get("fixes") or []
+    if isinstance(fixes, dict):
+        fixes = [fixes]
+    if not isinstance(fixes, list):
+        unsupported.append({"fix": fixes, "reason": "fixes must be an object or array of objects"})
+    else:
+        for item in fixes:
+            if not isinstance(item, dict):
+                unsupported.append({"fix": item, "reason": "fix entry is not an object"})
+                continue
+            action = str(item.get("action") or item.get("type") or item.get("kind") or "").strip().lower().replace("-", "_")
+            mod_id = str(item.get("mod_id") or item.get("modId") or item.get("vortex_mod_id") or item.get("vortexModId") or "").strip()
+            if action in PROFILE_FIX_DISABLE_ACTIONS and mod_id:
+                disable_ids.append(mod_id)
+            elif action in PROFILE_FIX_ENABLE_ACTIONS and mod_id:
+                enable_ids.append(mod_id)
+            else:
+                unsupported.append(
+                    {
+                        "fix": item,
+                        "reason": "Only exact Vortex profile enable/disable mod fixes are supported by this clone-only tool.",
+                    }
+                )
+    return sorted(set(enable_ids), key=str.lower), sorted(set(disable_ids), key=str.lower), unsupported
+
+
+def clone_profile_with_fix_changes(
+    new_id: str,
+    new_name: str,
+    source: Dict[str, Any],
+    make_active: bool,
+    enable_ids: List[str],
+    disable_ids: List[str],
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    fixed_source = json.loads(json.dumps(source))
+    mod_state = fixed_source.get("modState") if isinstance(fixed_source.get("modState"), dict) else {}
+    fixed_source["modState"] = mod_state
+    timestamp = now_ms()
+    fix_preview: List[Dict[str, Any]] = []
+    for mod_id in enable_ids:
+        before = profile_enabled(mod_state.get(mod_id))
+        entry = mod_state.get(mod_id) if isinstance(mod_state.get(mod_id), dict) else {}
+        entry["enabled"] = True
+        entry["enabledTime"] = timestamp
+        mod_state[mod_id] = entry
+        fix_preview.append({"modId": mod_id, "action": "enable", "sourceEnabled": before, "cloneEnabled": True})
+    for mod_id in disable_ids:
+        before = profile_enabled(mod_state.get(mod_id))
+        entry = mod_state.get(mod_id) if isinstance(mod_state.get(mod_id), dict) else {}
+        entry["enabled"] = False
+        mod_state[mod_id] = entry
+        fix_preview.append({"modId": mod_id, "action": "disable", "sourceEnabled": before, "cloneEnabled": False})
+    cloned, changes = clone_profile_changes(new_id, new_name, fixed_source, make_active)
+    return cloned, changes, fix_preview
+
+
+def vortex_safe_profile_fix(args: Dict[str, Any]) -> Dict[str, Any]:
+    snapshot = load_vortex_profile_state(args, include_mods=True)
+    source_id, source = require_profile(snapshot, args.get("source_profile_id") or args.get("profile_id"))
+    new_id = str(args.get("new_profile_id") or f"openclaw-fixed-{now_stamp()}-{uuid.uuid4().hex[:8]}")
+    if new_id in snapshot["allProfiles"]:
+        raise ToolError(f"A Vortex profile with id '{new_id}' already exists.")
+    new_name = str(args.get("new_name") or args.get("new_profile_name") or f"OpenClaw Fixed Test {now_stamp()}")
+    make_active = bool(args.get("make_active", False))
+    enable_ids, disable_ids, unsupported = profile_fix_requests(args)
+    overlap = sorted(set(enable_ids) & set(disable_ids))
+    if overlap:
+        raise ToolError(f"These mod ids were requested for both enable and disable: {', '.join(overlap)}")
+    if not enable_ids and not disable_ids:
+        raise ToolError("Pass at least one exact Vortex mod id in enable_mod_ids, disable_mod_ids, or fixes.")
+
+    mod_state = source.get("modState") if isinstance(source.get("modState"), dict) else {}
+    known_ids = set(str(mod_id) for mod_id in mod_state.keys()) | set(str(mod_id) for mod_id in snapshot["mods"].keys())
+    requested_ids = set(enable_ids) | set(disable_ids)
+    unknown_ids = sorted(requested_ids - known_ids)
+    if unknown_ids and not bool(args.get("allow_unknown_mod_ids", False)):
+        raise ToolError(
+            "Unknown Vortex mod ids: "
+            + ", ".join(unknown_ids)
+            + ". Use vortex_profile_mods first, or set allow_unknown_mod_ids=true if you know the ids are valid."
+        )
+
+    cloned, changes, fix_preview = clone_profile_with_fix_changes(new_id, new_name, source, make_active, enable_ids, disable_ids)
+    blockers = []
+    if unsupported:
+        blockers.append("Unsupported fixes were supplied. This tool only applies exact enable/disable mod-id fixes to the cloned profile.")
+    apply_changes = bool(args.get("apply", False))
+    if apply_changes and blockers:
+        raise ToolError("; ".join(blockers))
+    backup_path = None
+    apply_result = None
+    if apply_changes:
+        backup_path = write_backup_before_apply(
+            snapshot,
+            selected_backup_profiles(snapshot, None, True),
+            args,
+            "vortex_safe_profile_fix",
+        )
+        apply_result = vortex_state_set(
+            changes,
+            args.get("vortex_exe"),
+            int(args.get("timeout_seconds", 60)),
+            bool(args.get("allow_running_vortex", False)),
+        )
+    return {
+        "dryRun": not apply_changes,
+        "gameId": snapshot["gameId"],
+        "sourceProfile": summarize_profile(source_id, source, snapshot["activeProfileId"]),
+        "newProfile": summarize_profile(new_id, cloned, new_id if make_active else snapshot["activeProfileId"]),
+        "cloneOnly": True,
+        "sourceProfileModified": False,
+        "enableModIds": enable_ids,
+        "disableModIds": disable_ids,
+        "unknownModIds": unknown_ids,
+        "unsupportedFixes": unsupported,
+        "blockers": blockers,
+        "fixPreview": fix_preview,
+        **change_plan_preview(changes, int(args.get("max_plan_preview", 75))),
+        "backupBeforeApply": bool(args.get("backup_before_apply", True)),
+        "backupPath": backup_path,
+        "applied": bool(apply_result),
+        "applyBatches": apply_result.get("batchCount") if apply_result else None,
+        "vortex_exe": apply_result["vortex_exe"] if apply_result else snapshot["vortex_exe"],
+        "nextSteps": [
+            "Dry-run is the default. Review fixPreview and plannedChanges before apply=true.",
+            "For apply=true, close Vortex first. This tool refuses profile writes while Vortex.exe is running unless allow_running_vortex=true.",
+            "After apply=true, open Vortex, select the cloned profile, deploy mods, and launch Skyrim through your normal SKSE route.",
+            "If the test is worse, switch back to the original profile or preview restore with vortex_profile_restore_plan using the backupPath.",
+        ],
+    }
+
+
 FINDING_SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 
 
@@ -9964,6 +10130,39 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         },
         vortex_set_profile_mods,
     ),
+    "vortex_safe_profile_fix": (
+        "Clone the current or selected Vortex profile, then apply exact mod enable/disable fixes to the clone only. Dry-run by default.",
+        {
+            "type": "object",
+            "properties": {
+                "source_profile_id": {"type": "string"},
+                "profile_id": {"type": "string"},
+                "new_profile_id": {"type": "string"},
+                "new_profile_name": {"type": "string"},
+                "new_name": {"type": "string"},
+                "make_active": {"type": "boolean", "default": False},
+                "enable_mod_ids": {"type": "array", "items": {"type": "string"}},
+                "disable_mod_ids": {"type": "array", "items": {"type": "string"}},
+                "fixes": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": "Optional objects like {action:'disable_mod', mod_id:'exact-vortex-mod-id'}.",
+                },
+                "allow_unknown_mod_ids": {"type": "boolean", "default": False},
+                "apply": {"type": "boolean", "default": False},
+                "allow_running_vortex": {"type": "boolean", "default": False},
+                "backup_before_apply": {"type": "boolean", "default": True},
+                "backup_path": {"type": "string"},
+                "backup_dir": {"type": "string"},
+                "max_plan_preview": {"type": "integer", "default": 75},
+                "game_id": {"type": "string", "default": GAME_ID},
+                "vortex_exe": {"type": "string"},
+                "timeout_seconds": {"type": "integer", "default": 60},
+            },
+            "additionalProperties": False,
+        },
+        vortex_safe_profile_fix,
+    ),
     "skyrim_modded_play_report": (
         "One-shot read-only report for why modded Skyrim SE may not be launching with the expected Vortex profile.",
         {
@@ -10305,6 +10504,10 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         "local_appdata": parsed.local_appdata,
         "my_games_dir": parsed.my_games_dir,
         "profile_id": parsed.profile_id,
+        "source_profile_id": parsed.source_profile_id,
+        "new_profile_id": parsed.new_profile_id,
+        "new_profile_name": parsed.new_profile_name,
+        "new_name": parsed.new_profile_name,
         "backup_path": parsed.backup_path,
         "backup_dir": parsed.backup_dir,
         "session_json_path": parsed.session_json_path,
@@ -10350,6 +10553,8 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         "target_mod": parsed.target_mod,
         "target_mod_id": parsed.target_mod_id,
         "test_profile_name": parsed.test_profile_name,
+        "enable_mod_ids": parsed.enable_mod_ids,
+        "disable_mod_ids": parsed.disable_mod_ids,
         "signature": parsed.signature,
         "old_text": parsed.old_text,
         "new_text": parsed.new_text,
@@ -10425,6 +10630,8 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["dry_run"] = True
     if parsed.allow_running_vortex:
         tool_args["allow_running_vortex"] = True
+    if parsed.make_active:
+        tool_args["make_active"] = True
     if parsed.include_all_profiles:
         tool_args["include_all_profiles"] = True
     if parsed.disable_extra_mods:
@@ -10523,6 +10730,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--case-evidence", action="store_true", help="Shortcut for --tool skyrim_case_evidence_import.")
     parser.add_argument("--case-inbox", action="store_true", help="Shortcut for --tool skyrim_case_inbox_import.")
     parser.add_argument("--case-bundle", action="store_true", help="Shortcut for --tool skyrim_case_bundle.")
+    parser.add_argument("--safe-profile-fix", action="store_true", help="Shortcut for --tool vortex_safe_profile_fix.")
     parser.add_argument("--args-json", help="JSON object with tool arguments.")
     parser.add_argument("--args-file", help="Path to a JSON object file with tool arguments.")
     parser.add_argument("--output-json", help="Write the direct tool result JSON to this path.")
@@ -10538,6 +10746,9 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--local-appdata", help="Override LocalAppData path.")
     parser.add_argument("--my-games-dir", help="Override Documents/My Games/Skyrim Special Edition path.")
     parser.add_argument("--profile-id", help="Override selected Vortex profile id.")
+    parser.add_argument("--source-profile-id", help="Source Vortex profile id for profile cloning/fix tools.")
+    parser.add_argument("--new-profile-id", help="New Vortex profile id for profile cloning/fix tools.")
+    parser.add_argument("--new-profile-name", help="New Vortex profile name for profile cloning/fix tools.")
     parser.add_argument("--backup-path", help="Profile backup JSON path for restore tools, or explicit backup output path for write tools.")
     parser.add_argument("--backup-dir", help="Folder for automatic profile backups.")
     parser.add_argument("--session-json-path", help="JSON output path for --safe-session.")
@@ -10572,6 +10783,8 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--target-mod", help="Target mod name for safe experiment planning.")
     parser.add_argument("--target-mod-id", help="Exact Vortex mod id for safe experiment planning.")
     parser.add_argument("--test-profile-name", help="Name for the cloned test profile in safe experiment planning.")
+    parser.add_argument("--enable-mod-id", dest="enable_mod_ids", action="append", help="Exact Vortex mod id to enable in profile tools. Can be repeated.")
+    parser.add_argument("--disable-mod-id", dest="disable_mod_ids", action="append", help="Exact Vortex mod id to disable in profile tools. Can be repeated.")
     parser.add_argument("--signature", help="xEdit record signature for safe experiment planning.")
     parser.add_argument("--issue-kind", choices=["placed_object", "popup", "general"], help="Issue type for in_game_issue_report.")
     parser.add_argument("--performance-mode", choices=["normal", "slow_model", "fast", "thorough"], help="Tune work and output size. Use slow_model for smaller OpenClaw-friendly reports.")
@@ -10616,6 +10829,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--apply", action="store_true", help="Apply a write-capable tool. Most tools are dry-run without this.")
     parser.add_argument("--dry-run", action="store_true", help="Preview a direct tool call that supports dry_run.")
     parser.add_argument("--allow-running-vortex", action="store_true", help="Allow Vortex profile writes while Vortex.exe is running.")
+    parser.add_argument("--make-active", action="store_true", help="Mark a cloned Vortex profile active when supported by the target tool.")
     parser.add_argument("--include-all-profiles", action="store_true", help="For profile backup, include every detected Skyrim SE profile.")
     parser.add_argument("--disable-extra-mods", action="store_true", help="For profile restore, disable currently enabled mods that were not in the backup.")
     parser.add_argument("--no-profile-state", action="store_true", help="Do not call Vortex CLI for profile state.")
@@ -10675,10 +10889,12 @@ def cli_main(argv: List[str]) -> int:
         if parsed.case_inbox
         else "skyrim_case_bundle"
         if parsed.case_bundle
+        else "vortex_safe_profile_fix"
+        if parsed.safe_profile_fix
         else parsed.tool
     )
     if not tool_name:
-        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, or --case-bundle")
+        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-bundle, or --safe-profile-fix")
 
     try:
         tool_args = load_cli_tool_args(parsed)
