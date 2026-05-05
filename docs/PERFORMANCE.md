@@ -90,10 +90,24 @@ For large collections:
   you need a fuller Nexus metadata review.
 - Keep the scan cache enabled for repeated diagnostics. It stores derived local
   mod summaries and avoids walking the same large staging folders over and over.
+- Cache-hit runs do not rewrite the scan cache file; the MCP writes it only
+  after a new or changed mod summary is stored.
 - Use exact evidence when you have it: FormID, cell name, base object, popup
   text, or screenshot/OCR text.
 - Use `scan_mode=quick` only for rough triage; use balanced or deep for final
   diagnosis.
+
+## Profile Tool Optimization
+
+Profile-changing tools should use exact Vortex mod ids. `vortex_safe_profile_fix`
+and `vortex_set_profile_mods` validate against the selected profile's mod state
+without loading Vortex's full installed-mod metadata by default. This keeps clone
+and enable/disable previews faster on very large collections.
+
+If you truly need to validate ids that are installed but absent from the profile
+state, pass `include_mod_metadata=true` through JSON arguments. Most OpenClaw
+flows should instead call `vortex_profile_mods` first, use the exact ids from
+that result, and keep the optimized default.
 
 ## What Not To Do
 

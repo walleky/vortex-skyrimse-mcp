@@ -66,6 +66,10 @@ The cache key includes the MCP version, mod folder path, file-list mode, scan
 limits, and a lightweight folder signature. If a diagnostic result looks stale,
 rerun with `use_scan_cache=false` or `--no-scan-cache`.
 
+Cache-hit-only runs do not rewrite the cache file. The MCP writes the file only
+after it stores a new or changed mod summary, which avoids unnecessary disk work
+on repeated scans.
+
 ## Agent Guidance
 
 For slower OpenClaw models:

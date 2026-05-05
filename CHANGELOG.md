@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.27
+
+- Avoids rewriting the local scan cache on pure cache-hit runs, reducing disk churn on repeated large-collection diagnostics.
+- Optimizes `vortex_safe_profile_fix` and `vortex_set_profile_mods` to avoid loading Vortex's full installed-mod metadata by default.
+- Adds regression coverage for scan-cache dirty writes and clone-only profile fix metadata behavior.
+
 ## v0.2.26
 
 - Adds `vortex_safe_profile_fix`, a high-level dry-run-first tool that clones the selected Vortex profile and applies exact mod enable/disable fixes to the clone only.

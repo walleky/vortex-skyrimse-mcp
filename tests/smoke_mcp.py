@@ -52,6 +52,18 @@ def main() -> int:
     assert any(change["path"] == "persistent.profiles.source.name" for change in restore_changes), restore_changes
     assert any(change["path"] == "persistent.profiles.source.modState.keep" for change in restore_changes), restore_changes
     assert any(change["path"] == "persistent.profiles.source.modState.extra.enabled" for change in restore_changes), restore_changes
+    temp_root = server.parent / ".local" / "smoke-cache-test"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    cache_args = {"scan_cache_dir": str(temp_root)}
+    cache_path = temp_root / "mod-summary-cache.json"
+    if cache_path.exists():
+        cache_path.unlink()
+    mcp_server.write_scan_cache(cache_args, {"entries": {}})
+    assert not cache_path.exists(), cache_path
+    cache_payload = {"entries": {}, "_dirty": True}
+    mcp_server.write_scan_cache(cache_args, cache_payload)
+    assert cache_path.exists(), cache_path
+    assert "_dirty" not in cache_path.read_text(encoding="utf-8"), cache_path.read_text(encoding="utf-8")
     fixed_clone, fixed_changes, fix_preview = mcp_server.clone_profile_with_fix_changes(
         "clonefix",
         "Fixed Clone",
@@ -131,6 +143,7 @@ def main() -> int:
     assert "note" in listed_by_name["skyrim_issue_case_note"]["inputSchema"]["properties"], listed_by_name
     assert "target_mod_id" in listed_by_name["skyrim_safe_experiment_plan"]["inputSchema"]["properties"], listed_by_name
     assert "disable_mod_ids" in listed_by_name["vortex_safe_profile_fix"]["inputSchema"]["properties"], listed_by_name
+    assert "include_mod_metadata" in listed_by_name["vortex_safe_profile_fix"]["inputSchema"]["properties"], listed_by_name
     assert "evidence_type" in listed_by_name["skyrim_case_evidence_import"]["inputSchema"]["properties"], listed_by_name
     assert "inbox_dir" in listed_by_name["skyrim_case_inbox_import"]["inputSchema"]["properties"], listed_by_name
     assert "max_file_bytes" in listed_by_name["skyrim_case_bundle"]["inputSchema"]["properties"], listed_by_name

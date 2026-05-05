@@ -123,6 +123,8 @@ For performance on huge collections:
 Use scan_cache_status to show whether the local scan cache is enabled. Keep it enabled unless the result looks stale.
 ```
 
+The scan cache is optimized for repeated runs: if everything is a cache hit, the cache file is not rewritten.
+
 For a big collection knowledge map:
 
 ```text

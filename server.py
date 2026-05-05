@@ -40,7 +40,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.26"
+SERVER_VERSION = "0.2.27"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -1459,10 +1459,14 @@ def load_scan_cache(args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def write_scan_cache(args: Dict[str, Any], cache: Dict[str, Any]) -> None:
+    if isinstance(cache, dict) and not cache.get("_dirty", False):
+        return
     path = scan_cache_path(args)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        write_text(path, json.dumps(cache, indent=2, ensure_ascii=False, default=str))
+        payload = {key: value for key, value in cache.items() if key != "_dirty"}
+        write_text(path, json.dumps(payload, indent=2, ensure_ascii=False, default=str))
+        cache.pop("_dirty", None)
     except Exception as exc:
         log_event("scan-cache", "write_failed", {"path": str(path), "error": str(exc)})
 
@@ -1562,6 +1566,7 @@ def mod_summary_cached(
     }
     cache_data["schema"] = "vortex-skyrimse-mcp-scan-cache-v1"
     cache_data["updatedAt"] = iso_now()
+    cache_data["_dirty"] = True
     if own_cache:
         write_scan_cache(args, cache_data)
     return summary
@@ -7702,7 +7707,8 @@ def vortex_clone_profile(args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def vortex_set_profile_mods(args: Dict[str, Any]) -> Dict[str, Any]:
-    snapshot = load_vortex_profile_state(args, include_mods=True)
+    include_mod_metadata = bool(args.get("include_mod_metadata", False))
+    snapshot = load_vortex_profile_state(args, include_mods=include_mod_metadata)
     profile_id, profile = require_profile(snapshot, args.get("profile_id"))
     enable_ids = sorted({str(mod_id) for mod_id in args.get("enable_mod_ids", [])})
     disable_ids = sorted({str(mod_id) for mod_id in args.get("disable_mod_ids", [])})
@@ -7713,7 +7719,9 @@ def vortex_set_profile_mods(args: Dict[str, Any]) -> Dict[str, Any]:
         raise ToolError("Pass at least one mod id in enable_mod_ids or disable_mod_ids.")
 
     mod_state = profile.get("modState") if isinstance(profile.get("modState"), dict) else {}
-    known_ids = set(str(mod_id) for mod_id in mod_state.keys()) | set(str(mod_id) for mod_id in snapshot["mods"].keys())
+    known_ids = set(str(mod_id) for mod_id in mod_state.keys())
+    if include_mod_metadata:
+        known_ids |= set(str(mod_id) for mod_id in snapshot["mods"].keys())
     requested_ids = set(enable_ids) | set(disable_ids)
     unknown_ids = sorted(requested_ids - known_ids)
     if unknown_ids and not bool(args.get("allow_unknown_mod_ids", False)):
@@ -7753,6 +7761,7 @@ def vortex_set_profile_mods(args: Dict[str, Any]) -> Dict[str, Any]:
         "profile": summarize_profile(profile_id, profile, snapshot["activeProfileId"]),
         "enableModIds": enable_ids,
         "disableModIds": disable_ids,
+        "includeModMetadata": include_mod_metadata,
         "unknownModIds": unknown_ids,
         **change_plan_preview(changes, int(args.get("max_plan_preview", 50))),
         "backupBeforeApply": bool(args.get("backup_before_apply", True)),
@@ -7850,7 +7859,8 @@ def clone_profile_with_fix_changes(
 
 
 def vortex_safe_profile_fix(args: Dict[str, Any]) -> Dict[str, Any]:
-    snapshot = load_vortex_profile_state(args, include_mods=True)
+    include_mod_metadata = bool(args.get("include_mod_metadata", False))
+    snapshot = load_vortex_profile_state(args, include_mods=include_mod_metadata)
     source_id, source = require_profile(snapshot, args.get("source_profile_id") or args.get("profile_id"))
     new_id = str(args.get("new_profile_id") or f"openclaw-fixed-{now_stamp()}-{uuid.uuid4().hex[:8]}")
     if new_id in snapshot["allProfiles"]:
@@ -7865,7 +7875,9 @@ def vortex_safe_profile_fix(args: Dict[str, Any]) -> Dict[str, Any]:
         raise ToolError("Pass at least one exact Vortex mod id in enable_mod_ids, disable_mod_ids, or fixes.")
 
     mod_state = source.get("modState") if isinstance(source.get("modState"), dict) else {}
-    known_ids = set(str(mod_id) for mod_id in mod_state.keys()) | set(str(mod_id) for mod_id in snapshot["mods"].keys())
+    known_ids = set(str(mod_id) for mod_id in mod_state.keys())
+    if include_mod_metadata:
+        known_ids |= set(str(mod_id) for mod_id in snapshot["mods"].keys())
     requested_ids = set(enable_ids) | set(disable_ids)
     unknown_ids = sorted(requested_ids - known_ids)
     if unknown_ids and not bool(args.get("allow_unknown_mod_ids", False)):
@@ -7906,6 +7918,7 @@ def vortex_safe_profile_fix(args: Dict[str, Any]) -> Dict[str, Any]:
         "sourceProfileModified": False,
         "enableModIds": enable_ids,
         "disableModIds": disable_ids,
+        "includeModMetadata": include_mod_metadata,
         "unknownModIds": unknown_ids,
         "unsupportedFixes": unsupported,
         "blockers": blockers,
@@ -10116,6 +10129,7 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "enable_mod_ids": {"type": "array", "items": {"type": "string"}},
                 "disable_mod_ids": {"type": "array", "items": {"type": "string"}},
                 "allow_unknown_mod_ids": {"type": "boolean", "default": False},
+                "include_mod_metadata": {"type": "boolean", "default": False},
                 "apply": {"type": "boolean", "default": False},
                 "allow_running_vortex": {"type": "boolean", "default": False},
                 "backup_before_apply": {"type": "boolean", "default": True},
@@ -10149,6 +10163,7 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                     "description": "Optional objects like {action:'disable_mod', mod_id:'exact-vortex-mod-id'}.",
                 },
                 "allow_unknown_mod_ids": {"type": "boolean", "default": False},
+                "include_mod_metadata": {"type": "boolean", "default": False},
                 "apply": {"type": "boolean", "default": False},
                 "allow_running_vortex": {"type": "boolean", "default": False},
                 "backup_before_apply": {"type": "boolean", "default": True},
@@ -10640,6 +10655,8 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["backup_before_apply"] = False
     if parsed.no_mod_metadata:
         tool_args["include_mod_metadata"] = False
+    if parsed.safe_profile_fix or parsed.tool in {"vortex_safe_profile_fix", "vortex_set_profile_mods"}:
+        tool_args.setdefault("include_mod_metadata", False)
     if parsed.deep_scan_files:
         tool_args["deep_scan_files"] = True
     if parsed.no_profile_backup:

@@ -38,6 +38,7 @@ an MCP client.
   harmless duplicates.
 - Detect missing masters and enabled plugins that are missing on disk.
 - Use a local scan cache to make repeated large-collection diagnostics faster.
+- Avoid rewriting cache files when repeated scans are pure cache hits.
 - Give read-only xEdit/SSEEdit target hints from FormIDs and plugin names, and
   generate read-only xEdit inspection scripts that export matching selected
   records to CSV for OpenClaw to summarize.

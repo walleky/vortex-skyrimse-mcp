@@ -338,8 +338,10 @@ def main() -> int:
         original_load_profile_state = server.load_vortex_profile_state
         original_vortex_state_set = server.vortex_state_set
         applied_profile_changes = []
+        include_mods_calls = []
 
         def fake_load_profile_state(args, include_mods=False):
+            include_mods_calls.append(include_mods)
             return {
                 "gameId": "skyrimse",
                 "vortex_exe": "Vortex.exe",
@@ -387,6 +389,7 @@ def main() -> int:
             assert safe_fix_preview["dryRun"] is True, safe_fix_preview
             assert safe_fix_preview["cloneOnly"] is True, safe_fix_preview
             assert safe_fix_preview["sourceProfileModified"] is False, safe_fix_preview
+            assert safe_fix_preview["includeModMetadata"] is False, safe_fix_preview
             assert safe_fix_preview["disableModIds"] == ["bad-mod"], safe_fix_preview
             assert safe_fix_preview["enableModIds"] == ["off-mod"], safe_fix_preview
             safe_fix_apply = server.vortex_safe_profile_fix(
@@ -402,6 +405,7 @@ def main() -> int:
             assert safe_fix_apply["applied"] is True, safe_fix_apply
             assert applied_profile_changes, safe_fix_apply
             assert all(str(change["path"]).startswith("persistent.profiles.clone-applied") for change in applied_profile_changes), applied_profile_changes
+            assert include_mods_calls and all(call is False for call in include_mods_calls), include_mods_calls
         finally:
             server.load_vortex_profile_state = original_load_profile_state
             server.vortex_state_set = original_vortex_state_set

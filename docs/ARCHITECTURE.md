@@ -61,7 +61,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - Steam/Vortex path detection: `find_steam_root`, `steam_libraries`, `find_skyrim_dir`, `default_vortex_appdata`, `find_vortex_exe`.
 - Vortex CLI helpers: `run_vortex_cli`, `vortex_state_get`, `vortex_state_set`.
 - filesystem and mod inspection: `safe_walk`, `mod_summary`, `inventory_mods`, `analyze_conflicts`, `redundant_mod_report`, `mod_knowledge_report`.
-- scan cache: `scan_cache_status`, `mod_summary_cached`, `load_scan_cache`, `write_scan_cache`.
+- scan cache: `scan_cache_status`, `mod_summary_cached`, `load_scan_cache`, `write_scan_cache`; cache files are rewritten only after dirty/missed summaries.
 - Nexus metadata: `nexus_validate_key`, `nexus_mod_lookup`, `nexus_mod_files`, `nexus_file_info`, `nexus_file_by_md5`, `nexus_parse_nxm_link`, `nexus_update_report`.
 - xEdit/SSEEdit read-only tooling: `xedit_diagnostics_report`, `xedit_inspection_script`, `xedit_inspection_result_report`, `xedit_candidates`, `form_id_load_order_hint`.
 - issue case packets: `skyrim_issue_case_packet`, `skyrim_issue_case_status`, `skyrim_issue_case_note`, `skyrim_case_evidence_import`, `skyrim_case_inbox_import`, `skyrim_case_bundle`, `skyrim_safe_experiment_plan`, `skyrim_case_what_now`, `skyrim_live_bridge_status`, `issue_case_default_dir`, `issue_case_markdown`, `issue_case_status_markdown`.
