@@ -17,6 +17,7 @@ These are useful next steps, ordered by value and risk.
 - Read-only xEdit/SSEEdit target hints from FormIDs and plugin names.
 - Read-only xEdit/SSEEdit inspection script generation plus CSV result parsing.
 - One-folder Skyrim issue case packets that combine issue triage, xEdit hints, generated scripts, and OpenClaw next steps.
+- Case-folder status updates that read the generated xEdit CSV and write `issue-case-status.md` without changing mods.
 - Read-only Vortex collection-state inspection and collection manifest matching.
 - Local mod-summary scan cache for repeated large-collection diagnostics.
 - Conflict risk explanations and safer next-action text.

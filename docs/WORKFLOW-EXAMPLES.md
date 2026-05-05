@@ -138,6 +138,12 @@ Low-friction version:
 Use skyrim_issue_case_packet with description "bed outside tavern room", location "Whiterun Bannered Mare", object "bed", form_id "0100ABCD", and base_object "CommonBed01". Do not edit plugins.
 ```
 
+After the generated script is run in SSEEdit:
+
+```text
+Use skyrim_issue_case_status on the case folder and summarize the top xEdit source plugin and record signatures. Do not edit plugins.
+```
+
 What OpenClaw should call:
 
 ```text
@@ -146,6 +152,7 @@ xedit_diagnostics_report
 xedit_inspection_script
 xedit_inspection_result_report
 skyrim_issue_case_packet
+skyrim_issue_case_status
 vortex_profile_backup
 ```
 

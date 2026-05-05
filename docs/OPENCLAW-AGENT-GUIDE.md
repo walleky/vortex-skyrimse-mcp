@@ -14,6 +14,9 @@ available, or `safe_session_report` if you need the older narrower baseline.
 For a user-described visible issue, prefer `skyrim_issue_case_packet` when you
 want one folder that OpenClaw and the user can revisit. It writes Markdown/JSON,
 creates a read-only xEdit inspection script, and keeps next steps together.
+After the user runs the generated script in SSEEdit/xEdit, call
+`skyrim_issue_case_status` on the same folder so the CSV evidence is folded back
+into a status report.
 Both are no-change Markdown/JSON reports with setup validation, optional profile
 backup, modded play health, optional in-game issue triage, and logs.
 
@@ -145,6 +148,7 @@ Or, for less tool juggling:
 
 ```text
 skyrim_issue_case_packet with description/location/object/form_id
+skyrim_issue_case_status with case_dir after the user runs the generated xEdit script
 ```
 
 Tell the user to apply the generated script only to selected candidate plugins

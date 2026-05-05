@@ -153,6 +153,12 @@ Or make one folder for the whole investigation:
 Use skyrim_issue_case_packet for this issue: bed outside the tavern room in Whiterun. Location is Whiterun Bannered Mare and object is bed. Do not apply changes.
 ```
 
+After you run the generated script in SSEEdit:
+
+```text
+Use skyrim_issue_case_status on the case folder and summarize the xEdit CSV evidence. Do not apply changes.
+```
+
 For annoying popups, just say "popup", "notification", "warning", or similar in the description. The first scan is balanced and checks local file/path/config clues automatically. Exact popup text or a screenshot/OCR can help later, but it is not required for the first scan.
 
 If the popup says a file was not configured properly, reproduce it once and ask:
@@ -199,6 +205,7 @@ The bundle redacts normal user profile paths by default, but it may still includ
 - `vortex_profile_restore_plan` previews undo actions by default.
 - `xedit_diagnostics_report` is read-only and does not launch xEdit or save plugins.
 - `skyrim_issue_case_packet` writes a Markdown/JSON case folder plus a read-only xEdit script, but does not change Vortex, Skyrim, or plugins.
+- `skyrim_issue_case_status` reads that case folder and generated CSV, then writes a status report without changing Vortex, Skyrim, or plugins.
 - Collection diagnostics are read-only and do not install, update, remove, or deploy mods.
 - Close Vortex before profile writes.
 - Reopen Vortex afterward, pick the intended profile, then deploy mods before launching Skyrim.

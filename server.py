@@ -40,7 +40,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.21"
+SERVER_VERSION = "0.2.22"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -1711,6 +1711,7 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "xedit_inspection_script",
             "xedit_inspection_result_report",
             "skyrim_issue_case_packet",
+            "skyrim_issue_case_status",
         ],
         "nexusMetadataOptional": [
             "nexus_validate_key",
@@ -1796,8 +1797,8 @@ def workflow_catalog() -> List[Dict[str, Any]]:
             "key": "weird_object",
             "title": "Weird Object Or Location Problem",
             "matchTerms": ["object", "bed", "door", "tavern", "whiterun", "cell", "formid", "placed", "outside", "room"],
-            "userPrompt": "Use skyrim_issue_case_packet with my description, location, object, and any FormID/base object I provide. Then use the generated xEdit script/result path if stronger evidence is needed. Do not edit plugins.",
-            "tools": ["skyrim_issue_case_packet", "in_game_issue_report", "xedit_diagnostics_report", "xedit_inspection_script", "xedit_inspection_result_report", "vortex_profile_backup"],
+            "userPrompt": "Use skyrim_issue_case_packet with my description, location, object, and any FormID/base object I provide. Then use skyrim_issue_case_status after I run the generated xEdit script. Do not edit plugins.",
+            "tools": ["skyrim_issue_case_packet", "skyrim_issue_case_status", "in_game_issue_report", "xedit_diagnostics_report", "xedit_inspection_script", "xedit_inspection_result_report", "vortex_profile_backup"],
             "whatToRead": ["candidateCount", "candidates", "formIdHint", "diagnosticQuality", "scriptPath", "reportPath"],
             "humanSteps": ["Use the console-clicked FormID if available.", "Generate a read-only xEdit inspection script for the top candidate.", "Back up or clone the profile before testing.", "Disable one candidate in a cloned profile, deploy, and test."],
             "directCli": ["py -3 .\\server.py --tool in_game_issue_report --description \"bed outside tavern room\" --location \"Whiterun Bannered Mare\" --object \"bed\""],
@@ -3091,6 +3092,218 @@ def skyrim_issue_case_packet(args: Dict[str, Any]) -> Dict[str, Any]:
         "dryRunOnly": True,
         "errors": {key: value for key, value in packet.items() if key.endswith("Error")},
         "nextSteps": packet["nextSteps"],
+    }
+
+
+def issue_case_json_path(case_dir: Path) -> Path:
+    preferred = case_dir / "issue-case.json"
+    if preferred.exists():
+        return preferred
+    candidates = sorted(case_dir.glob("*.json"), key=lambda path: (path.name != "issue-case.json", path.name.lower()))
+    return candidates[0] if candidates else preferred
+
+
+def issue_case_load(case_dir: Path) -> Dict[str, Any]:
+    path = issue_case_json_path(case_dir)
+    if not path.exists() or not path.is_file():
+        return {}
+    data = json.loads(read_text(path, 20_000_000))
+    return data if isinstance(data, dict) else {}
+
+
+def issue_case_expected_csv(case_dir: Path, packet: Dict[str, Any], args: Dict[str, Any]) -> Path:
+    explicit = expand_path(args.get("report_path") or args.get("path"))
+    if explicit:
+        return explicit
+    xedit_script = packet.get("xeditScript") if isinstance(packet.get("xeditScript"), dict) else {}
+    from_packet = expand_path(xedit_script.get("reportPath")) if isinstance(xedit_script, dict) else None
+    return from_packet or (case_dir / "xedit-inspection.csv")
+
+
+def issue_case_status_markdown(status: Dict[str, Any]) -> str:
+    case_summary = status.get("caseSummary", {}) if isinstance(status.get("caseSummary"), dict) else {}
+    xedit = status.get("xeditCsv", {}) if isinstance(status.get("xeditCsv"), dict) else {}
+    result = status.get("xeditResult") if isinstance(status.get("xeditResult"), dict) else {}
+    lines = [
+        "# Skyrim Issue Case Status",
+        "",
+        f"- Server: {SERVER_NAME} {SERVER_VERSION}",
+        f"- Updated: {status.get('updatedAt')}",
+        f"- Case folder: `{status.get('caseDir')}`",
+        f"- State: `{status.get('state')}`",
+        f"- Read-only: `{str(status.get('readOnly')).lower()}`",
+        "",
+        "## Case Summary",
+        "",
+        f"- Description: {case_summary.get('description') or '(blank)'}",
+        f"- Top triage candidate: `{case_summary.get('topCandidate') or '(none)'}`",
+        f"- xEdit plugin hint: `{case_summary.get('xeditPluginHint') or '(none)'}`",
+        "",
+        "## xEdit CSV",
+        "",
+        f"- Expected CSV: `{xedit.get('path')}`",
+        f"- Exists: `{str(xedit.get('exists')).lower()}`",
+        f"- Parsed: `{str(xedit.get('parsed')).lower()}`",
+    ]
+    if xedit.get("error"):
+        lines.append(f"- Error: {xedit.get('error')}")
+    if result:
+        lines.extend(
+            [
+                f"- Rows: `{result.get('rowCount', 0)}`",
+                "",
+                "## Top xEdit Evidence",
+                "",
+            ]
+        )
+        for item in result.get("topPlugins", [])[:8]:
+            lines.append(f"- Plugin `{item.get('value')}`: {item.get('count')} row(s)")
+        if result.get("topSignatures"):
+            lines.append("")
+            for item in result.get("topSignatures", [])[:8]:
+                lines.append(f"- Signature `{item.get('value')}`: {item.get('count')} row(s)")
+    lines.extend(["", "## Next Steps", ""])
+    for step in status.get("nextSteps", []):
+        lines.append(f"- {step}")
+    lines.extend(
+        [
+            "",
+            "## Safety",
+            "",
+            "- This status report reads case files and xEdit CSV evidence only.",
+            "- Do not save xEdit edits or remove mods from this status alone.",
+            "- Use a cloned Vortex profile for any disable test.",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def skyrim_issue_case_status(args: Dict[str, Any]) -> Dict[str, Any]:
+    case_dir = expand_path(args.get("case_dir") or args.get("path"))
+    if not case_dir or not case_dir.exists() or not case_dir.is_dir():
+        raise ToolError("case_dir/path must point to an existing issue case folder.")
+    packet = issue_case_load(case_dir)
+    csv_path = issue_case_expected_csv(case_dir, packet, args)
+    status_path = expand_path(args.get("output_path")) if args.get("output_path") else case_dir / "issue-case-status.md"
+    if not status_path:
+        raise ToolError("output_path resolved to an empty path.")
+    if not status_path.suffix:
+        status_path = status_path / "issue-case-status.md"
+    json_path = status_path.with_suffix(".json")
+    if json_path == status_path:
+        json_path = status_path.with_name(f"{status_path.name}.json")
+
+    in_game = packet.get("inGameIssue") if isinstance(packet.get("inGameIssue"), dict) else {}
+    candidates = in_game.get("candidates") if isinstance(in_game.get("candidates"), list) else []
+    top_candidate = candidates[0] if candidates and isinstance(candidates[0], dict) else {}
+    xedit_diag = packet.get("xeditDiagnostics") if isinstance(packet.get("xeditDiagnostics"), dict) else {}
+    issue_input = packet.get("issueInput") if isinstance(packet.get("issueInput"), dict) else {}
+
+    xedit_result: Optional[Dict[str, Any]] = None
+    csv_error = None
+    if csv_path.exists() and csv_path.is_file():
+        try:
+            csv_allowed_roots = [str(case_dir)]
+            if args.get("report_path"):
+                csv_allowed_roots.append(str(csv_path.parent))
+            xedit_result = xedit_inspection_result_report(
+                {
+                    **args,
+                    "report_path": str(csv_path),
+                    "allowed_roots": csv_allowed_roots,
+                    "allow_any_path": bool(args.get("allow_any_path", False)),
+                    "max_preview_rows": int(args.get("max_preview_rows", 50)),
+                    "max_rows": int(args.get("max_rows", 2000)),
+                }
+            )
+        except Exception as exc:
+            csv_error = str(exc)
+
+    state = "needs_xedit_run"
+    if not packet:
+        state = "case_json_missing"
+    if csv_error:
+        state = "xedit_csv_error"
+    elif xedit_result:
+        row_count = int(xedit_result.get("rowCount", 0))
+        state = "has_xedit_results" if row_count > 0 else "empty_xedit_results"
+
+    next_steps = []
+    if state == "needs_xedit_run":
+        next_steps = [
+            "Run the generated xEdit inspection script in SSEEdit/xEdit on the candidate plugin or selected records.",
+            "Return to this case folder and run skyrim_issue_case_status again after the CSV appears.",
+            "Use the top triage candidate only as a hint until xEdit or cloned-profile testing confirms it.",
+        ]
+    elif state == "has_xedit_results":
+        next_steps = [
+            "Start with the top xEdit source plugin/signature rows because they are stronger evidence than natural-language matching.",
+            "Inspect REFR/CELL/WRLD rows for placed-object problems, or MESG/QUST/VMAD/script rows for popup problems.",
+            "Back up or clone the Vortex profile before disabling exactly one candidate mod for a test.",
+            "Do not save plugin edits from xEdit unless you intentionally created a separate patch and can undo it.",
+        ]
+    elif state == "empty_xedit_results":
+        next_steps = [
+            "The xEdit script ran but exported no rows. Apply it to a broader plugin scope or full load order, then rerun this status tool.",
+            "If this is a popup, include exact popup text or run with runtime logs enabled.",
+        ]
+    elif state == "case_json_missing":
+        next_steps = [
+            "This folder is missing issue-case.json. Recreate the case packet or pass the correct case_dir.",
+        ]
+    else:
+        next_steps = [
+            "Fix the CSV path or rerun the xEdit script, then run this status tool again.",
+        ]
+
+    status = {
+        "server": SERVER_NAME,
+        "version": SERVER_VERSION,
+        "updatedAt": iso_now(),
+        "caseDir": str(case_dir),
+        "statusPath": str(status_path),
+        "jsonPath": str(json_path),
+        "state": state,
+        "readOnly": True,
+        "dryRunOnly": True,
+        "caseSummary": {
+            "description": issue_input.get("description"),
+            "topCandidate": top_candidate.get("mod"),
+            "topCandidateConfidence": top_candidate.get("confidence"),
+            "xeditPluginHint": xedit_diag.get("pluginName"),
+            "caseJsonPath": str(issue_case_json_path(case_dir)) if issue_case_json_path(case_dir).exists() else None,
+        },
+        "xeditCsv": {
+            "path": str(csv_path),
+            "exists": csv_path.exists() and csv_path.is_file(),
+            "parsed": bool(xedit_result),
+            "error": csv_error,
+        },
+        "xeditResult": xedit_result,
+        "candidatePlugins": xedit_result.get("candidatePlugins", []) if xedit_result else [],
+        "nextSteps": next_steps,
+    }
+    status_to_write = redact_paths_in_value(status) if bool(args.get("redact_user_paths", False)) else status
+    write_text(json_path, json.dumps(status_to_write, indent=2, ensure_ascii=False, default=str))
+    write_text(status_path, issue_case_status_markdown(status_to_write))
+    log_event(
+        "support",
+        "skyrim_issue_case_status_written",
+        {"case_dir": str(case_dir), "status_path": str(status_path), "json_path": str(json_path), "state": state},
+    )
+    return {
+        "caseDir": str(case_dir),
+        "statusPath": str(status_path),
+        "jsonPath": str(json_path),
+        "state": state,
+        "xeditCsvPath": str(csv_path),
+        "xeditCsvExists": csv_path.exists() and csv_path.is_file(),
+        "rowCount": xedit_result.get("rowCount") if xedit_result else None,
+        "candidatePlugins": status["candidatePlugins"],
+        "topCandidate": status["caseSummary"]["topCandidate"],
+        "readOnly": True,
+        "dryRunOnly": True,
+        "nextSteps": next_steps,
     }
 
 
@@ -7952,6 +8165,24 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         },
         skyrim_issue_case_packet,
     ),
+    "skyrim_issue_case_status": (
+        "Read an existing Skyrim issue case folder, parse its xEdit CSV if present, and write a no-change status report with next steps.",
+        {
+            "type": "object",
+            "properties": {
+                "case_dir": {"type": "string"},
+                "path": {"type": "string"},
+                "output_path": {"type": "string"},
+                "report_path": {"type": "string"},
+                "max_rows": {"type": "integer", "default": 2000},
+                "max_preview_rows": {"type": "integer", "default": 50},
+                "allow_any_path": {"type": "boolean", "default": False},
+                "redact_user_paths": {"type": "boolean", "default": False},
+            },
+            "additionalProperties": False,
+        },
+        skyrim_issue_case_status,
+    ),
     "vortex_collection_report": (
         "Read-only inspection of collection-like state and mod collection markers exposed by Vortex CLI.",
         {
@@ -9188,6 +9419,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--runtime-logs", action="store_true", help="Shortcut for --tool skyrim_runtime_log_report.")
     parser.add_argument("--workflow-guide", action="store_true", help="Shortcut for --tool workflow_guide.")
     parser.add_argument("--issue-case", action="store_true", help="Shortcut for --tool skyrim_issue_case_packet.")
+    parser.add_argument("--issue-case-status", action="store_true", help="Shortcut for --tool skyrim_issue_case_status.")
     parser.add_argument("--args-json", help="JSON object with tool arguments.")
     parser.add_argument("--args-file", help="Path to a JSON object file with tool arguments.")
     parser.add_argument("--output-json", help="Write the direct tool result JSON to this path.")
@@ -9304,10 +9536,12 @@ def cli_main(argv: List[str]) -> int:
         if parsed.workflow_guide
         else "skyrim_issue_case_packet"
         if parsed.issue_case
+        else "skyrim_issue_case_status"
+        if parsed.issue_case_status
         else parsed.tool
     )
     if not tool_name:
-        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --runtime-logs, --workflow-guide, or --issue-case")
+        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --runtime-logs, --workflow-guide, --issue-case, or --issue-case-status")
 
     try:
         tool_args = load_cli_tool_args(parsed)

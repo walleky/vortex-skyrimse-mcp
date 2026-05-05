@@ -92,6 +92,13 @@ py -3 .\server.py --issue-case --description "bed outside tavern room" --locatio
 py -3 .\server.py --issue-case --description "popup after loading a save" --include-runtime-logs --case-dir ".\reports\popup-case"
 ```
 
+After running the generated xEdit script from a case folder:
+
+```powershell
+py -3 .\server.py --issue-case-status --case-dir ".\reports\popup-case"
+py -3 .\server.py --issue-case-status --case-dir ".\reports\popup-case" --report-path "C:\path\to\xedit-inspection.csv"
+```
+
 Triage an annoying popup:
 
 ```powershell

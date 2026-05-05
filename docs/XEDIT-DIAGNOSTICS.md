@@ -64,6 +64,12 @@ Then in xEdit/SSEEdit:
 py -3 .\server.py --tool xedit_inspection_result_report --report-path "C:\path\to\OpenClawSkyrimInspector.csv" --allow-any-path
 ```
 
+For a case folder, let the MCP find the expected CSV and write a status report:
+
+```powershell
+py -3 .\server.py --issue-case-status --case-dir "C:\path\to\issue-case-folder"
+```
+
 ## How It Works
 
 The tool searches for `SSEEdit.exe`, `xEdit.exe`, and `TES5Edit.exe` in:
@@ -93,6 +99,10 @@ mutating xEdit calls in generated scripts.
 `issue-case.md`, `issue-case.json`, and `xedit-inspection.pas` so the user and
 OpenClaw can come back to the same evidence later.
 
+`skyrim_issue_case_status` is the follow-up. It reads the case folder, detects
+`xedit-inspection.csv` or the CSV path saved in `issue-case.json`, summarizes it,
+and writes `issue-case-status.md` plus JSON.
+
 ## Important Limits
 
 The FormID hint is not proof.
@@ -110,7 +120,7 @@ object?", prefer this order:
 2. If the user has a FormID, pass it to `xedit_diagnostics_report`.
 3. If candidates are still ambiguous, run `xedit_inspection_script`.
 4. Ask the user to apply the script in xEdit to selected candidate plugins or records.
-5. Run `xedit_inspection_result_report` on the generated CSV.
+5. Run `skyrim_issue_case_status` on the case folder, or `xedit_inspection_result_report` on the generated CSV.
 6. Tell the user the plugin target is a read-only inspection target.
 7. Do not recommend cleaning or saving plugin edits from this report alone.
 8. Use a cloned Vortex profile for disable tests before removing anything.

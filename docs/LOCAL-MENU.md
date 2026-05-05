@@ -38,6 +38,7 @@ Vortex-SkyrimSE-Menu.cmd
 20. xEdit inspection script
 21. xEdit inspection result
 22. Skyrim issue case packet
+23. Skyrim issue case status
 
 Reports are written to:
 
@@ -75,6 +76,7 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action xedit-script -IssueDescription "bed outside tavern room" -IssueLocation "Whiterun Bannered Mare" -IssueObject "bed" -FormId "0100ABCD"
 .\vortex_skyrimse_menu.ps1 -Action xedit-result -XeditReportPath "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\xedit-inspection-YYYYMMDD-HHMMSS.csv"
 .\vortex_skyrimse_menu.ps1 -Action issue-case -IssueDescription "bed outside tavern room" -IssueLocation "Whiterun Bannered Mare" -IssueObject "bed" -FormId "0100ABCD"
+.\vortex_skyrimse_menu.ps1 -Action issue-case-status -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
 ```
 
 If Windows cannot find Python, pass the executable once:
@@ -128,6 +130,10 @@ candidates for OpenClaw.
 The `issue-case` action creates one folder with `issue-case.md`,
 `issue-case.json`, and an xEdit inspection script when enough clues are
 available. Open the Markdown file first.
+
+The `issue-case-status` action reads that folder later. If the generated xEdit
+CSV exists, it writes `issue-case-status.md` and summarizes the strongest
+plugin/record evidence.
 
 ## Safety
 

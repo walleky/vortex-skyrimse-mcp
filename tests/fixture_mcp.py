@@ -380,6 +380,28 @@ def main() -> int:
         assert "Whiterun Tavern Overhaul" in case_markdown, case_markdown
         assert not case_packet["errors"], case_packet
 
+        write(
+            Path(case_packet["xeditCsvPath"]),
+            'sourcePlugin,signature,formId,editorId,name,full,cell,base,model,script,matchedTerm,fullPath\n'
+            '"WhiterunTavern.esp","REFR","0100ABCD","TavernBedRef","[REFR:0100ABCD]","Bed","WhiterunBanneredMare","CommonBed01","","","bed","Full\\Path"\n',
+        )
+        case_status = server.skyrim_issue_case_status(
+            {
+                **base_args,
+                "case_dir": case_packet["caseDir"],
+                "max_preview_rows": 5,
+            }
+        )
+        assert case_status["readOnly"] is True, case_status
+        assert case_status["dryRunOnly"] is True, case_status
+        assert case_status["state"] == "has_xedit_results", case_status
+        assert case_status["rowCount"] == 1, case_status
+        assert case_status["candidatePlugins"] == ["WhiterunTavern.esp"], case_status
+        assert Path(case_status["statusPath"]).exists(), case_status
+        status_markdown = Path(case_status["statusPath"]).read_text(encoding="utf-8")
+        assert "Skyrim Issue Case Status" in status_markdown, status_markdown
+        assert "WhiterunTavern.esp" in status_markdown, status_markdown
+
         popup_issue = server.in_game_issue_report(
             {
                 **base_args,

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.22
+
+- Adds `skyrim_issue_case_status`, a no-change case-folder updater that detects the generated xEdit CSV, parses it, and writes `issue-case-status.md`/`.json`.
+- Adds `--issue-case-status` direct CLI mode and local menu action 23.
+- Adds tests and docs for the case-packet follow-up loop after running the generated SSEEdit/xEdit script.
+
 ## v0.2.21
 
 - Adds `skyrim_issue_case_packet`, a no-change investigation folder generator that combines issue triage, xEdit/SSEEdit target hints, a generated read-only xEdit script, and OpenClaw next steps.

@@ -229,6 +229,7 @@ function Show-Actions {
   Write-Host "20. xEdit inspection script"
   Write-Host "21. xEdit inspection result"
   Write-Host "22. Skyrim issue case packet"
+  Write-Host "23. Skyrim issue case status"
   Write-Host "Q. Quit"
 }
 
@@ -773,6 +774,28 @@ function Invoke-MenuAction {
       Write-Host "Wrote Skyrim issue case folder: $caseDir" -ForegroundColor Green
       Write-Host "Open issue-case.md in that folder first. If an xEdit script was generated, run it in SSEEdit and parse the CSV with action 21." -ForegroundColor Green
       Write-Host "This action wrote reports and a read-only inspection script only; it did not change Vortex, Skyrim, or plugins." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("23", "issue-case-status", "case-status", "status-case", "case-update", "update-case") } {
+      $caseDir = $IssueCaseDir
+      if (!$caseDir) {
+        if ($script:StartedWithAction) {
+          throw "Pass -IssueCaseDir with -Action issue-case-status."
+        }
+        $caseDir = Read-Host "Paste the issue case folder path"
+      }
+      $argsData = @{
+        case_dir = $caseDir
+        max_preview_rows = $XeditMaxPreviewRows
+      }
+      if ($XeditReportPath) {
+        $argsData.report_path = $XeditReportPath
+      }
+      $argsFile = Write-JsonArgs "issue-case-status" $argsData
+      $out = Join-Path $script:ReportDir "issue-case-status-$stamp.result.json"
+      Invoke-Server (@("--issue-case-status", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Wrote Skyrim issue case status for: $caseDir" -ForegroundColor Green
+      Write-Host "Open issue-case-status.md in that folder. This action only read reports/CSV evidence." -ForegroundColor Green
       return
     }
     { $_ -in @("q", "quit", "exit") } {
