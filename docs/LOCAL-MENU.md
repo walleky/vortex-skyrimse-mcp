@@ -89,7 +89,11 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action live-bridge -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
 .\vortex_skyrimse_menu.ps1 -Action case-evidence -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS" -EvidenceKind popup_ocr -OcrText "file was not configured properly"
 .\vortex_skyrimse_menu.ps1 -Action case-bundle -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
+.\vortex_skyrimse_menu.ps1 -Action case-inbox -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
 ```
+
+Action 30 imports helper output from `<case folder>\incoming` by default. Use
+`-InboxDir` only when the helper writes somewhere else.
 
 If Windows cannot find Python, pass the executable once:
 

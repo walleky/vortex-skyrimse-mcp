@@ -453,6 +453,30 @@ def main() -> int:
         assert evidence["entry"]["suggestedToolArgs"]["xedit_diagnostics_report"]["form_id"] == "0100ABCD", evidence
         assert "popup" in Path(evidence["evidencePath"]).read_text(encoding="utf-8").lower(), evidence
 
+        inbox_dir = Path(case_packet["caseDir"]) / "incoming"
+        write(
+            inbox_dir / "popup-capture.json",
+            json.dumps(
+                {
+                    "evidence_type": "popup_ocr",
+                    "ocr_text": "MCM warning file was not configured properly",
+                    "reference_form_id": "0100ABCD",
+                    "cell": "WhiterunBanneredMare",
+                    "object": "bed",
+                    "confidence": "fixture",
+                }
+            ),
+        )
+        inbox_import = server.skyrim_case_inbox_import({"case_dir": case_packet["caseDir"], "max_files": 10})
+        assert inbox_import["importedCount"] == 1, inbox_import
+        assert inbox_import["skippedDuplicateCount"] == 0, inbox_import
+        assert Path(inbox_import["evidenceIndexPath"]).exists(), inbox_import
+        evidence_index = json.loads(Path(inbox_import["evidenceIndexPath"]).read_text(encoding="utf-8"))
+        assert len(evidence_index["files"]) == 1, evidence_index
+        duplicate_inbox = server.skyrim_case_inbox_import({"case_dir": case_packet["caseDir"], "max_files": 10})
+        assert duplicate_inbox["importedCount"] == 0, duplicate_inbox
+        assert duplicate_inbox["skippedDuplicateCount"] == 1, duplicate_inbox
+
         bundle = server.skyrim_case_bundle(
             {
                 "case_dir": case_packet["caseDir"],
@@ -464,6 +488,7 @@ def main() -> int:
             names = set(archive.namelist())
         assert "issue-case.md" in names, names
         assert "live-evidence.jsonl" in names, names
+        assert "live-evidence-index.json" in names, names
 
         popup_issue = server.in_game_issue_report(
             {

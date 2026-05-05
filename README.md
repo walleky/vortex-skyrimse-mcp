@@ -207,6 +207,7 @@ py -3 .\server.py --what-now --case-dir "C:\path\to\issue-case-folder"
 py -3 .\server.py --safe-experiment-plan --case-dir "C:\path\to\issue-case-folder"
 py -3 .\server.py --case-note --case-dir "C:\path\to\issue-case-folder" --note "Tested candidate in cloned profile; issue still appears."
 py -3 .\server.py --case-evidence --case-dir "C:\path\to\issue-case-folder" --evidence-kind popup_ocr --ocr-text "captured popup text"
+py -3 .\server.py --case-inbox --case-dir "C:\path\to\issue-case-folder"
 py -3 .\server.py --case-bundle --case-dir "C:\path\to\issue-case-folder"
 py -3 .\server.py --tool vortex_collection_report
 py -3 .\server.py --runtime-logs --description "popup says file was not configured properly"

@@ -32,6 +32,7 @@ param(
   [string]$BaseFormId = "",
   [string]$ScreenshotPath = "",
   [string]$EvidenceConfidence = "",
+  [string]$InboxDir = "",
   [string]$ExperimentTargetMod = "",
   [string]$ExperimentTargetModId = "",
   [string]$TestProfileName = "OpenClaw Safe Test",
@@ -248,6 +249,7 @@ function Show-Actions {
   Write-Host "27. Live Skyrim bridge status"
   Write-Host "28. Import case evidence"
   Write-Host "29. Bundle issue case"
+  Write-Host "30. Import case inbox"
   Write-Host "Q. Quit"
 }
 
@@ -969,6 +971,25 @@ function Invoke-MenuAction {
       Invoke-Server (@("--case-bundle", "--args-file", $argsFile, "--output-json", $out) + $common)
       Write-Host "Bundled issue case folder: $caseDir" -ForegroundColor Green
       Write-Host "Review the zip before posting publicly; it can include mod names, paths, notes, and popup/OCR text." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("30", "case-inbox", "inbox", "import-inbox") } {
+      $caseDir = $IssueCaseDir
+      if (!$caseDir) {
+        if ($script:StartedWithAction) {
+          throw "Pass -IssueCaseDir with -Action case-inbox."
+        }
+        $caseDir = Read-Host "Paste the issue case folder path"
+      }
+      $argsData = @{ case_dir = $caseDir }
+      if ($InboxDir) {
+        $argsData.inbox_dir = $InboxDir
+      }
+      $argsFile = Write-JsonArgs "case-inbox" $argsData
+      $out = Join-Path $script:ReportDir "case-inbox-$stamp.result.json"
+      Invoke-Server (@("--case-inbox", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Imported new helper evidence from the case inbox." -ForegroundColor Green
+      Write-Host "Default inbox: <case folder>\incoming. Reruns skip files already imported by hash." -ForegroundColor Green
       return
     }
     { $_ -in @("q", "quit", "exit") } {

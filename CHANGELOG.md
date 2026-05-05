@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.25
+
+- Adds `skyrim_case_inbox_import` for importing helper-generated JSON/TXT/LOG evidence from a case `incoming` folder.
+- De-dupes inbox files by SHA-256 in `live-evidence-index.json`, so OpenClaw or helper scripts can rerun imports safely.
+- Adds direct CLI shortcut `--case-inbox`, local menu action 30, tests, and docs for the case inbox workflow.
+
 ## v0.2.24
 
 - Adds `skyrim_case_evidence_import` for append-only popup OCR, console FormID, current-cell, screenshot-note, and future live-bridge evidence intake.

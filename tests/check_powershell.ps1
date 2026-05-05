@@ -70,6 +70,9 @@ if (($MenuOutput -join "`n") -notmatch "Import case evidence") {
 if (($MenuOutput -join "`n") -notmatch "Bundle issue case") {
   throw "Menu did not list the case bundle action."
 }
+if (($MenuOutput -join "`n") -notmatch "Import case inbox") {
+  throw "Menu did not list the case inbox import action."
+}
 
 $PythonForMenu = $env:VORTEX_SKYRIMSE_MCP_TEST_PYTHON
 if ($PythonForMenu) {

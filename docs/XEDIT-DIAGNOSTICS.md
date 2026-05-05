@@ -107,8 +107,9 @@ and writes `issue-case-status.md` plus JSON.
 After that, `skyrim_case_what_now` gives one concise recommendation and
 `skyrim_safe_experiment_plan` writes a dry-run cloned-profile test plan.
 If a live helper captures popup OCR, current cell, or console FormIDs later,
-store that with `skyrim_case_evidence_import` so the case remains append-only
-and auditable.
+store that with `skyrim_case_evidence_import`, or have the helper drop JSON/TXT
+files into the case `incoming` folder and call `skyrim_case_inbox_import`, so
+the case remains append-only and auditable.
 
 ## Important Limits
 

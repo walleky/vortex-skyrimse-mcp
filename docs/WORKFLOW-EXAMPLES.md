@@ -156,6 +156,12 @@ If popup OCR or console capture appears later:
 Use skyrim_case_evidence_import to append the captured popup text, current cell, and clicked FormID to the same case folder. Then rerun skyrim_case_what_now.
 ```
 
+If a helper wrote files into the case `incoming` folder:
+
+```text
+Use skyrim_case_inbox_import on the same case folder. Then rerun skyrim_case_what_now.
+```
+
 What OpenClaw should call:
 
 ```text
@@ -169,6 +175,7 @@ skyrim_case_what_now
 skyrim_safe_experiment_plan
 skyrim_issue_case_note
 skyrim_case_evidence_import
+skyrim_case_inbox_import
 skyrim_case_bundle
 vortex_profile_backup
 ```
