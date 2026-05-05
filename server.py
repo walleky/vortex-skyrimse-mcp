@@ -40,7 +40,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.22"
+SERVER_VERSION = "0.2.23"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -1712,6 +1712,10 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "xedit_inspection_result_report",
             "skyrim_issue_case_packet",
             "skyrim_issue_case_status",
+            "skyrim_issue_case_note",
+            "skyrim_safe_experiment_plan",
+            "skyrim_case_what_now",
+            "skyrim_live_bridge_status",
         ],
         "nexusMetadataOptional": [
             "nexus_validate_key",
@@ -1798,7 +1802,7 @@ def workflow_catalog() -> List[Dict[str, Any]]:
             "title": "Weird Object Or Location Problem",
             "matchTerms": ["object", "bed", "door", "tavern", "whiterun", "cell", "formid", "placed", "outside", "room"],
             "userPrompt": "Use skyrim_issue_case_packet with my description, location, object, and any FormID/base object I provide. Then use skyrim_issue_case_status after I run the generated xEdit script. Do not edit plugins.",
-            "tools": ["skyrim_issue_case_packet", "skyrim_issue_case_status", "in_game_issue_report", "xedit_diagnostics_report", "xedit_inspection_script", "xedit_inspection_result_report", "vortex_profile_backup"],
+            "tools": ["skyrim_issue_case_packet", "skyrim_issue_case_status", "skyrim_case_what_now", "skyrim_safe_experiment_plan", "skyrim_issue_case_note", "in_game_issue_report", "xedit_diagnostics_report", "xedit_inspection_script", "xedit_inspection_result_report", "vortex_profile_backup"],
             "whatToRead": ["candidateCount", "candidates", "formIdHint", "diagnosticQuality", "scriptPath", "reportPath"],
             "humanSteps": ["Use the console-clicked FormID if available.", "Generate a read-only xEdit inspection script for the top candidate.", "Back up or clone the profile before testing.", "Disable one candidate in a cloned profile, deploy, and test."],
             "directCli": ["py -3 .\\server.py --tool in_game_issue_report --description \"bed outside tavern room\" --location \"Whiterun Bannered Mare\" --object \"bed\""],
@@ -2852,6 +2856,128 @@ def summarize_xedit_rows(rows: List[Dict[str, str]], key: str, limit: int = 20) 
     return items[:limit]
 
 
+XEDIT_SIGNATURE_GUIDANCE: Dict[str, Dict[str, Any]] = {
+    "REFR": {
+        "meaning": "placed reference/object",
+        "issueKinds": ["placed_object"],
+        "inspect": "Check which plugin wins the placed reference and whether it should exist in this cell/worldspace.",
+    },
+    "ACHR": {
+        "meaning": "placed actor/NPC reference",
+        "issueKinds": ["placed_object", "actor"],
+        "inspect": "Check actor placement, packages, and overrides before disabling NPC or city overhaul mods.",
+    },
+    "CELL": {
+        "meaning": "interior/exterior cell record",
+        "issueKinds": ["placed_object", "location"],
+        "inspect": "Compare cell overrides and persistent/temporary child records for misplaced objects.",
+    },
+    "WRLD": {
+        "meaning": "worldspace record",
+        "issueKinds": ["placed_object", "location"],
+        "inspect": "Check worldspace/cell overrides and landscape or placed-reference children.",
+    },
+    "FURN": {
+        "meaning": "furniture base object",
+        "issueKinds": ["placed_object", "asset"],
+        "inspect": "Inspect the base object if references point at a bed/chair/marker-like item.",
+    },
+    "STAT": {
+        "meaning": "static mesh base object",
+        "issueKinds": ["placed_object", "asset"],
+        "inspect": "Inspect model path and references that place this static in the world.",
+    },
+    "MSTT": {
+        "meaning": "movable static base object",
+        "issueKinds": ["placed_object", "asset"],
+        "inspect": "Inspect model path and placed references that instantiate it.",
+    },
+    "ACTI": {
+        "meaning": "activator base object",
+        "issueKinds": ["placed_object", "scripted_object"],
+        "inspect": "Check scripts/VMAD and references; activators often create visible prompts or behavior.",
+    },
+    "MESG": {
+        "meaning": "message/popup record",
+        "issueKinds": ["popup", "ui_message"],
+        "inspect": "Inspect message text and scripts/quests that show it.",
+    },
+    "QUST": {
+        "meaning": "quest/script driver",
+        "issueKinds": ["popup", "scripted_behavior"],
+        "inspect": "Inspect quest stages, aliases, VMAD scripts, and startup conditions.",
+    },
+    "DIAL": {
+        "meaning": "dialog topic",
+        "issueKinds": ["dialog", "popup"],
+        "inspect": "Inspect linked INFO records and conditions.",
+    },
+    "INFO": {
+        "meaning": "dialog response/info",
+        "issueKinds": ["dialog", "popup"],
+        "inspect": "Inspect response text, conditions, and owning quest.",
+    },
+    "MGEF": {
+        "meaning": "magic effect/script source",
+        "issueKinds": ["popup", "scripted_behavior"],
+        "inspect": "Inspect effect VMAD scripts and spell/enchantment users.",
+    },
+    "SPEL": {
+        "meaning": "spell record",
+        "issueKinds": ["popup", "scripted_behavior"],
+        "inspect": "Inspect effects and scripts that may fire messages on load/equip/combat.",
+    },
+}
+
+
+def xedit_record_interpretation(row: Dict[str, str]) -> Dict[str, Any]:
+    sig = str(row.get("signature") or "").strip().upper()
+    guidance = XEDIT_SIGNATURE_GUIDANCE.get(sig, {})
+    issue_kinds = list(guidance.get("issueKinds", []))
+    script_text = str(row.get("script") or "").strip()
+    model = str(row.get("model") or "").strip()
+    if script_text and "scripted_behavior" not in issue_kinds:
+        issue_kinds.append("scripted_behavior")
+    if model and "asset" not in issue_kinds:
+        issue_kinds.append("asset")
+    if not issue_kinds:
+        issue_kinds.append("record_evidence")
+    why = guidance.get("inspect") or "Inspect this record in xEdit and compare overrides before changing mods."
+    if script_text:
+        why += " VMAD/script data is present, so script-driven behavior is possible."
+    if model:
+        why += " A model path is present, so asset placement or mesh replacement may matter."
+    return {
+        "sourcePlugin": row.get("sourcePlugin") or "",
+        "signature": sig or "(blank)",
+        "meaning": guidance.get("meaning") or "record",
+        "likelyIssueKinds": issue_kinds,
+        "matchedTerm": row.get("matchedTerm") or "",
+        "inspect": why,
+    }
+
+
+def summarize_xedit_interpretations(interpreted: List[Dict[str, Any]]) -> Dict[str, Any]:
+    issue_counts: Dict[str, int] = {}
+    signature_guidance: Dict[str, Dict[str, Any]] = {}
+    for item in interpreted:
+        for kind in item.get("likelyIssueKinds", []):
+            issue_counts[str(kind)] = issue_counts.get(str(kind), 0) + 1
+        sig = str(item.get("signature") or "(blank)")
+        if sig not in signature_guidance:
+            signature_guidance[sig] = {
+                "signature": sig,
+                "meaning": item.get("meaning"),
+                "inspect": item.get("inspect"),
+            }
+    top_issue_kinds = [{"value": key, "count": value} for key, value in issue_counts.items()]
+    top_issue_kinds.sort(key=lambda item: (-int(item["count"]), str(item["value"])))
+    return {
+        "topIssueKinds": top_issue_kinds,
+        "recordTypeGuidance": list(signature_guidance.values())[:20],
+    }
+
+
 def xedit_inspection_result_report(args: Dict[str, Any]) -> Dict[str, Any]:
     path = expand_path(args.get("report_path") or args.get("path"))
     if not path or not path.exists() or not path.is_file():
@@ -2869,6 +2995,12 @@ def xedit_inspection_result_report(args: Dict[str, Any]) -> Dict[str, Any]:
     top_signatures = summarize_xedit_rows(rows, "signature")
     top_terms = summarize_xedit_rows(rows, "matchedTerm")
     candidate_plugins = [item["value"] for item in top_plugins if item["value"] != "(blank)"][:10]
+    interpreted_rows = [xedit_record_interpretation(row) for row in rows]
+    interpretation_summary = summarize_xedit_interpretations(interpreted_rows)
+    preview_limit = int(args.get("max_preview_rows", 50))
+    preview_rows: List[Dict[str, Any]] = []
+    for row, interpretation in zip(rows[:preview_limit], interpreted_rows[:preview_limit]):
+        preview_rows.append({**row, "interpretation": interpretation})
     return {
         "path": str(path),
         "rowCount": len(rows),
@@ -2876,11 +3008,14 @@ def xedit_inspection_result_report(args: Dict[str, Any]) -> Dict[str, Any]:
         "topPlugins": top_plugins,
         "topSignatures": top_signatures,
         "topMatchedTerms": top_terms,
+        "topIssueKinds": interpretation_summary["topIssueKinds"],
+        "recordTypeGuidance": interpretation_summary["recordTypeGuidance"],
         "candidatePlugins": candidate_plugins,
-        "rows": rows[: int(args.get("max_preview_rows", 50))],
+        "rows": preview_rows,
         "readOnly": True,
         "recommendedActions": [
             "Start with plugins/signatures that repeat most often in the report.",
+            "Use recordTypeGuidance to decide whether evidence points at placed objects, popups/messages, scripts, or assets.",
             "For placed-object issues, inspect REFR/CELL/WRLD records and compare overrides before disabling mods.",
             "For popup/message issues, inspect MESG/QUST/MGEF/VMAD/script-related rows and mod config evidence.",
             "Do not save xEdit plugin edits from this report alone. Test changes in a cloned Vortex profile first.",
@@ -3099,12 +3234,35 @@ def issue_case_json_path(case_dir: Path) -> Path:
     preferred = case_dir / "issue-case.json"
     if preferred.exists():
         return preferred
-    candidates = sorted(case_dir.glob("*.json"), key=lambda path: (path.name != "issue-case.json", path.name.lower()))
+    candidates = sorted(
+        [
+            path
+            for path in case_dir.glob("*.json")
+            if "status" not in path.stem.lower() and "plan" not in path.stem.lower() and "what-now" not in path.stem.lower()
+        ],
+        key=lambda path: (path.name != "issue-case.json", path.name.lower()),
+    )
     return candidates[0] if candidates else preferred
 
 
 def issue_case_load(case_dir: Path) -> Dict[str, Any]:
     path = issue_case_json_path(case_dir)
+    if not path.exists() or not path.is_file():
+        return {}
+    data = json.loads(read_text(path, 20_000_000))
+    return data if isinstance(data, dict) else {}
+
+
+def issue_case_status_json_path(case_dir: Path) -> Path:
+    preferred = case_dir / "issue-case-status.json"
+    if preferred.exists():
+        return preferred
+    candidates = sorted(case_dir.glob("*status*.json"), key=lambda path: path.name.lower())
+    return candidates[0] if candidates else preferred
+
+
+def issue_case_load_status(case_dir: Path) -> Dict[str, Any]:
+    path = issue_case_status_json_path(case_dir)
     if not path.exists() or not path.is_file():
         return {}
     data = json.loads(read_text(path, 20_000_000))
@@ -3304,6 +3462,353 @@ def skyrim_issue_case_status(args: Dict[str, Any]) -> Dict[str, Any]:
         "readOnly": True,
         "dryRunOnly": True,
         "nextSteps": next_steps,
+    }
+
+
+def issue_case_notes_paths(case_dir: Path) -> Tuple[Path, Path]:
+    return case_dir / "case-notes.md", case_dir / "case-notes.jsonl"
+
+
+def skyrim_issue_case_note(args: Dict[str, Any]) -> Dict[str, Any]:
+    case_dir = expand_path(args.get("case_dir") or args.get("path"))
+    if not case_dir or not case_dir.exists() or not case_dir.is_dir():
+        raise ToolError("case_dir/path must point to an existing issue case folder.")
+    note = str(args.get("note") or args.get("text") or "").strip()
+    if not note:
+        raise ToolError("Pass note/text to append to the issue case.")
+    kind = str(args.get("kind") or "observation").strip() or "observation"
+    source = str(args.get("source") or "openclaw").strip() or "openclaw"
+    result = str(args.get("result") or "").strip()
+    next_action = str(args.get("next_action") or "").strip()
+    timestamp = iso_now()
+    md_path, jsonl_path = issue_case_notes_paths(case_dir)
+    md_lines = [
+        f"## {timestamp} - {kind}",
+        "",
+        f"- Source: {source}",
+    ]
+    if result:
+        md_lines.append(f"- Result: {result}")
+    if next_action:
+        md_lines.append(f"- Next action: {next_action}")
+    md_lines.extend(["", note, ""])
+    write_header = not md_path.exists() or md_path.stat().st_size == 0
+    with md_path.open("a", encoding="utf-8", newline="\n") as handle:
+        if write_header:
+            handle.write("# Skyrim Issue Case Notes\n\n")
+        handle.write("\n".join(md_lines) + "\n")
+    entry = {
+        "timestamp": timestamp,
+        "kind": kind,
+        "source": source,
+        "note": note,
+        "result": result,
+        "nextAction": next_action,
+        "readOnly": True,
+    }
+    jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+    with jsonl_path.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+    log_event("support", "skyrim_issue_case_note_appended", {"case_dir": str(case_dir), "kind": kind})
+    return {
+        "caseDir": str(case_dir),
+        "notesPath": str(md_path),
+        "notesJsonlPath": str(jsonl_path),
+        "entry": entry,
+        "readOnly": False,
+        "writesOnlyCaseNotes": True,
+        "notes": ["This appends notes in the case folder only. It does not change Vortex, Skyrim, plugins, or mods."],
+    }
+
+
+def issue_case_top_evidence(case_dir: Path, packet: Dict[str, Any], status: Dict[str, Any]) -> Dict[str, Any]:
+    in_game = packet.get("inGameIssue") if isinstance(packet.get("inGameIssue"), dict) else {}
+    candidates = in_game.get("candidates") if isinstance(in_game.get("candidates"), list) else []
+    top_candidate = candidates[0] if candidates and isinstance(candidates[0], dict) else {}
+    xedit_result = status.get("xeditResult") if isinstance(status.get("xeditResult"), dict) else {}
+    candidate_plugins = xedit_result.get("candidatePlugins") if isinstance(xedit_result.get("candidatePlugins"), list) else []
+    top_plugins = xedit_result.get("topPlugins") if isinstance(xedit_result.get("topPlugins"), list) else []
+    top_signatures = xedit_result.get("topSignatures") if isinstance(xedit_result.get("topSignatures"), list) else []
+    return {
+        "topCandidate": top_candidate,
+        "topCandidateName": top_candidate.get("mod"),
+        "topCandidateModId": top_candidate.get("vortexModId"),
+        "candidatePlugins": candidate_plugins,
+        "topPlugin": top_plugins[0].get("value") if top_plugins and isinstance(top_plugins[0], dict) else None,
+        "topSignature": top_signatures[0].get("value") if top_signatures and isinstance(top_signatures[0], dict) else None,
+        "statusState": status.get("state"),
+        "caseDir": str(case_dir),
+    }
+
+
+def safe_experiment_plan_markdown(plan: Dict[str, Any]) -> str:
+    target = plan.get("target", {}) if isinstance(plan.get("target"), dict) else {}
+    lines = [
+        "# Skyrim Safe Experiment Plan",
+        "",
+        f"- Server: {SERVER_NAME} {SERVER_VERSION}",
+        f"- Created: {plan.get('createdAt')}",
+        f"- Case folder: `{plan.get('caseDir')}`",
+        f"- Dry run only: `{str(plan.get('dryRunOnly')).lower()}`",
+        "",
+        "## Target",
+        "",
+        f"- Mod name: `{target.get('modName') or '(unknown)'}`",
+        f"- Vortex mod id: `{target.get('vortexModId') or '(unknown)'}`",
+        f"- Plugin evidence: `{target.get('plugin') or '(none)'}`",
+        f"- Record evidence: `{target.get('signature') or '(none)'}`",
+        "",
+        "## Steps",
+        "",
+    ]
+    for index, step in enumerate(plan.get("steps", []), start=1):
+        lines.append(f"{index}. {step}")
+    if plan.get("dryRunToolCalls"):
+        lines.extend(["", "## Dry-Run Tool Calls", ""])
+        for call in plan.get("dryRunToolCalls", []):
+            lines.append(f"- `{call.get('tool')}` with args `{json.dumps(call.get('args', {}), ensure_ascii=False)}`")
+    lines.extend(
+        [
+            "",
+            "## Undo",
+            "",
+            "- Keep the profile backup path from step 1.",
+            "- If the test gets worse, switch back to the original profile or use the backup/restore preview first.",
+            "- Do not delete the mod during this experiment.",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def skyrim_safe_experiment_plan(args: Dict[str, Any]) -> Dict[str, Any]:
+    case_dir = expand_path(args.get("case_dir") or args.get("path"))
+    if not case_dir or not case_dir.exists() or not case_dir.is_dir():
+        raise ToolError("case_dir/path must point to an existing issue case folder.")
+    packet = issue_case_load(case_dir)
+    status = issue_case_load_status(case_dir)
+    evidence = issue_case_top_evidence(case_dir, packet, status)
+    target_mod_name = str(args.get("target_mod") or args.get("target_mod_name") or evidence.get("topCandidateName") or "").strip()
+    target_mod_id = str(args.get("target_mod_id") or evidence.get("topCandidateModId") or "").strip()
+    target_plugin = str(args.get("plugin_name") or evidence.get("topPlugin") or "").strip()
+    target_signature = str(args.get("signature") or evidence.get("topSignature") or "").strip()
+    plan_path = expand_path(args.get("output_path")) if args.get("output_path") else case_dir / "safe-experiment-plan.md"
+    if not plan_path:
+        raise ToolError("output_path resolved to an empty path.")
+    if not plan_path.suffix:
+        plan_path = plan_path / "safe-experiment-plan.md"
+    json_path = plan_path.with_suffix(".json")
+    if json_path == plan_path:
+        json_path = plan_path.with_name(f"{plan_path.name}.json")
+    test_profile_name = str(args.get("test_profile_name") or "OpenClaw Safe Test").strip() or "OpenClaw Safe Test"
+    steps = [
+        "Write a Vortex profile backup with include_all_profiles=true and keep the backup path in the case notes.",
+        f"Create or reuse a cloned profile named '{test_profile_name}'. Preview first; apply only after the user approves and Vortex is closed.",
+        "Switch Vortex to the cloned profile and deploy mods.",
+    ]
+    if target_mod_id:
+        steps.append(f"In the cloned profile only, preview disabling Vortex mod id '{target_mod_id}' ({target_mod_name or 'candidate mod'}).")
+    else:
+        steps.append("Find the exact Vortex mod id for the target mod before any disable preview. Do not guess mod ids from names.")
+    steps.extend(
+        [
+            "Launch Skyrim through the normal SKSE route for this setup and reproduce the issue.",
+            "Append the result to the case notes: fixed, unchanged, worse, or new issue.",
+            "If fixed, keep the change in the cloned profile until the user decides whether to patch, replace, or remove the mod. If not fixed, restore/re-enable and test one different candidate.",
+        ]
+    )
+    dry_run_calls = [
+        {"tool": "vortex_profile_backup", "args": {"include_all_profiles": True}},
+        {"tool": "vortex_clone_profile", "args": {"new_name": test_profile_name, "apply": False}},
+    ]
+    if target_mod_id:
+        dry_run_calls.append({"tool": "vortex_set_profile_mods", "args": {"disable_mod_ids": [target_mod_id], "apply": False}})
+    plan = {
+        "server": SERVER_NAME,
+        "version": SERVER_VERSION,
+        "createdAt": iso_now(),
+        "caseDir": str(case_dir),
+        "planPath": str(plan_path),
+        "jsonPath": str(json_path),
+        "dryRunOnly": True,
+        "readOnly": True,
+        "target": {
+            "modName": target_mod_name,
+            "vortexModId": target_mod_id or None,
+            "plugin": target_plugin or None,
+            "signature": target_signature or None,
+            "evidenceState": evidence.get("statusState"),
+        },
+        "steps": steps,
+        "dryRunToolCalls": dry_run_calls,
+        "blockers": [] if target_mod_id else ["No exact Vortex mod id is known yet; use vortex_profile_mods/profile state before disabling anything."],
+        "notes": [
+            "This plan does not apply changes. It gives OpenClaw a safe order of operations.",
+            "Never delete a collection mod during an experiment; disable in a cloned profile first.",
+        ],
+    }
+    write_text(json_path, json.dumps(plan, indent=2, ensure_ascii=False, default=str))
+    write_text(plan_path, safe_experiment_plan_markdown(plan))
+    log_event("support", "skyrim_safe_experiment_plan_written", {"case_dir": str(case_dir), "plan_path": str(plan_path)})
+    return {
+        "caseDir": str(case_dir),
+        "planPath": str(plan_path),
+        "jsonPath": str(json_path),
+        "target": plan["target"],
+        "dryRunOnly": True,
+        "readOnly": True,
+        "blockers": plan["blockers"],
+        "dryRunToolCalls": dry_run_calls,
+        "nextSteps": steps[:4],
+    }
+
+
+def case_what_now_markdown(answer: Dict[str, Any]) -> str:
+    lines = [
+        "# Skyrim Case What Now",
+        "",
+        f"- Server: {SERVER_NAME} {SERVER_VERSION}",
+        f"- Updated: {answer.get('updatedAt')}",
+        f"- Case folder: `{answer.get('caseDir')}`",
+        f"- Recommendation: {answer.get('recommendation')}",
+        f"- Confidence: `{answer.get('confidence')}`",
+        "",
+        "## Why",
+        "",
+    ]
+    for reason in answer.get("reasons", []):
+        lines.append(f"- {reason}")
+    lines.extend(["", "## Next Actions", ""])
+    for action in answer.get("nextActions", []):
+        lines.append(f"- {action}")
+    lines.extend(["", "## Safety", "", "- This is advice from existing evidence only; it does not change mods or profiles."])
+    return "\n".join(lines) + "\n"
+
+
+def skyrim_case_what_now(args: Dict[str, Any]) -> Dict[str, Any]:
+    case_dir = expand_path(args.get("case_dir") or args.get("path"))
+    if not case_dir or not case_dir.exists() or not case_dir.is_dir():
+        raise ToolError("case_dir/path must point to an existing issue case folder.")
+    packet = issue_case_load(case_dir)
+    status = issue_case_load_status(case_dir)
+    evidence = issue_case_top_evidence(case_dir, packet, status)
+    status_state = str(evidence.get("statusState") or "no_status")
+    recommendation = "Run the generated xEdit inspection script, then update the case status."
+    confidence = "medium"
+    reasons = []
+    next_actions = []
+    if status_state == "has_xedit_results":
+        recommendation = "Use the xEdit evidence to plan one cloned-profile disable test."
+        confidence = "high" if evidence.get("topPlugin") else "medium"
+        reasons.append(f"xEdit CSV evidence exists. Top plugin: {evidence.get('topPlugin') or 'unknown'}.")
+        if evidence.get("topSignature"):
+            reasons.append(f"Top record signature is {evidence.get('topSignature')}.")
+        next_actions = [
+            "Run skyrim_safe_experiment_plan for this case folder.",
+            "Append a case note before and after the test.",
+            "Disable only one exact Vortex mod id in a cloned profile after user approval.",
+        ]
+    elif status_state == "empty_xedit_results":
+        recommendation = "Rerun the xEdit script on a broader selection or full load order."
+        confidence = "medium"
+        reasons.append("The case status found the CSV, but it had no rows.")
+        next_actions = ["Apply the generated xEdit script to a broader plugin scope.", "Run skyrim_issue_case_status again."]
+    elif status_state == "needs_xedit_run":
+        reasons.append("The case exists, but the xEdit CSV has not been produced yet.")
+        next_actions = ["Run the generated xEdit script in SSEEdit/xEdit.", "Run skyrim_issue_case_status after the CSV appears."]
+    elif evidence.get("topCandidateName"):
+        recommendation = "Generate or run xEdit evidence before testing the top candidate."
+        confidence = "medium"
+        reasons.append(f"Top local triage candidate is {evidence.get('topCandidateName')}, but xEdit status is not complete.")
+        next_actions = ["Run the generated xEdit script or recreate the case packet.", "Then run skyrim_issue_case_status."]
+    else:
+        recommendation = "Recreate the issue case with more clues."
+        confidence = "low"
+        reasons.append("No useful case candidate or xEdit status was found.")
+        next_actions = ["Add description/location/object/FormID/popup text, then run skyrim_issue_case_packet again."]
+    out_path = expand_path(args.get("output_path")) if args.get("output_path") else case_dir / "what-now.md"
+    if not out_path:
+        raise ToolError("output_path resolved to an empty path.")
+    if not out_path.suffix:
+        out_path = out_path / "what-now.md"
+    json_path = out_path.with_suffix(".json")
+    answer = {
+        "server": SERVER_NAME,
+        "version": SERVER_VERSION,
+        "updatedAt": iso_now(),
+        "caseDir": str(case_dir),
+        "outputPath": str(out_path),
+        "jsonPath": str(json_path),
+        "recommendation": recommendation,
+        "confidence": confidence,
+        "reasons": reasons,
+        "nextActions": next_actions,
+        "readOnly": True,
+        "dryRunOnly": True,
+    }
+    write_text(json_path, json.dumps(answer, indent=2, ensure_ascii=False, default=str))
+    write_text(out_path, case_what_now_markdown(answer))
+    log_event("support", "skyrim_case_what_now_written", {"case_dir": str(case_dir), "output_path": str(out_path)})
+    return answer
+
+
+def skyrim_live_bridge_status(args: Dict[str, Any]) -> Dict[str, Any]:
+    case_dir = expand_path(args.get("case_dir") or args.get("path"))
+    output_path = expand_path(args.get("output_path")) if args.get("output_path") else (case_dir / "live-bridge-design.md" if case_dir else None)
+    capabilities = {
+        "screenshotOcr": {
+            "implemented": False,
+            "neededFor": ["reading popup text without the user typing it", "capturing menu/dialog state"],
+            "requirements": ["local screenshot capture", "OCR engine", "privacy-aware image storage in case folder"],
+        },
+        "consoleFormIdCapture": {
+            "implemented": False,
+            "neededFor": ["clicked reference/base FormID", "current cell"],
+            "requirements": ["console log capture or user-assisted copy", "optional SKSE plugin for telemetry"],
+        },
+        "skseTelemetry": {
+            "implemented": False,
+            "neededFor": ["current cell", "active menus/messages", "selected reference"],
+            "requirements": ["separate SKSE plugin", "read-only local IPC/log output", "strict no-save/no-plugin-edit boundary"],
+        },
+        "caseFolderIntegration": {
+            "implemented": True,
+            "neededFor": ["storing captured evidence", "letting OpenClaw continue from the same folder"],
+            "requirements": ["skyrim_issue_case_packet", "skyrim_issue_case_note", "skyrim_issue_case_status"],
+        },
+    }
+    design_lines = [
+        "# Skyrim Live Bridge Status",
+        "",
+        "This MCP does not directly see the running game yet. It can consume evidence saved into a case folder.",
+        "",
+        "## Implemented Now",
+        "",
+        "- Case folders, notes, xEdit CSV parsing, and safe experiment plans.",
+        "",
+        "## Needed For True Live Diagnosis",
+        "",
+        "- Screenshot/OCR capture for popup text.",
+        "- Console/FormID capture for clicked objects.",
+        "- Optional SKSE telemetry for current cell and active messages.",
+        "- Strict read-only IPC/log output so OpenClaw can observe without changing the game.",
+        "",
+    ]
+    if output_path:
+        write_text(output_path, "\n".join(design_lines))
+    return {
+        "server": SERVER_NAME,
+        "version": SERVER_VERSION,
+        "caseDir": str(case_dir) if case_dir else None,
+        "outputPath": str(output_path) if output_path else None,
+        "canSeeRunningGameNow": False,
+        "canUseCaseFolderEvidenceNow": True,
+        "capabilities": capabilities,
+        "recommendedNextBuild": [
+            "Add a small separate screenshot/OCR helper that writes popup text to the case folder.",
+            "Add a user-assisted console FormID capture file before considering SKSE telemetry.",
+            "Keep all live bridge output read-only and append-only.",
+        ],
+        "readOnly": True,
     }
 
 
@@ -8183,6 +8688,69 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         },
         skyrim_issue_case_status,
     ),
+    "skyrim_issue_case_note": (
+        "Append an observation, test result, or decision note to an existing issue case folder. Writes notes only.",
+        {
+            "type": "object",
+            "properties": {
+                "case_dir": {"type": "string"},
+                "path": {"type": "string"},
+                "note": {"type": "string"},
+                "text": {"type": "string"},
+                "kind": {"type": "string", "enum": ["observation", "test", "decision", "undo", "result", "question"]},
+                "source": {"type": "string"},
+                "result": {"type": "string"},
+                "next_action": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        skyrim_issue_case_note,
+    ),
+    "skyrim_safe_experiment_plan": (
+        "Write a dry-run cloned-profile experiment plan from an issue case folder. It does not disable mods or change Vortex.",
+        {
+            "type": "object",
+            "properties": {
+                "case_dir": {"type": "string"},
+                "path": {"type": "string"},
+                "output_path": {"type": "string"},
+                "target_mod": {"type": "string"},
+                "target_mod_name": {"type": "string"},
+                "target_mod_id": {"type": "string"},
+                "plugin_name": {"type": "string"},
+                "signature": {"type": "string"},
+                "test_profile_name": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        skyrim_safe_experiment_plan,
+    ),
+    "skyrim_case_what_now": (
+        "Read a case folder/status/notes and write one concise next-action recommendation. It does not change mods.",
+        {
+            "type": "object",
+            "properties": {
+                "case_dir": {"type": "string"},
+                "path": {"type": "string"},
+                "output_path": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        skyrim_case_what_now,
+    ),
+    "skyrim_live_bridge_status": (
+        "Describe current live-Skyrim bridge capability and the safe requirements for screenshot/OCR, console FormID, or SKSE telemetry capture.",
+        {
+            "type": "object",
+            "properties": {
+                "case_dir": {"type": "string"},
+                "path": {"type": "string"},
+                "output_path": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        skyrim_live_bridge_status,
+    ),
     "vortex_collection_report": (
         "Read-only inspection of collection-like state and mod collection markers exposed by Vortex CLI.",
         {
@@ -9261,6 +9829,15 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         "path": parsed.path,
         "report_path": parsed.report_path,
         "terms": parsed.terms,
+        "note": parsed.note,
+        "kind": parsed.note_kind,
+        "source": parsed.note_source,
+        "result": parsed.note_result,
+        "next_action": parsed.next_action,
+        "target_mod": parsed.target_mod,
+        "target_mod_id": parsed.target_mod_id,
+        "test_profile_name": parsed.test_profile_name,
+        "signature": parsed.signature,
         "old_text": parsed.old_text,
         "new_text": parsed.new_text,
     }
@@ -9420,6 +9997,10 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--workflow-guide", action="store_true", help="Shortcut for --tool workflow_guide.")
     parser.add_argument("--issue-case", action="store_true", help="Shortcut for --tool skyrim_issue_case_packet.")
     parser.add_argument("--issue-case-status", action="store_true", help="Shortcut for --tool skyrim_issue_case_status.")
+    parser.add_argument("--case-note", action="store_true", help="Shortcut for --tool skyrim_issue_case_note.")
+    parser.add_argument("--safe-experiment-plan", action="store_true", help="Shortcut for --tool skyrim_safe_experiment_plan.")
+    parser.add_argument("--what-now", action="store_true", help="Shortcut for --tool skyrim_case_what_now.")
+    parser.add_argument("--live-bridge-status", action="store_true", help="Shortcut for --tool skyrim_live_bridge_status.")
     parser.add_argument("--args-json", help="JSON object with tool arguments.")
     parser.add_argument("--args-file", help="Path to a JSON object file with tool arguments.")
     parser.add_argument("--output-json", help="Write the direct tool result JSON to this path.")
@@ -9453,6 +10034,15 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--popup-text", help="Exact popup/notification text for in_game_issue_report.")
     parser.add_argument("--extra-terms", help="Extra search terms for in_game_issue_report.")
     parser.add_argument("--terms", nargs="*", help="Explicit search terms for xedit_inspection_script.")
+    parser.add_argument("--note", help="Case note text for skyrim_issue_case_note.")
+    parser.add_argument("--note-kind", choices=["observation", "test", "decision", "undo", "result", "question"], help="Case note kind.")
+    parser.add_argument("--note-source", help="Case note source, such as user or openclaw.")
+    parser.add_argument("--note-result", help="Short result label for a case note.")
+    parser.add_argument("--next-action", help="Next action text for case notes.")
+    parser.add_argument("--target-mod", help="Target mod name for safe experiment planning.")
+    parser.add_argument("--target-mod-id", help="Exact Vortex mod id for safe experiment planning.")
+    parser.add_argument("--test-profile-name", help="Name for the cloned test profile in safe experiment planning.")
+    parser.add_argument("--signature", help="xEdit record signature for safe experiment planning.")
     parser.add_argument("--issue-kind", choices=["placed_object", "popup", "general"], help="Issue type for in_game_issue_report.")
     parser.add_argument("--performance-mode", choices=["normal", "slow_model", "fast", "thorough"], help="Tune work and output size. Use slow_model for smaller OpenClaw-friendly reports.")
     parser.add_argument("--response-mode", choices=["standard", "compact"], help="Use compact to return fewer nested details for slower AI models.")
@@ -9538,10 +10128,18 @@ def cli_main(argv: List[str]) -> int:
         if parsed.issue_case
         else "skyrim_issue_case_status"
         if parsed.issue_case_status
+        else "skyrim_issue_case_note"
+        if parsed.case_note
+        else "skyrim_safe_experiment_plan"
+        if parsed.safe_experiment_plan
+        else "skyrim_case_what_now"
+        if parsed.what_now
+        else "skyrim_live_bridge_status"
+        if parsed.live_bridge_status
         else parsed.tool
     )
     if not tool_name:
-        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --runtime-logs, --workflow-guide, --issue-case, or --issue-case-status")
+        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, or --live-bridge-status")
 
     try:
         tool_args = load_cli_tool_args(parsed)

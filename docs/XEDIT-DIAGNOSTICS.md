@@ -94,6 +94,7 @@ mutating xEdit calls in generated scripts.
 - repeated record signatures such as `REFR`, `CELL`, `MESG`, or `QUST`
 - matched search terms
 - preview rows for OpenClaw
+- record-type guidance, such as `REFR` for placed objects or `MESG`/`QUST` for popup/message investigations
 
 `skyrim_issue_case_packet` wraps the common flow. It creates a folder with
 `issue-case.md`, `issue-case.json`, and `xedit-inspection.pas` so the user and
@@ -102,6 +103,9 @@ OpenClaw can come back to the same evidence later.
 `skyrim_issue_case_status` is the follow-up. It reads the case folder, detects
 `xedit-inspection.csv` or the CSV path saved in `issue-case.json`, summarizes it,
 and writes `issue-case-status.md` plus JSON.
+
+After that, `skyrim_case_what_now` gives one concise recommendation and
+`skyrim_safe_experiment_plan` writes a dry-run cloned-profile test plan.
 
 ## Important Limits
 

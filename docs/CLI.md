@@ -99,6 +99,15 @@ py -3 .\server.py --issue-case-status --case-dir ".\reports\popup-case"
 py -3 .\server.py --issue-case-status --case-dir ".\reports\popup-case" --report-path "C:\path\to\xedit-inspection.csv"
 ```
 
+Case notes, next-step summary, and safe experiment plan:
+
+```powershell
+py -3 .\server.py --case-note --case-dir ".\reports\popup-case" --note-kind test --note "Disabled nothing yet; xEdit points at PopupMod.esp."
+py -3 .\server.py --what-now --case-dir ".\reports\popup-case"
+py -3 .\server.py --safe-experiment-plan --case-dir ".\reports\popup-case" --target-mod "Popup UI Mod"
+py -3 .\server.py --live-bridge-status --case-dir ".\reports\popup-case"
+```
+
 Triage an annoying popup:
 
 ```powershell

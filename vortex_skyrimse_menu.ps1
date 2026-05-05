@@ -23,6 +23,11 @@ param(
   [string]$Problem = "",
   [string]$WorkflowKey = "",
   [string]$IssueCaseDir = "",
+  [string]$CaseNote = "",
+  [string]$CaseNoteKind = "observation",
+  [string]$ExperimentTargetMod = "",
+  [string]$ExperimentTargetModId = "",
+  [string]$TestProfileName = "OpenClaw Safe Test",
   [int]$MaxMods = 500,
   [int]$XeditMaxRecords = 2000,
   [int]$XeditMaxPreviewRows = 50,
@@ -230,6 +235,10 @@ function Show-Actions {
   Write-Host "21. xEdit inspection result"
   Write-Host "22. Skyrim issue case packet"
   Write-Host "23. Skyrim issue case status"
+  Write-Host "24. Append issue case note"
+  Write-Host "25. Safe experiment plan"
+  Write-Host "26. What should I do now?"
+  Write-Host "27. Live Skyrim bridge status"
   Write-Host "Q. Quit"
 }
 
@@ -796,6 +805,90 @@ function Invoke-MenuAction {
       Invoke-Server (@("--issue-case-status", "--args-file", $argsFile, "--output-json", $out) + $common)
       Write-Host "Wrote Skyrim issue case status for: $caseDir" -ForegroundColor Green
       Write-Host "Open issue-case-status.md in that folder. This action only read reports/CSV evidence." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("24", "case-note", "note", "append-note") } {
+      $caseDir = $IssueCaseDir
+      if (!$caseDir) {
+        if ($script:StartedWithAction) {
+          throw "Pass -IssueCaseDir with -Action case-note."
+        }
+        $caseDir = Read-Host "Paste the issue case folder path"
+      }
+      $note = $CaseNote
+      if (!$note) {
+        if ($script:StartedWithAction) {
+          throw "Pass -CaseNote with -Action case-note."
+        }
+        $note = Read-Host "Note to append"
+      }
+      $argsData = @{
+        case_dir = $caseDir
+        note = $note
+        kind = $CaseNoteKind
+      }
+      $argsFile = Write-JsonArgs "issue-case-note" $argsData
+      $out = Join-Path $script:ReportDir "issue-case-note-$stamp.result.json"
+      Invoke-Server (@("--case-note", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Appended case note in: $caseDir" -ForegroundColor Green
+      Write-Host "This action wrote only case notes." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("25", "safe-experiment", "experiment-plan", "safe-plan") } {
+      $caseDir = $IssueCaseDir
+      if (!$caseDir) {
+        if ($script:StartedWithAction) {
+          throw "Pass -IssueCaseDir with -Action safe-experiment."
+        }
+        $caseDir = Read-Host "Paste the issue case folder path"
+      }
+      $argsData = @{
+        case_dir = $caseDir
+        test_profile_name = $TestProfileName
+      }
+      if ($ExperimentTargetMod) {
+        $argsData.target_mod = $ExperimentTargetMod
+      }
+      if ($ExperimentTargetModId) {
+        $argsData.target_mod_id = $ExperimentTargetModId
+      }
+      if ($PluginName) {
+        $argsData.plugin_name = $PluginName
+      }
+      $argsFile = Write-JsonArgs "safe-experiment" $argsData
+      $out = Join-Path $script:ReportDir "safe-experiment-$stamp.result.json"
+      Invoke-Server (@("--safe-experiment-plan", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Wrote safe experiment plan for: $caseDir" -ForegroundColor Green
+      Write-Host "Open safe-experiment-plan.md. This action did not clone profiles or disable mods." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("26", "what-now", "next", "next-step") } {
+      $caseDir = $IssueCaseDir
+      if (!$caseDir) {
+        if ($script:StartedWithAction) {
+          throw "Pass -IssueCaseDir with -Action what-now."
+        }
+        $caseDir = Read-Host "Paste the issue case folder path"
+      }
+      $argsData = @{ case_dir = $caseDir }
+      $argsFile = Write-JsonArgs "what-now" $argsData
+      $out = Join-Path $script:ReportDir "what-now-$stamp.result.json"
+      Invoke-Server (@("--what-now", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Wrote what-now report for: $caseDir" -ForegroundColor Green
+      Write-Host "Open what-now.md. This action did not change mods or profiles." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("27", "live-bridge", "live-status", "bridge-status") } {
+      $caseDir = $IssueCaseDir
+      $argsData = @{}
+      if ($caseDir) {
+        $argsData.case_dir = $caseDir
+      }
+      $argsFile = Write-JsonArgs "live-bridge" $argsData
+      $out = Join-Path $script:ReportDir "live-bridge-$stamp.result.json"
+      Invoke-Server (@("--live-bridge-status", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Wrote live bridge status report." -ForegroundColor Green
+      Write-Host "This describes what is implemented now and what a future screenshot/OCR/SKSE bridge needs." -ForegroundColor Green
       return
     }
     { $_ -in @("q", "quit", "exit") } {

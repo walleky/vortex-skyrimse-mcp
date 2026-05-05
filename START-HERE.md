@@ -159,6 +159,18 @@ After you run the generated script in SSEEdit:
 Use skyrim_issue_case_status on the case folder and summarize the xEdit CSV evidence. Do not apply changes.
 ```
 
+For the next safest action:
+
+```text
+Use skyrim_case_what_now on the case folder, then create skyrim_safe_experiment_plan. Do not apply changes.
+```
+
+To keep the investigation undoable:
+
+```text
+Use skyrim_issue_case_note to append this note to the case: tested in cloned profile, result was unchanged.
+```
+
 For annoying popups, just say "popup", "notification", "warning", or similar in the description. The first scan is balanced and checks local file/path/config clues automatically. Exact popup text or a screenshot/OCR can help later, but it is not required for the first scan.
 
 If the popup says a file was not configured properly, reproduce it once and ask:
@@ -206,6 +218,8 @@ The bundle redacts normal user profile paths by default, but it may still includ
 - `xedit_diagnostics_report` is read-only and does not launch xEdit or save plugins.
 - `skyrim_issue_case_packet` writes a Markdown/JSON case folder plus a read-only xEdit script, but does not change Vortex, Skyrim, or plugins.
 - `skyrim_issue_case_status` reads that case folder and generated CSV, then writes a status report without changing Vortex, Skyrim, or plugins.
+- `skyrim_safe_experiment_plan` writes a dry-run plan only. It does not clone profiles or disable mods.
+- `skyrim_issue_case_note` appends notes in the case folder only.
 - Collection diagnostics are read-only and do not install, update, remove, or deploy mods.
 - Close Vortex before profile writes.
 - Reopen Vortex afterward, pick the intended profile, then deploy mods before launching Skyrim.

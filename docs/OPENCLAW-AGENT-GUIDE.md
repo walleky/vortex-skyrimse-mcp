@@ -17,6 +17,9 @@ creates a read-only xEdit inspection script, and keeps next steps together.
 After the user runs the generated script in SSEEdit/xEdit, call
 `skyrim_issue_case_status` on the same folder so the CSV evidence is folded back
 into a status report.
+Then call `skyrim_case_what_now` for a concise recommendation and
+`skyrim_safe_experiment_plan` before any cloned-profile disable test. Use
+`skyrim_issue_case_note` to record every test result.
 Both are no-change Markdown/JSON reports with setup validation, optional profile
 backup, modded play health, optional in-game issue triage, and logs.
 
@@ -149,7 +152,14 @@ Or, for less tool juggling:
 ```text
 skyrim_issue_case_packet with description/location/object/form_id
 skyrim_issue_case_status with case_dir after the user runs the generated xEdit script
+skyrim_case_what_now with case_dir
+skyrim_safe_experiment_plan with case_dir
+skyrim_issue_case_note with case_dir and note
 ```
+
+`skyrim_live_bridge_status` is not a live capture tool yet. Use it to explain
+that screenshot/OCR, console FormID capture, or SKSE telemetry need a separate
+read-only helper before OpenClaw can truly see popups or clicked objects.
 
 Tell the user to apply the generated script only to selected candidate plugins
 or records in xEdit/SSEEdit, then close xEdit without saving plugin changes.

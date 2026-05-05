@@ -39,6 +39,10 @@ Vortex-SkyrimSE-Menu.cmd
 21. xEdit inspection result
 22. Skyrim issue case packet
 23. Skyrim issue case status
+24. Append issue case note
+25. Safe experiment plan
+26. What should I do now?
+27. Live Skyrim bridge status
 
 Reports are written to:
 
@@ -77,6 +81,10 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action xedit-result -XeditReportPath "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\xedit-inspection-YYYYMMDD-HHMMSS.csv"
 .\vortex_skyrimse_menu.ps1 -Action issue-case -IssueDescription "bed outside tavern room" -IssueLocation "Whiterun Bannered Mare" -IssueObject "bed" -FormId "0100ABCD"
 .\vortex_skyrimse_menu.ps1 -Action issue-case-status -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
+.\vortex_skyrimse_menu.ps1 -Action case-note -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS" -CaseNote "Tested in cloned profile; issue still appears."
+.\vortex_skyrimse_menu.ps1 -Action safe-experiment -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
+.\vortex_skyrimse_menu.ps1 -Action what-now -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
+.\vortex_skyrimse_menu.ps1 -Action live-bridge -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
 ```
 
 If Windows cannot find Python, pass the executable once:
@@ -134,6 +142,11 @@ available. Open the Markdown file first.
 The `issue-case-status` action reads that folder later. If the generated xEdit
 CSV exists, it writes `issue-case-status.md` and summarizes the strongest
 plugin/record evidence.
+
+Actions 24-27 keep the case tidy: notes append to `case-notes.md`, the safe
+experiment plan writes a dry-run cloned-profile test plan, `what-now` writes one
+short recommendation, and live bridge status explains what screenshot/OCR or
+SKSE telemetry would need.
 
 ## Safety
 

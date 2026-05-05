@@ -52,6 +52,18 @@ if (($MenuOutput -join "`n") -notmatch "Skyrim issue case packet") {
 if (($MenuOutput -join "`n") -notmatch "Skyrim issue case status") {
   throw "Menu did not list the Skyrim issue case status action."
 }
+if (($MenuOutput -join "`n") -notmatch "Append issue case note") {
+  throw "Menu did not list the issue case note action."
+}
+if (($MenuOutput -join "`n") -notmatch "Safe experiment plan") {
+  throw "Menu did not list the safe experiment plan action."
+}
+if (($MenuOutput -join "`n") -notmatch "What should I do now") {
+  throw "Menu did not list the what-now action."
+}
+if (($MenuOutput -join "`n") -notmatch "Live Skyrim bridge status") {
+  throw "Menu did not list the live bridge status action."
+}
 
 $PythonForMenu = $env:VORTEX_SKYRIMSE_MCP_TEST_PYTHON
 if ($PythonForMenu) {

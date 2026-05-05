@@ -160,6 +160,8 @@ def main() -> int:
         assert xedit_result["rowCount"] == 2, xedit_result
         assert xedit_result["topPlugins"][0]["value"] == "WhiterunTavern.esp", xedit_result
         assert xedit_result["topSignatures"][0]["value"] in {"CELL", "REFR"}, xedit_result
+        assert xedit_result["topIssueKinds"][0]["value"] == "placed_object", xedit_result
+        assert xedit_result["rows"][0]["interpretation"]["meaning"] == "placed reference/object", xedit_result
 
         assert server.compact_for_log({"nexus_api_key": "secret"})["nexus_api_key"] == "<redacted>"
         previous_nexus_key = os.environ.pop("NEXUS_MODS_API_KEY", None)
@@ -401,6 +403,39 @@ def main() -> int:
         status_markdown = Path(case_status["statusPath"]).read_text(encoding="utf-8")
         assert "Skyrim Issue Case Status" in status_markdown, status_markdown
         assert "WhiterunTavern.esp" in status_markdown, status_markdown
+
+        case_note = server.skyrim_issue_case_note(
+            {
+                "case_dir": case_packet["caseDir"],
+                "kind": "test",
+                "note": "Disabled nothing yet; xEdit evidence points at WhiterunTavern.esp.",
+                "result": "observed",
+                "next_action": "plan cloned-profile test",
+            }
+        )
+        assert Path(case_note["notesPath"]).exists(), case_note
+        assert "xEdit evidence" in Path(case_note["notesPath"]).read_text(encoding="utf-8"), case_note
+
+        experiment = server.skyrim_safe_experiment_plan(
+            {
+                "case_dir": case_packet["caseDir"],
+                "target_mod": "Whiterun Tavern Overhaul",
+                "target_mod_id": "whiterun-tavern-overhaul",
+                "test_profile_name": "OpenClaw Safe Test",
+            }
+        )
+        assert experiment["dryRunOnly"] is True, experiment
+        assert experiment["target"]["vortexModId"] == "whiterun-tavern-overhaul", experiment
+        assert any(call["tool"] == "vortex_set_profile_mods" for call in experiment["dryRunToolCalls"]), experiment
+        assert Path(experiment["planPath"]).exists(), experiment
+
+        what_now = server.skyrim_case_what_now({"case_dir": case_packet["caseDir"]})
+        assert what_now["recommendation"].startswith("Use the xEdit evidence"), what_now
+        assert Path(what_now["outputPath"]).exists(), what_now
+
+        live_bridge = server.skyrim_live_bridge_status({"case_dir": case_packet["caseDir"]})
+        assert live_bridge["canSeeRunningGameNow"] is False, live_bridge
+        assert live_bridge["capabilities"]["caseFolderIntegration"]["implemented"] is True, live_bridge
 
         popup_issue = server.in_game_issue_report(
             {

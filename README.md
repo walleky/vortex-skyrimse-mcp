@@ -203,6 +203,9 @@ py -3 .\server.py --tool scan_cache_status
 py -3 .\server.py --tool xedit_diagnostics_report --form-id 0100ABCD
 py -3 .\server.py --issue-case --description "bed outside tavern room" --location "Whiterun Bannered Mare" --object "bed" --form-id 0100ABCD
 py -3 .\server.py --issue-case-status --case-dir "C:\path\to\issue-case-folder"
+py -3 .\server.py --what-now --case-dir "C:\path\to\issue-case-folder"
+py -3 .\server.py --safe-experiment-plan --case-dir "C:\path\to\issue-case-folder"
+py -3 .\server.py --case-note --case-dir "C:\path\to\issue-case-folder" --note "Tested candidate in cloned profile; issue still appears."
 py -3 .\server.py --tool vortex_collection_report
 py -3 .\server.py --runtime-logs --description "popup says file was not configured properly"
 py -3 .\server.py --skyrim-diagnostics
@@ -263,6 +266,18 @@ After running the generated xEdit script:
 
 ```text
 Use skyrim_issue_case_status on the case folder and tell me the top xEdit evidence. Do not apply changes.
+```
+
+Then ask for a safe next step or a test plan:
+
+```text
+Use skyrim_case_what_now on the case folder. Then write a skyrim_safe_experiment_plan. Do not apply changes.
+```
+
+During testing:
+
+```text
+Append this to the case notes: disabled the candidate in a cloned profile and the bed disappeared.
 ```
 
 To make a safer test profile:

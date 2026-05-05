@@ -81,6 +81,10 @@ def main() -> int:
     assert "xedit_inspection_result_report" in listed_names, listed_names
     assert "skyrim_issue_case_packet" in listed_names, listed_names
     assert "skyrim_issue_case_status" in listed_names, listed_names
+    assert "skyrim_issue_case_note" in listed_names, listed_names
+    assert "skyrim_safe_experiment_plan" in listed_names, listed_names
+    assert "skyrim_case_what_now" in listed_names, listed_names
+    assert "skyrim_live_bridge_status" in listed_names, listed_names
     assert "vortex_collection_report" in listed_names, listed_names
     assert "collection_local_match_report" in listed_names, listed_names
     assert "nexus_validate_key" in listed_names, listed_names
@@ -101,6 +105,8 @@ def main() -> int:
     assert "max_preview_rows" in listed_by_name["xedit_inspection_result_report"]["inputSchema"]["properties"], listed_by_name
     assert "case_dir" in listed_by_name["skyrim_issue_case_packet"]["inputSchema"]["properties"], listed_by_name
     assert "case_dir" in listed_by_name["skyrim_issue_case_status"]["inputSchema"]["properties"], listed_by_name
+    assert "note" in listed_by_name["skyrim_issue_case_note"]["inputSchema"]["properties"], listed_by_name
+    assert "target_mod_id" in listed_by_name["skyrim_safe_experiment_plan"]["inputSchema"]["properties"], listed_by_name
     assert "include_collection_report" in listed_by_name["bug_report_bundle"]["inputSchema"]["properties"], listed_by_name
     assert "workflow_key" in listed_by_name["workflow_guide"]["inputSchema"]["properties"], listed_by_name
 
@@ -178,6 +184,10 @@ def main() -> int:
             assert "xedit_inspection_result_report" in names, names
             assert "skyrim_issue_case_packet" in names, names
             assert "skyrim_issue_case_status" in names, names
+            assert "skyrim_issue_case_note" in names, names
+            assert "skyrim_safe_experiment_plan" in names, names
+            assert "skyrim_case_what_now" in names, names
+            assert "skyrim_live_bridge_status" in names, names
             assert "vortex_collection_report" in names, names
             assert "collection_local_match_report" in names, names
             assert "nexus_validate_key" in names, names

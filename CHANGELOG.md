@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.2.23
+
+- Adds `skyrim_issue_case_note` for append-only case notes and decision/test logs.
+- Adds `skyrim_safe_experiment_plan` for dry-run cloned-profile experiment planning before disabling candidate mods.
+- Adds `skyrim_case_what_now` for one concise next-action recommendation from a case folder.
+- Adds `skyrim_live_bridge_status`, a read-only capability/design surface for future screenshot/OCR, console FormID, and SKSE telemetry bridges.
+- Improves `xedit_inspection_result_report` with record-type interpretation, issue-kind summaries, and per-row guidance.
+- Adds local menu actions 24-27 plus CLI shortcuts for notes, experiment plans, what-now summaries, and live bridge status.
+
 ## v0.2.22
 
 - Adds `skyrim_issue_case_status`, a no-change case-folder updater that detects the generated xEdit CSV, parses it, and writes `issue-case-status.md`/`.json`.

@@ -144,6 +144,12 @@ After the generated script is run in SSEEdit:
 Use skyrim_issue_case_status on the case folder and summarize the top xEdit source plugin and record signatures. Do not edit plugins.
 ```
 
+Then:
+
+```text
+Use skyrim_case_what_now on the case folder. If the evidence is strong enough, create skyrim_safe_experiment_plan. Append all test results with skyrim_issue_case_note.
+```
+
 What OpenClaw should call:
 
 ```text
@@ -153,6 +159,9 @@ xedit_inspection_script
 xedit_inspection_result_report
 skyrim_issue_case_packet
 skyrim_issue_case_status
+skyrim_case_what_now
+skyrim_safe_experiment_plan
+skyrim_issue_case_note
 vortex_profile_backup
 ```
 
