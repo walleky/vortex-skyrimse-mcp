@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.36
+
+- Adds WSL2 path bridging so OpenClaw running in WSL can resolve Windows Steam, Vortex, Skyrim SE, AppData, Documents/My Games, and Steam library paths through `/mnt/<drive>`.
+- Adds `wsl_bridge_report` and `--wsl-bridge` to explain Windows profile mapping, interop availability, detected paths, and OpenClaw config hints.
+- Adds `install_wsl.sh`, `openclaw.mcp.wsl.example.json`, and `docs/WSL-OPENCLAW.md` for no-guesswork OpenClaw-in-WSL setup.
+- Updates detection, redaction, cache/log defaults, Vortex process checks, docs, and smoke coverage for WSL-aware behavior.
+
 ## v0.2.35
 
 - Adds `skyrim_case_evidence_report`, a read-only summary for append-only case evidence such as popup OCR, console FormIDs, cells, objects, and screenshot notes.

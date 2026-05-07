@@ -4,6 +4,11 @@ This guide is written for an OpenClaw agent that has access to the `vortex-skyri
 
 The same repo also has direct CLI mode. If MCP registration fails, tell the user they can still run `.\vortex_skyrimse_menu.ps1`, `.\make_mod_knowledge.ps1`, `py -3 .\server.py --skyrim-diagnostics`, `py -3 .\server.py --safe-session`, or `py -3 .\server.py --mod-knowledge` from the project folder.
 
+If OpenClaw itself runs inside WSL2 while Vortex/Steam/Skyrim are Windows apps,
+start with `wsl_bridge_report`. It explains whether Windows paths are mapped
+through `/mnt/c`, whether the Windows user profile was found, and whether
+Windows interop is available for `Vortex.exe` profile calls.
+
 ## Default Posture
 
 Start read-only. Do not apply INI fixes or Vortex profile writes unless the user explicitly asks you to apply changes.
@@ -60,6 +65,18 @@ For a broad first pass:
 ```text
 skyrim_diagnostics_report
 ```
+
+For an OpenClaw-in-WSL first pass:
+
+```text
+wsl_bridge_report
+validate_setup
+```
+
+If `wsl_bridge_report` cannot map the Windows profile, ask the user to set
+`VORTEX_SKYRIMSE_MCP_WINDOWS_USERPROFILE=/mnt/c/Users/<you>` in the MCP config
+or pass explicit `skyrim_dir`, `vortex_appdata`, `local_appdata`, and
+`staging_dir` paths.
 
 When the user's request is vague and you need routing help:
 

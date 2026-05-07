@@ -3,7 +3,9 @@
 [![CI](https://github.com/walleky/vortex-skyrimse-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/walleky/vortex-skyrimse-mcp/actions/workflows/ci.yml)
 
 Local diagnostics tool for Windows Vortex + Skyrim Special Edition. It can run
-as an MCP server or as a normal command-line tool.
+as an MCP server or as a normal command-line tool. It also supports OpenClaw
+running inside WSL2 by mapping Windows paths through `/mnt/c` and checking
+Windows interop for Vortex profile tools.
 
 It is built for an MCP client such as OpenClaw, Claude Desktop, Cursor, or any
 stdio MCP client. The server is dependency-free Python and talks newline-delimited
@@ -14,6 +16,8 @@ an MCP client.
 
 - Find Steam, Skyrim SE, Vortex AppData, Vortex staging folders, `plugins.txt`,
   `loadorder.txt`, SKSE, and common missing-path problems.
+- Let OpenClaw running in WSL2 see Windows Steam/Vortex/Skyrim paths through
+  `/mnt/c`, with a dedicated `wsl_bridge_report` for setup failures.
 - Validate the whole setup in one call for OpenClaw with `validate_setup`.
 - Recommend a safe next workflow from a plain-language problem with `workflow_guide`.
 - Inventory Vortex-staged Skyrim SE mods.
@@ -94,6 +98,7 @@ an MCP client.
 ## Documentation
 
 - [START-HERE.md](START-HERE.md): short install, first prompts, and MCP Doctor.
+- [docs/WSL-OPENCLAW.md](docs/WSL-OPENCLAW.md): OpenClaw-in-WSL2 setup for Windows Vortex/Steam/Skyrim.
 - [docs/WORKFLOW-EXAMPLES.md](docs/WORKFLOW-EXAMPLES.md): copy-paste examples for common OpenClaw and PowerShell workflows.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): code map and runtime flow.
 - [docs/CLI.md](docs/CLI.md): direct command-line mode without an MCP client.
@@ -160,6 +165,15 @@ cd C:\Users\<you>\Documents\vortex-skyrimse-mcp
 
 The installer prints an MCP config snippet.
 
+If OpenClaw runs inside WSL2, use the WSL installer instead:
+
+```bash
+cd /mnt/c/Users/<you>/Documents/vortex-skyrimse-mcp
+bash install_wsl.sh
+```
+
+See [docs/WSL-OPENCLAW.md](docs/WSL-OPENCLAW.md) for the exact WSL/OpenClaw config.
+
 ## MCP Doctor
 
 For a no-hassle check, run:
@@ -208,6 +222,12 @@ Generic stdio MCP config:
 
 Restart OpenClaw after adding the server.
 
+For OpenClaw running inside WSL2, use [openclaw.mcp.wsl.example.json](openclaw.mcp.wsl.example.json) or run:
+
+```bash
+bash install_wsl.sh
+```
+
 ## Direct CLI Mode
 
 You can run tools without OpenClaw:
@@ -215,6 +235,7 @@ You can run tools without OpenClaw:
 ```powershell
 py -3 .\server.py --tool detect_environment
 py -3 .\server.py --tool validate_setup
+py -3 .\server.py --tool wsl_bridge_report
 py -3 .\server.py --workflow-guide --problem "mods downloaded but not working"
 py -3 .\server.py --tool scan_cache_status
 py -3 .\server.py --tool xedit_diagnostics_report --form-id 0100ABCD

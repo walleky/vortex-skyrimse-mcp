@@ -17,6 +17,13 @@ py -3 .\server.py --tool validate_setup
 py -3 .\server.py --tool detect_environment
 ```
 
+When OpenClaw runs inside WSL2 and the game tools are Windows apps:
+
+```bash
+python3 server.py --wsl-bridge
+python3 server.py --tool validate_setup
+```
+
 Ask for the safest workflow from a plain problem:
 
 ```powershell

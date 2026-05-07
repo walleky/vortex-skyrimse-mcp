@@ -9,6 +9,7 @@ OpenClaw or MCP client
   -> stdio JSON-RPC
   -> server.py
       -> detect local Steam/Vortex/Skyrim paths
+      -> when running in WSL2, map Windows drive paths to /mnt/<drive>
       -> inspect staging folders, plugins, INIs, profiles, conflicts
       -> optionally recommend a safe workflow from a plain-language problem
       -> optionally inspect Skyrim/Papyrus/SKSE/crash runtime logs
@@ -30,6 +31,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - `server.py`: MCP server, direct CLI, tool implementations, logging, and stdio loop.
 - `server.py --tool ...`: direct CLI mode for no-MCP workflows.
 - `install_windows.ps1`: finds Python and prints a ready-to-copy MCP config snippet.
+- `install_wsl.sh`: finds WSL Python and prints a ready-to-copy OpenClaw config for WSL2.
 - `mcp_doctor.ps1`: runs self-tests, smoke tests, config generation, optional OpenClaw registration, and writes a doctor transcript log.
 - `MCP-Doctor.cmd`: double-click wrapper around `mcp_doctor.ps1`.
 - `make_mod_knowledge.ps1`: direct PowerShell wrapper for writing the Markdown collection knowledge report.
@@ -42,10 +44,12 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - `tests/run_all.py`: one-command local test runner used by humans and CI.
 - `tests/check_powershell.ps1`: parses PowerShell helpers and exercises the menu's noninteractive action list.
 - `openclaw.mcp.example.json`: static example config.
+- `openclaw.mcp.wsl.example.json`: static WSL2/OpenClaw example config.
 - `docs/SAFE-SESSION.md`: explains the one-call safe-session report flow.
 - `docs/SKYRIM-DIAGNOSTICS.md`: explains the broad one-button diagnostics report.
 - `docs/LAUNCH-DOCTOR.md`: explains the SKSE vs Steam/vanilla launch-route report.
 - `docs/SKSE-RUNTIME-DOCTOR.md`: explains Skyrim runtime/SKSE/Address Library compatibility checks.
+- `docs/WSL-OPENCLAW.md`: explains OpenClaw-in-WSL2 path bridging for Windows Vortex/Steam/Skyrim.
 - `docs/REVERSIBLE-AUTOMATION.md`: explains the safety gate for risky automation requests.
 - `docs/SKYRIM-RUNTIME-LOGS.md`: explains runtime log scanning and safe config patching.
 - `docs/TESTING.md`: explains local and CI test commands.
@@ -60,8 +64,9 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 
 ## server.py Code Map
 
-- constants and helpers: server identity, path expansion, logging helpers, text IO.
+- constants and helpers: server identity, WSL/Windows path expansion, logging helpers, text IO.
 - Steam/Vortex path detection: `find_steam_root`, `steam_libraries`, `find_skyrim_dir`, `default_vortex_appdata`, `find_vortex_exe`.
+- WSL bridge: `is_wsl_environment`, `windows_path_to_wsl_path`, `windows_env_map`, `wsl_bridge_status`, `wsl_bridge_report`.
 - Vortex CLI helpers: `run_vortex_cli`, `vortex_state_get`, `vortex_state_set`.
 - filesystem and mod inspection: `safe_walk`, `mod_summary`, `inventory_mods`, `analyze_conflicts`, `redundant_mod_report`, `mod_knowledge_report`.
 - scan cache: `scan_cache_status`, `mod_summary_cached`, `load_scan_cache`, `write_scan_cache`, `prune_scan_cache`; cache files are compact, bounded, and rewritten only after dirty/missed summaries.

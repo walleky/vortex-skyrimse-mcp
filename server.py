@@ -44,7 +44,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.35"
+SERVER_VERSION = "0.2.36"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -53,6 +53,8 @@ MAX_DEFAULT_TEXT_BYTES = 200_000
 MAX_DEFAULT_FILES = 40_000
 MAX_VORTEX_CLI_CHARS = 24_000
 LOG_ENV_VAR = "VORTEX_SKYRIMSE_MCP_LOG_DIR"
+WSL_MOUNT_ROOT_ENV_VAR = "VORTEX_SKYRIMSE_MCP_WSL_MOUNT_ROOT"
+WINDOWS_USERPROFILE_ENV_VAR = "VORTEX_SKYRIMSE_MCP_WINDOWS_USERPROFILE"
 LOG_TAIL_DEFAULT_BYTES = 80_000
 NEXUS_API_BASE = "https://api.nexusmods.com/v1"
 NEXUS_GRAPHQL_URL = "https://api.nexusmods.com/v2/graphql"
@@ -108,6 +110,9 @@ SENSITIVE_FIELD_NAMES = {
     "token",
     "authorization",
 }
+WINDOWS_DRIVE_RE = re.compile(r"^([A-Za-z]):[\\/]*(.*)$")
+WINDOWS_PERCENT_ENV_RE = re.compile(r"%([^%]+)%")
+_WINDOWS_ENV_CACHE: Optional[Dict[str, str]] = None
 
 
 class ToolError(Exception):
@@ -126,10 +131,196 @@ def iso_now() -> str:
     return _dt.datetime.now().isoformat(timespec="milliseconds")
 
 
+def is_wsl_environment() -> bool:
+    if os.name == "nt":
+        return False
+    if os.environ.get("WSL_DISTRO_NAME") or os.environ.get("WSL_INTEROP"):
+        return True
+    try:
+        version = Path("/proc/version").read_text(encoding="utf-8", errors="ignore").lower()
+    except OSError:
+        return False
+    return "microsoft" in version or "wsl" in version
+
+
+def wsl_mount_root() -> str:
+    raw = os.environ.get(WSL_MOUNT_ROOT_ENV_VAR, "/mnt").strip() or "/mnt"
+    return raw.rstrip("/") or "/mnt"
+
+
+def strip_windows_extended_prefix(value: str) -> str:
+    text = value.strip().strip('"')
+    if text.startswith("\\\\?\\"):
+        return text[4:]
+    return text
+
+
+def windows_drive_path_to_wsl_path(value: str, mount_root: Optional[str] = None) -> Optional[str]:
+    text = strip_windows_extended_prefix(str(value))
+    match = WINDOWS_DRIVE_RE.match(text)
+    if not match:
+        return None
+    drive = match.group(1).lower()
+    tail = match.group(2).replace("\\", "/").lstrip("/")
+    root = (mount_root or wsl_mount_root()).rstrip("/") or "/mnt"
+    return f"{root}/{drive}/{tail}" if tail else f"{root}/{drive}"
+
+
+def windows_path_to_wsl_path(value: str, mount_root: Optional[str] = None) -> str:
+    converted = windows_drive_path_to_wsl_path(value, mount_root)
+    if converted:
+        return converted
+    return str(value)
+
+
+def decode_process_bytes(data: bytes) -> str:
+    if not data:
+        return ""
+    encodings = ("utf-8", "utf-16", "cp1252", "latin-1")
+    if b"\x00" in data[:200]:
+        encodings = ("utf-16", "utf-8", "cp1252", "latin-1")
+    for encoding in encodings:
+        try:
+            return data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("utf-8", errors="replace")
+
+
+def windows_interop_exe(name: str) -> Optional[str]:
+    found = shutil.which(name)
+    if found:
+        return found
+    if is_wsl_environment():
+        candidate = Path(wsl_mount_root()) / "c" / "Windows" / "System32" / name
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+def run_windows_interop(args: List[str], timeout_seconds: int = 4) -> Tuple[int, str, str]:
+    try:
+        proc = subprocess.run(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return 1, "", ""
+    return proc.returncode, decode_process_bytes(proc.stdout), decode_process_bytes(proc.stderr)
+
+
+def discover_wsl_windows_user_profile() -> Optional[str]:
+    explicit = os.environ.get(WINDOWS_USERPROFILE_ENV_VAR)
+    if explicit:
+        return explicit
+    users_root = Path(wsl_mount_root()) / "c" / "Users"
+    if not users_root.exists():
+        return None
+    candidates: List[Path] = []
+    linux_user = os.environ.get("USER")
+    if linux_user:
+        candidates.append(users_root / linux_user)
+    try:
+        for path in users_root.iterdir():
+            if not path.is_dir():
+                continue
+            if path.name.lower() in {"all users", "default", "default user", "public"}:
+                continue
+            candidates.append(path)
+    except OSError:
+        pass
+    seen: set[str] = set()
+    ordered: List[Path] = []
+    for path in candidates:
+        key = str(path).lower()
+        if key not in seen:
+            seen.add(key)
+            ordered.append(path)
+    for path in ordered:
+        if (path / "AppData" / "Roaming").exists() or (path / "Documents").exists():
+            return str(path)
+    return str(ordered[0]) if ordered else None
+
+
+def windows_registry_value(root_name: str, subkey: str, name: str) -> Optional[str]:
+    exe = windows_interop_exe("reg.exe")
+    if not exe:
+        return None
+    root = root_name.rstrip("\\")
+    key = f"{root}\\{subkey}"
+    code, stdout, _stderr = run_windows_interop([exe, "query", key, "/v", name], timeout_seconds=4)
+    if code != 0:
+        return None
+    pattern = re.compile(rf"^\s*{re.escape(name)}\s+REG_\w+\s+(.+?)\s*$", re.IGNORECASE)
+    for line in stdout.splitlines():
+        match = pattern.match(line)
+        if match:
+            return match.group(1).strip()
+    return None
+
+
+def windows_env_map() -> Dict[str, str]:
+    global _WINDOWS_ENV_CACHE
+    if _WINDOWS_ENV_CACHE is not None:
+        return _WINDOWS_ENV_CACHE
+
+    values: Dict[str, str] = {}
+    if os.name == "nt":
+        values.update({key.upper(): value for key, value in os.environ.items() if value})
+    elif is_wsl_environment():
+        exe = windows_interop_exe("cmd.exe")
+        if exe:
+            code, stdout, _stderr = run_windows_interop([exe, "/c", "set"], timeout_seconds=4)
+            if code == 0:
+                for line in stdout.splitlines():
+                    if "=" not in line or line.startswith("="):
+                        continue
+                    key, value = line.split("=", 1)
+                    if key and value:
+                        values[key.upper()] = value.strip()
+
+        user_profile = values.get("USERPROFILE") or discover_wsl_windows_user_profile()
+        if user_profile:
+            values.setdefault("USERPROFILE", user_profile)
+            profile_path = windows_path_to_wsl_path(user_profile) if WINDOWS_DRIVE_RE.match(strip_windows_extended_prefix(user_profile)) else user_profile
+            values.setdefault("APPDATA", str(Path(profile_path) / "AppData" / "Roaming"))
+            values.setdefault("LOCALAPPDATA", str(Path(profile_path) / "AppData" / "Local"))
+        values.setdefault("PROGRAMFILES", r"C:\Program Files")
+        values.setdefault("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
+        values.setdefault("PROGRAMDATA", r"C:\ProgramData")
+
+    _WINDOWS_ENV_CACHE = values
+    return values
+
+
+def windows_env_value(name: str) -> Optional[str]:
+    values = windows_env_map()
+    return values.get(name.upper()) or os.environ.get(name)
+
+
+def expand_windows_percent_vars(value: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        return windows_env_value(match.group(1)) or match.group(0)
+
+    return WINDOWS_PERCENT_ENV_RE.sub(replace, value)
+
+
+def platform_path_text(value: str) -> str:
+    expanded = os.path.expanduser(str(value))
+    expanded = os.path.expandvars(expanded)
+    expanded = expand_windows_percent_vars(expanded)
+    if is_wsl_environment():
+        expanded = windows_path_to_wsl_path(expanded)
+    return expanded
+
+
 def expand_path(value: Optional[str]) -> Optional[Path]:
     if not value:
         return None
-    return Path(os.path.expandvars(os.path.expanduser(value))).resolve()
+    return Path(platform_path_text(value)).resolve()
 
 
 def default_log_dir(override: Optional[str] = None) -> Path:
@@ -139,9 +330,9 @@ def default_log_dir(override: Optional[str] = None) -> Path:
     env_path = os.environ.get(LOG_ENV_VAR)
     if env_path:
         return expand_path(env_path) or Path(env_path)
-    base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+    base = default_local_appdata() or (expand_path(windows_env_value("APPDATA")) if windows_env_value("APPDATA") else None)
     if base:
-        return (Path(base) / SERVER_NAME / "logs").resolve()
+        return (base / SERVER_NAME / "logs").resolve()
     return (Path.home() / f".{SERVER_NAME}" / "logs").resolve()
 
 
@@ -259,9 +450,9 @@ def log_channel_from_name(name: str) -> str:
 
 def redaction_replacements() -> List[Tuple[str, str]]:
     raw_pairs = [
-        (os.environ.get("USERPROFILE"), "%USERPROFILE%"),
-        (os.environ.get("LOCALAPPDATA"), "%LOCALAPPDATA%"),
-        (os.environ.get("APPDATA"), "%APPDATA%"),
+        (windows_env_value("USERPROFILE"), "%USERPROFILE%"),
+        (windows_env_value("LOCALAPPDATA"), "%LOCALAPPDATA%"),
+        (windows_env_value("APPDATA"), "%APPDATA%"),
         (str(Path.home()), "%USERPROFILE%"),
         (os.environ.get(NEXUS_API_KEY_ENV_VAR), "%NEXUS_MODS_API_KEY%"),
     ]
@@ -270,7 +461,15 @@ def redaction_replacements() -> List[Tuple[str, str]]:
     for raw, replacement in raw_pairs:
         if not raw:
             continue
-        variants = {raw, raw.replace("/", "\\"), raw.replace("\\", "/"), raw.replace("\\", "\\\\")}
+        translated = windows_path_to_wsl_path(raw)
+        variants = {
+            raw,
+            translated,
+            raw.replace("/", "\\"),
+            raw.replace("\\", "/"),
+            raw.replace("\\", "\\\\"),
+            translated.replace("/", "\\"),
+        }
         for variant in variants:
             key = variant.lower()
             if len(variant) < 4 or key in seen:
@@ -424,6 +623,16 @@ def find_steam_root() -> Optional[Path]:
             ]
             if value
         )
+    elif is_wsl_environment():
+        candidates.extend(
+            value
+            for value in [
+                windows_registry_value("HKCU", r"Software\Valve\Steam", "SteamPath"),
+                windows_registry_value("HKCU", r"Software\Valve\Steam", "SteamExe"),
+                windows_registry_value("HKLM", r"SOFTWARE\WOW6432Node\Valve\Steam", "InstallPath"),
+            ]
+            if value
+        )
     candidates.extend(
         [
             r"C:\Program Files (x86)\Steam",
@@ -432,7 +641,9 @@ def find_steam_root() -> Optional[Path]:
     )
 
     for candidate in candidates:
-        path = Path(candidate)
+        path = expand_path(candidate)
+        if not path:
+            continue
         if path.name.lower() == "steam.exe":
             path = path.parent
         if (path / "steamapps").exists():
@@ -454,7 +665,9 @@ def steam_libraries(steam_root: Optional[Path]) -> List[Path]:
         text = read_text(library_file)
         for match in re.finditer(r'"path"\s+"([^"]+)"', text, flags=re.IGNORECASE):
             raw = match.group(1).replace(r"\\", "\\")
-            path = Path(raw)
+            path = expand_path(raw)
+            if not path:
+                continue
             if (path / "steamapps").exists():
                 libs.append(path.resolve())
     seen: set[str] = set()
@@ -478,8 +691,8 @@ def find_skyrim_dir(override: Optional[str] = None) -> Optional[Path]:
         "Installed Path",
     ) if winreg else None
     if reg:
-        path = Path(reg)
-        if (path / "SkyrimSE.exe").exists():
+        path = expand_path(reg)
+        if path and (path / "SkyrimSE.exe").exists():
             return path.resolve()
 
     steam_root = find_steam_root()
@@ -492,12 +705,24 @@ def find_skyrim_dir(override: Optional[str] = None) -> Optional[Path]:
         if (game_dir / "SkyrimSE.exe").exists():
             return game_dir.resolve()
 
+    if not reg and is_wsl_environment():
+        reg = windows_registry_value(
+            "HKLM",
+            r"Software\WOW6432Node\Bethesda Softworks\Skyrim Special Edition",
+            "Installed Path",
+        )
+        if reg:
+            path = expand_path(reg)
+            if path and (path / "SkyrimSE.exe").exists():
+                return path.resolve()
+
     for candidate in [
-        Path(r"C:\Program Files (x86)\Steam\steamapps\common\Skyrim Special Edition"),
-        Path(r"C:\Program Files\Steam\steamapps\common\Skyrim Special Edition"),
+        r"C:\Program Files (x86)\Steam\steamapps\common\Skyrim Special Edition",
+        r"C:\Program Files\Steam\steamapps\common\Skyrim Special Edition",
     ]:
-        if (candidate / "SkyrimSE.exe").exists():
-            return candidate.resolve()
+        path = expand_path(candidate)
+        if path and (path / "SkyrimSE.exe").exists():
+            return path.resolve()
     return None
 
 
@@ -505,15 +730,22 @@ def default_vortex_appdata(override: Optional[str] = None) -> Optional[Path]:
     override_path = expand_path(override)
     if override_path:
         return override_path
-    appdata = os.environ.get("APPDATA")
+    appdata = windows_env_value("APPDATA")
     if appdata:
-        return (Path(appdata) / "Vortex").resolve()
+        appdata_path = expand_path(appdata)
+        if appdata_path:
+            return (appdata_path / "Vortex").resolve()
+    user_profile = windows_env_value("USERPROFILE")
+    if user_profile:
+        profile_path = expand_path(user_profile)
+        if profile_path:
+            return (profile_path / "AppData" / "Roaming" / "Vortex").resolve()
     return None
 
 
 def default_local_appdata() -> Optional[Path]:
-    value = os.environ.get("LOCALAPPDATA")
-    return Path(value).resolve() if value else None
+    value = windows_env_value("LOCALAPPDATA")
+    return expand_path(value) if value else None
 
 
 def find_vortex_exe(override: Optional[str] = None) -> Optional[Path]:
@@ -541,9 +773,11 @@ def find_vortex_exe(override: Optional[str] = None) -> Optional[Path]:
                 pass
 
     for env_name in ("ProgramFiles", "ProgramFiles(x86)"):
-        env_path = os.environ.get(env_name)
+        env_path = windows_env_value(env_name)
         if env_path:
-            candidates.append(Path(env_path) / "Vortex" / "Vortex.exe")
+            env_root = expand_path(env_path)
+            if env_root:
+                candidates.append(env_root / "Vortex" / "Vortex.exe")
 
     seen: set[str] = set()
     for candidate in candidates:
@@ -753,19 +987,27 @@ def batched_state_changes(changes: List[Dict[str, Any]], max_chars: int = MAX_VO
 
 
 def is_vortex_process_running() -> bool:
-    if os.name != "nt":
-        return False
-    try:
-        proc = subprocess.run(
-            ["tasklist", "/FI", "IMAGENAME eq Vortex.exe", "/NH"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
+    if os.name == "nt":
+        try:
+            proc = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq Vortex.exe", "/NH"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        output = (proc.stdout or "").lower()
+    else:
+        tasklist = windows_interop_exe("tasklist.exe")
+        if not tasklist:
+            return False
+        _code, stdout, _stderr = run_windows_interop(
+            [tasklist, "/FI", "IMAGENAME eq Vortex.exe", "/NH"],
+            timeout_seconds=10,
         )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    output = (proc.stdout or "").lower()
+        output = stdout.lower()
     return "vortex.exe" in output and "no tasks" not in output
 
 
@@ -895,7 +1137,9 @@ def address_library_runtime_from_name(path: Path) -> Optional[str]:
 
 
 def default_documents() -> Optional[Path]:
-    home = Path.home()
+    user_profile = windows_env_value("USERPROFILE")
+    profile = expand_path(user_profile) if user_profile else None
+    home = profile or Path.home()
     candidates = [
         home / "Documents",
         home / "OneDrive" / "Documents",
@@ -921,9 +1165,9 @@ def local_support_cache_dir(env_var: str, folder: str, override: Optional[str] =
     env_path = os.environ.get(env_var)
     if env_path:
         return expand_path(env_path) or Path(env_path)
-    base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+    base = default_local_appdata() or (expand_path(windows_env_value("APPDATA")) if windows_env_value("APPDATA") else None)
     if base:
-        return (Path(base) / SERVER_NAME / folder).resolve()
+        return (base / SERVER_NAME / folder).resolve()
     return (Path.home() / f".{SERVER_NAME}" / folder).resolve()
 
 
@@ -1758,6 +2002,74 @@ def plugin_state_paths(local_appdata: Optional[Path] = None) -> Dict[str, Option
     }
 
 
+def path_status_from_raw(value: Optional[str]) -> Dict[str, Any]:
+    path = expand_path(value) if value else None
+    return {
+        "raw": value,
+        "resolved": str(path) if path else None,
+        "exists": bool(path and path.exists()),
+    }
+
+
+def wsl_bridge_status() -> Dict[str, Any]:
+    detected = is_wsl_environment()
+    standard_paths = {
+        "USERPROFILE": path_status_from_raw(windows_env_value("USERPROFILE")),
+        "APPDATA": path_status_from_raw(windows_env_value("APPDATA")),
+        "LOCALAPPDATA": path_status_from_raw(windows_env_value("LOCALAPPDATA")),
+        "ProgramFiles": path_status_from_raw(windows_env_value("ProgramFiles")),
+        "ProgramFiles(x86)": path_status_from_raw(windows_env_value("ProgramFiles(x86)")),
+    }
+    interop = {
+        "cmd.exe": windows_interop_exe("cmd.exe") if detected else None,
+        "reg.exe": windows_interop_exe("reg.exe") if detected else None,
+        "tasklist.exe": windows_interop_exe("tasklist.exe") if detected else None,
+    }
+    return {
+        "detected": detected,
+        "platform": sys.platform,
+        "distroName": os.environ.get("WSL_DISTRO_NAME"),
+        "mountRoot": wsl_mount_root() if detected else None,
+        "windowsInterop": interop,
+        "windowsUserProfileOverrideEnv": WINDOWS_USERPROFILE_ENV_VAR,
+        "mountRootOverrideEnv": WSL_MOUNT_ROOT_ENV_VAR,
+        "standardWindowsPaths": standard_paths,
+        "pathExamples": {
+            r"C:\Users\<you>\Documents": windows_path_to_wsl_path(r"C:\Users\<you>\Documents"),
+            r"D:\SteamLibrary": windows_path_to_wsl_path(r"D:\SteamLibrary"),
+        },
+    }
+
+
+def wsl_bridge_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    env = detect_environment(args)
+    status = env.get("wsl", wsl_bridge_status())
+    return {
+        "summary": {
+            "wslDetected": bool(status.get("detected")),
+            "canUseWindowsInterop": any(status.get("windowsInterop", {}).values()) if isinstance(status.get("windowsInterop"), dict) else False,
+            "skyrimDetected": bool(env.get("skyrim_dir")),
+            "vortexDetected": bool(env.get("vortex_exe")),
+            "vortexAppDataDetected": bool(env.get("vortex_appdata")),
+        },
+        "wsl": status,
+        "detectedEnvironment": env,
+        "openClawConfigHint": {
+            "command": "python3",
+            "args": ["/mnt/c/Users/<you>/Documents/vortex-skyrimse-mcp/server.py"],
+            "env": {
+                WSL_MOUNT_ROOT_ENV_VAR: "/mnt",
+                WINDOWS_USERPROFILE_ENV_VAR: "/mnt/c/Users/<you>",
+            },
+        },
+        "notes": [
+            "Use this report when OpenClaw runs inside WSL2 but Vortex, Steam, and Skyrim SE are Windows apps.",
+            "Windows paths like C:\\Users\\you are resolved to WSL mount paths like /mnt/c/Users/you.",
+            "Profile tools that call Vortex.exe need Windows interop enabled in WSL; read-only file scans only need the Windows drive mounted.",
+        ],
+    }
+
+
 def detect_environment(args: Dict[str, Any]) -> Dict[str, Any]:
     vortex_appdata = default_vortex_appdata(args.get("vortex_appdata"))
     vortex_exe = find_vortex_exe(args.get("vortex_exe"))
@@ -1766,7 +2078,20 @@ def detect_environment(args: Dict[str, Any]) -> Dict[str, Any]:
     local_appdata = expand_path(args.get("local_appdata")) or default_local_appdata()
     my_games = default_my_games_dir(args.get("my_games_dir"))
     steam_root = find_steam_root()
+    wsl = wsl_bridge_status()
     issues: List[str] = []
+
+    if wsl["detected"]:
+        user_profile = wsl.get("standardWindowsPaths", {}).get("USERPROFILE", {}) if isinstance(wsl.get("standardWindowsPaths"), dict) else {}
+        if not user_profile.get("resolved"):
+            issues.append(
+                f"WSL2 was detected but the Windows user profile could not be mapped. Set {WINDOWS_USERPROFILE_ENV_VAR}=/mnt/c/Users/<you> or pass explicit paths."
+            )
+        interop = wsl.get("windowsInterop", {})
+        if isinstance(interop, dict) and not interop.get("cmd.exe"):
+            issues.append(
+                "WSL2 Windows interop was not found. Read-only scans can still work from /mnt/c, but Vortex profile tools need cmd.exe/Vortex.exe interop."
+            )
 
     if not path_exists(skyrim_dir):
         issues.append("SkyrimSE.exe was not found. Run Skyrim SE once through Steam, or pass skyrim_dir.")
@@ -1791,6 +2116,7 @@ def detect_environment(args: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "platform": sys.platform,
+        "wsl": wsl,
         "steam_root": str(steam_root) if steam_root else None,
         "steam_libraries": [str(p) for p in steam_libraries(steam_root)],
         "vortex_exe": str(vortex_exe) if vortex_exe else None,
@@ -1820,6 +2146,7 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
     tool_groups = {
         "alwaysAvailable": [
             "detect_environment",
+            "wsl_bridge_report",
             "validate_setup",
             "workflow_guide",
             "inventory_mods",
@@ -11705,6 +12032,22 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         },
         detect_environment,
     ),
+    "wsl_bridge_report": (
+        "Explain whether OpenClaw running in WSL2 can see Windows Steam, Vortex, Skyrim SE, AppData, and profile tooling.",
+        {
+            "type": "object",
+            "properties": {
+                "vortex_appdata": {"type": "string"},
+                "vortex_exe": {"type": "string"},
+                "skyrim_dir": {"type": "string"},
+                "staging_dir": {"type": "string"},
+                "my_games_dir": {"type": "string"},
+                "local_appdata": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        wsl_bridge_report,
+    ),
     "validate_setup": (
         "One-shot setup check for OpenClaw: detected paths, blockers, available tool groups, and safe next steps.",
         {
@@ -13566,6 +13909,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--skse-doctor", action="store_true", help="Shortcut for --tool skse_runtime_doctor_report.")
     parser.add_argument("--automation-plan", action="store_true", help="Shortcut for --tool vortex_reversible_automation_plan.")
     parser.add_argument("--report-viewer", action="store_true", help="Shortcut for --tool report_viewer_index.")
+    parser.add_argument("--wsl-bridge", action="store_true", help="Shortcut for --tool wsl_bridge_report.")
     parser.add_argument("--runtime-logs", action="store_true", help="Shortcut for --tool skyrim_runtime_log_report.")
     parser.add_argument("--workflow-guide", action="store_true", help="Shortcut for --tool workflow_guide.")
     parser.add_argument("--issue-case", action="store_true", help="Shortcut for --tool skyrim_issue_case_packet.")
@@ -13729,6 +14073,8 @@ def cli_main(argv: List[str]) -> int:
         if parsed.automation_plan
         else "report_viewer_index"
         if parsed.report_viewer
+        else "wsl_bridge_report"
+        if parsed.wsl_bridge
         else "skyrim_runtime_log_report"
         if parsed.runtime_logs
         else "mod_knowledge_report"
@@ -13760,7 +14106,7 @@ def cli_main(argv: List[str]) -> int:
         else parsed.tool
     )
     if not tool_name:
-        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --deployment-doctor, --launch-doctor, --skse-doctor, --automation-plan, --report-viewer, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-evidence-report, --case-bundle, or --safe-profile-fix")
+        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --deployment-doctor, --launch-doctor, --skse-doctor, --automation-plan, --report-viewer, --wsl-bridge, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-evidence-report, --case-bundle, or --safe-profile-fix")
 
     try:
         tool_args = load_cli_tool_args(parsed)

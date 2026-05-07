@@ -10,6 +10,10 @@ def main() -> int:
     sys.path.insert(0, str(server.parent))
     import server as mcp_server  # type: ignore
 
+    assert mcp_server.windows_drive_path_to_wsl_path(r"C:\Users\Alice\Documents") == "/mnt/c/Users/Alice/Documents"
+    assert mcp_server.windows_drive_path_to_wsl_path("D:/SteamLibrary") == "/mnt/d/SteamLibrary"
+    assert mcp_server.windows_path_to_wsl_path("/mnt/c/Users/Alice") == "/mnt/c/Users/Alice"
+    assert mcp_server.windows_drive_path_to_wsl_path(r"\\?\C:\Games\Skyrim") == "/mnt/c/Games/Skyrim"
     assert mcp_server.state_path("persistent", "profiles", "profile.with.dot") == r"persistent.profiles.profile\.with\.dot"
     assert mcp_server.split_state_path(r"persistent.profiles.profile\.with\.dot") == [
         "persistent",
@@ -119,6 +123,7 @@ def main() -> int:
     listed_names = [tool["name"] for tool in listed_json["tools"]]
     listed_by_name = {tool["name"]: tool for tool in listed_json["tools"]}
     assert "detect_environment" in listed_names, listed_names
+    assert "wsl_bridge_report" in listed_names, listed_names
     assert "validate_setup" in listed_names, listed_names
     assert "workflow_guide" in listed_names, listed_names
     assert "mod_knowledge_report" in listed_names, listed_names
@@ -196,6 +201,17 @@ def main() -> int:
     )
     direct_json = json.loads(direct.stdout)
     assert "issues" in direct_json, direct_json
+    assert "wsl" in direct_json, direct_json
+
+    wsl_direct = subprocess.run(
+        [sys.executable, str(server), "--wsl-bridge"],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    wsl_json = json.loads(wsl_direct.stdout)
+    assert "wsl" in wsl_json, wsl_json
+    assert "openClawConfigHint" in wsl_json, wsl_json
 
     workflow_direct = subprocess.run(
         [sys.executable, str(server), "--workflow-guide", "--problem", "mods downloaded but not working"],
@@ -325,6 +341,7 @@ def main() -> int:
         if msg["id"] == 2:
             names = [tool["name"] for tool in data["result"]["tools"]]
             assert "detect_environment" in names, names
+            assert "wsl_bridge_report" in names, names
             assert "validate_setup" in names, names
             assert "workflow_guide" in names, names
             assert "analyze_conflicts" in names, names

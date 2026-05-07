@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "vortex-skyrimse": {
+      "command": "python3",
+      "args": [
+        "/mnt/c/Users/<you>/Documents/vortex-skyrimse-mcp/server.py"
+      ],
+      "env": {
+        "VORTEX_SKYRIMSE_MCP_WSL_MOUNT_ROOT": "/mnt",
+        "VORTEX_SKYRIMSE_MCP_WINDOWS_USERPROFILE": "/mnt/c/Users/<you>"
+      }
+    }
+  }
+}

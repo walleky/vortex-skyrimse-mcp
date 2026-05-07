@@ -50,6 +50,13 @@ Direct CLI:
 py -3 .\server.py --skyrim-diagnostics
 ```
 
+OpenClaw from WSL2 with Windows Vortex/Skyrim:
+
+```bash
+python3 server.py --wsl-bridge
+python3 server.py --tool validate_setup
+```
+
 Direct workflow guide:
 
 ```powershell
@@ -81,6 +88,7 @@ Use validate_setup, then detect_environment. Tell me whether Vortex, Skyrim SE, 
 What OpenClaw should call:
 
 ```text
+wsl_bridge_report if OpenClaw runs inside WSL2
 validate_setup
 detect_environment
 ```

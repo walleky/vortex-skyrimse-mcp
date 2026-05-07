@@ -15,6 +15,17 @@ cd vortex-skyrimse-mcp
 
 Copy the printed MCP config into OpenClaw, then restart OpenClaw.
 
+If OpenClaw runs inside WSL2 but Vortex/Steam/Skyrim are Windows apps:
+
+```bash
+cd /mnt/c/Users/<you>/Documents/vortex-skyrimse-mcp
+bash install_wsl.sh
+python3 server.py --wsl-bridge
+```
+
+Use the config printed by `install_wsl.sh`. More detail is in
+[docs/WSL-OPENCLAW.md](docs/WSL-OPENCLAW.md).
+
 ## No-Hassle Doctor
 
 For the easiest check, double-click:
@@ -96,6 +107,12 @@ Or start with only setup:
 
 ```text
 Use the vortex-skyrimse MCP to run validate_setup, then detect my Skyrim SE/Vortex environment and list the highest-risk problems. Do not apply changes.
+```
+
+If OpenClaw is inside WSL2:
+
+```text
+Use wsl_bridge_report, then validate_setup. Tell me whether OpenClaw can see Windows Vortex, Steam, Skyrim SE, staging, plugins.txt, and whether profile tools can call Vortex.exe. Do not apply changes.
 ```
 
 Then check whether Vortex's active profile is really deployed:
