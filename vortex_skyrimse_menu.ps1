@@ -5,6 +5,12 @@ param(
   [string]$StagingDir = "",
   [string]$SkyrimDir = "",
   [string]$VortexExe = "",
+  [string]$Mo2InstanceDir = "",
+  [string]$Mo2Profile = "",
+  [string]$Mo2ModsDir = "",
+  [string]$Mo2ProfilesDir = "",
+  [string]$Mo2OverwriteDir = "",
+  [string]$Mo2Exe = "",
   [string]$ProfileId = "",
   [string]$BackupPath = "",
   [string]$DeploymentBaselinePath = "",
@@ -125,6 +131,30 @@ function Get-CommonArgs {
   if ($VortexExe) {
     $args += "--vortex-exe"
     $args += $VortexExe
+  }
+  if ($Mo2InstanceDir) {
+    $args += "--mo2-instance-dir"
+    $args += $Mo2InstanceDir
+  }
+  if ($Mo2Profile) {
+    $args += "--mo2-profile"
+    $args += $Mo2Profile
+  }
+  if ($Mo2ModsDir) {
+    $args += "--mo2-mods-dir"
+    $args += $Mo2ModsDir
+  }
+  if ($Mo2ProfilesDir) {
+    $args += "--mo2-profiles-dir"
+    $args += $Mo2ProfilesDir
+  }
+  if ($Mo2OverwriteDir) {
+    $args += "--mo2-overwrite-dir"
+    $args += $Mo2OverwriteDir
+  }
+  if ($Mo2Exe) {
+    $args += "--mo2-exe"
+    $args += $Mo2Exe
   }
   if ($ProfileId) {
     $args += "--profile-id"
@@ -271,6 +301,7 @@ function Show-Actions {
   Write-Host "36. Report Viewer"
   Write-Host "37. Live Evidence Summary"
   Write-Host "38. Known Mod Rules"
+  Write-Host "39. MO2 Diagnostics"
   Write-Host "Q. Quit"
 }
 
@@ -1133,6 +1164,13 @@ function Invoke-MenuAction {
         Write-Host "Wrote cloned-profile fix preview." -ForegroundColor Green
         Write-Host "Preview only. Add -ApplyProfileFix after reviewing the result and closing Vortex." -ForegroundColor Green
       }
+      return
+    }
+    { $_ -in @("39", "mo2", "mo2-diagnostics", "mod-organizer", "mod-organizer-2") } {
+      $out = Join-Path $script:ReportDir "mo2-diagnostics-$stamp.json"
+      Invoke-Server (@("--mo2-diagnostics", "--output-json", $out) + $common)
+      Write-Host "Wrote MO2 diagnostics: $out" -ForegroundColor Green
+      Write-Host "This action is read-only. For MO2, launch SKSE from MO2's Run dropdown so virtual mods appear in game." -ForegroundColor Green
       return
     }
     { $_ -in @("q", "quit", "exit") } {

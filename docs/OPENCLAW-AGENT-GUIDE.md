@@ -9,6 +9,12 @@ start with `wsl_bridge_report`. It explains whether Windows paths are mapped
 through `/mnt/c`, whether the Windows user profile was found, and whether
 Windows interop is available for `Vortex.exe` profile calls.
 
+If the user says they use Mod Organizer 2, do not use Vortex deployment logic.
+MO2 profiles are virtual through `usvfs`; enabled mod files are visible only to
+programs launched through MO2. Start with `mo2_modded_play_report`, then drill
+into `mo2_profile_report`, `mo2_inventory_mods`, `mo2_plugin_report`, or
+`mo2_file_conflict_report`.
+
 ## Default Posture
 
 Start read-only. Do not apply INI fixes or Vortex profile writes unless the user explicitly asks you to apply changes.
@@ -77,6 +83,38 @@ If `wsl_bridge_report` cannot map the Windows profile, ask the user to set
 `VORTEX_SKYRIMSE_MCP_WINDOWS_USERPROFILE=/mnt/c/Users/<you>` in the MCP config
 or pass explicit `skyrim_dir`, `vortex_appdata`, `local_appdata`, and
 `staging_dir` paths.
+
+For a Mod Organizer 2 first pass:
+
+```text
+mo2_modded_play_report
+```
+
+Read `summary`, `findings`, `sections.mo2Profile`, `sections.mo2Plugins`, and
+`sections.skseRuntime`. If the report cannot find the instance, ask for
+`mo2_instance_dir` and `mo2_profile`. For WSL2, Windows paths usually look like
+`/mnt/c/Users/<you>/AppData/Local/ModOrganizer/Skyrim Special Edition`.
+
+For MO2 "mods not working":
+
+```text
+mo2_profile_report
+mo2_plugin_report
+skse_runtime_doctor_report
+```
+
+Explain that the user should launch `skse64_loader.exe` from MO2's Run dropdown.
+Do not tell them to deploy MO2 mods into Skyrim `Data`.
+
+For MO2 xEdit investigations:
+
+```text
+xedit_inspection_script
+xedit_inspection_result_report
+```
+
+Tell the user to run SSEEdit/xEdit from MO2 so xEdit sees the same virtual Data
+folder as Skyrim.
 
 When the user's request is vague and you need routing help:
 

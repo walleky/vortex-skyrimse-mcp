@@ -128,6 +128,12 @@ def main() -> int:
     assert "workflow_guide" in listed_names, listed_names
     assert "mod_knowledge_report" in listed_names, listed_names
     assert "known_mod_rule_report" in listed_names, listed_names
+    assert "mo2_detect_environment" in listed_names, listed_names
+    assert "mo2_profile_report" in listed_names, listed_names
+    assert "mo2_inventory_mods" in listed_names, listed_names
+    assert "mo2_plugin_report" in listed_names, listed_names
+    assert "mo2_file_conflict_report" in listed_names, listed_names
+    assert "mo2_modded_play_report" in listed_names, listed_names
     assert "in_game_issue_report" in listed_names, listed_names
     assert "skyrim_runtime_log_report" in listed_names, listed_names
     assert "config_file_report" in listed_names, listed_names
@@ -194,6 +200,8 @@ def main() -> int:
     assert "max_file_bytes" in listed_by_name["skyrim_case_bundle"]["inputSchema"]["properties"], listed_by_name
     assert "include_collection_report" in listed_by_name["bug_report_bundle"]["inputSchema"]["properties"], listed_by_name
     assert "workflow_key" in listed_by_name["workflow_guide"]["inputSchema"]["properties"], listed_by_name
+    assert "mo2_instance_dir" in listed_by_name["mo2_modded_play_report"]["inputSchema"]["properties"], listed_by_name
+    assert "include_disabled_mods" in listed_by_name["mo2_inventory_mods"]["inputSchema"]["properties"], listed_by_name
 
     direct = subprocess.run(
         [sys.executable, str(server), "--tool", "detect_environment"],
@@ -214,6 +222,16 @@ def main() -> int:
     wsl_json = json.loads(wsl_direct.stdout)
     assert "wsl" in wsl_json, wsl_json
     assert "openClawConfigHint" in wsl_json, wsl_json
+
+    mo2_direct = subprocess.run(
+        [sys.executable, str(server), "--mo2-diagnostics"],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    mo2_json = json.loads(mo2_direct.stdout)
+    assert mo2_json["summary"]["manager"] == "mo2", mo2_json
+    assert "mo2Environment" in mo2_json["sections"], mo2_json
 
     workflow_direct = subprocess.run(
         [sys.executable, str(server), "--workflow-guide", "--problem", "mods downloaded but not working"],
@@ -347,6 +365,12 @@ def main() -> int:
             assert "validate_setup" in names, names
             assert "workflow_guide" in names, names
             assert "known_mod_rule_report" in names, names
+            assert "mo2_detect_environment" in names, names
+            assert "mo2_profile_report" in names, names
+            assert "mo2_inventory_mods" in names, names
+            assert "mo2_plugin_report" in names, names
+            assert "mo2_file_conflict_report" in names, names
+            assert "mo2_modded_play_report" in names, names
             assert "analyze_conflicts" in names, names
             assert "in_game_issue_report" in names, names
             assert "skyrim_runtime_log_report" in names, names

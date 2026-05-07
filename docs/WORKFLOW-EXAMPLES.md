@@ -57,6 +57,12 @@ python3 server.py --wsl-bridge
 python3 server.py --tool validate_setup
 ```
 
+Mod Organizer 2:
+
+```powershell
+py -3 .\server.py --mo2-diagnostics
+```
+
 Direct workflow guide:
 
 ```powershell
@@ -159,6 +165,42 @@ fix something first:
 ```text
 Use skyrim_launch_doctor_report. Tell me the recommended launch route and do not launch or change anything.
 ```
+
+## Workflow 2B: MO2 Mods Not Working
+
+Use this when the user uses Mod Organizer 2 and Skyrim looks vanilla, plugins
+are missing, or SKSE is not seeing mods.
+
+Ask OpenClaw:
+
+```text
+Use mo2_modded_play_report. Tell me whether the selected MO2 profile, enabled mods, plugins, missing masters, and SKSE route look ready. Do not apply changes.
+```
+
+What OpenClaw should call:
+
+```text
+mo2_modded_play_report
+mo2_profile_report if the selected profile looks wrong
+mo2_plugin_report if plugins or missing masters are involved
+mo2_file_conflict_report if loose-file winners matter
+skse_runtime_doctor_report if SKSE or Address Library is involved
+```
+
+What to look for:
+
+- selected MO2 profile name
+- enabled mod folders missing from the `mods` directory
+- enabled plugins missing from the virtual plugin view
+- missing masters
+- SKSE runtime mismatch
+- known-rule findings such as FNIS + Pandora
+
+Human next step:
+
+In MO2, select the intended profile and launch `skse64_loader.exe` from MO2's
+Run dropdown. Do not copy MO2 mods into Skyrim `Data`. If xEdit evidence is
+needed, launch xEdit from MO2 too.
 
 ## Workflow 3: Weird Object In Game
 

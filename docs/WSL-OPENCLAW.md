@@ -1,7 +1,8 @@
 # OpenClaw From WSL2
 
 Use this when OpenClaw runs inside WSL2 but Vortex, Steam, and Skyrim Special
-Edition are installed as normal Windows apps.
+Edition are installed as normal Windows apps. The same path bridge also works
+for read-only Mod Organizer 2 profile scans.
 
 ## Short Version
 
@@ -69,6 +70,8 @@ This affects:
 - Windows Documents/My Games detection.
 - Vortex.exe discovery.
 - Vortex process checks through `tasklist.exe` when Windows interop is enabled.
+- MO2 instance/profile folders under Windows LocalAppData when using
+  `mo2_*` tools.
 
 ## What Needs Windows Interop
 
@@ -89,6 +92,8 @@ interop is enabled:
 - profile sections inside broader reports
 
 The rest of the file/log/mod diagnostics can still work if `/mnt/c` is mounted.
+MO2 read-only tools also only need the Windows drive mounted, unless you are
+launching MO2 itself outside the MCP.
 
 ## If Detection Misses Your Windows User
 
@@ -132,4 +137,10 @@ Then:
 
 ```text
 Use skyrim_diagnostics_report with performance_mode=slow_model. Summarize the top findings and next actions. Do not apply changes.
+```
+
+For MO2 from WSL2:
+
+```text
+Use mo2_modded_play_report with mo2_instance_dir "/mnt/c/Users/<you>/AppData/Local/ModOrganizer/Skyrim Special Edition". Tell me whether the selected profile, plugins, missing masters, and SKSE route look ready. Do not apply changes.
 ```

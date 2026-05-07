@@ -45,7 +45,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.37"
+SERVER_VERSION = "0.2.38"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -56,6 +56,12 @@ MAX_VORTEX_CLI_CHARS = 24_000
 LOG_ENV_VAR = "VORTEX_SKYRIMSE_MCP_LOG_DIR"
 WSL_MOUNT_ROOT_ENV_VAR = "VORTEX_SKYRIMSE_MCP_WSL_MOUNT_ROOT"
 WINDOWS_USERPROFILE_ENV_VAR = "VORTEX_SKYRIMSE_MCP_WINDOWS_USERPROFILE"
+MO2_INSTANCE_ENV_VAR = "VORTEX_SKYRIMSE_MCP_MO2_INSTANCE_DIR"
+MO2_PROFILE_ENV_VAR = "VORTEX_SKYRIMSE_MCP_MO2_PROFILE"
+MO2_MODS_DIR_ENV_VAR = "VORTEX_SKYRIMSE_MCP_MO2_MODS_DIR"
+MO2_PROFILES_DIR_ENV_VAR = "VORTEX_SKYRIMSE_MCP_MO2_PROFILES_DIR"
+MO2_OVERWRITE_DIR_ENV_VAR = "VORTEX_SKYRIMSE_MCP_MO2_OVERWRITE_DIR"
+MO2_EXE_ENV_VAR = "VORTEX_SKYRIMSE_MCP_MO2_EXE"
 LOG_TAIL_DEFAULT_BYTES = 80_000
 NEXUS_API_BASE = "https://api.nexusmods.com/v1"
 NEXUS_GRAPHQL_URL = "https://api.nexusmods.com/v2/graphql"
@@ -67,6 +73,7 @@ SCAN_DEFAULT_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
 SCAN_CACHE_DEFAULT_MAX_ENTRIES = 10_000
 DEPLOYMENT_PROBE_DEFAULT_FILES_PER_MOD = 12
 XEDIT_EXE_NAMES = ("SSEEdit.exe", "xEdit.exe", "TES5Edit.exe")
+MO2_EXE_NAMES = ("ModOrganizer.exe", "ModOrganizer2.exe")
 SKSE_RUNTIME_BUILDS = {
     "1.6.1170": {"skseBuild": "2.2.6", "channel": "Steam Anniversary Edition", "current": True},
     "1.6.1179": {"skseBuild": "2.2.6", "channel": "GOG Anniversary Edition", "current": True},
@@ -2046,6 +2053,7 @@ def wsl_bridge_status() -> Dict[str, Any]:
 def wsl_bridge_report(args: Dict[str, Any]) -> Dict[str, Any]:
     env = detect_environment(args)
     status = env.get("wsl", wsl_bridge_status())
+    mo2_env = env.get("mo2") if isinstance(env.get("mo2"), dict) else {}
     return {
         "summary": {
             "wslDetected": bool(status.get("detected")),
@@ -2053,6 +2061,7 @@ def wsl_bridge_report(args: Dict[str, Any]) -> Dict[str, Any]:
             "skyrimDetected": bool(env.get("skyrim_dir")),
             "vortexDetected": bool(env.get("vortex_exe")),
             "vortexAppDataDetected": bool(env.get("vortex_appdata")),
+            "mo2Detected": bool(mo2_env.get("readyForReadOnlyProfileScan")),
         },
         "wsl": status,
         "detectedEnvironment": env,
@@ -2062,12 +2071,13 @@ def wsl_bridge_report(args: Dict[str, Any]) -> Dict[str, Any]:
             "env": {
                 WSL_MOUNT_ROOT_ENV_VAR: "/mnt",
                 WINDOWS_USERPROFILE_ENV_VAR: "/mnt/c/Users/<you>",
+                MO2_INSTANCE_ENV_VAR: "/mnt/c/Users/<you>/AppData/Local/ModOrganizer/Skyrim Special Edition",
             },
         },
         "notes": [
             "Use this report when OpenClaw runs inside WSL2 but Vortex, Steam, and Skyrim SE are Windows apps.",
             "Windows paths like C:\\Users\\you are resolved to WSL mount paths like /mnt/c/Users/you.",
-            "Profile tools that call Vortex.exe need Windows interop enabled in WSL; read-only file scans only need the Windows drive mounted.",
+            "Profile tools that call Vortex.exe need Windows interop enabled in WSL; MO2 read-only file scans only need the Windows drive mounted.",
         ],
     }
 
@@ -2115,6 +2125,10 @@ def detect_environment(args: Dict[str, Any]) -> Dict[str, Any]:
     if not paths["plugins_txt"]:
         issues.append("plugins.txt was not found. Launch Skyrim once, then let Vortex deploy plugins.")
     xedit_found = xedit_candidates(args)
+    try:
+        mo2_env = mo2_detect_environment(args)
+    except Exception as exc:
+        mo2_env = {"manager": "mo2", "error": str(exc), "issues": [str(exc)]}
 
     return {
         "platform": sys.platform,
@@ -2134,6 +2148,7 @@ def detect_environment(args: Dict[str, Any]) -> Dict[str, Any]:
         "plugin_state": paths,
         "nexus_api": nexus_config_status(args),
         "scan_cache": scan_cache_status(args),
+        "mo2": mo2_env,
         "xedit": {
             "available": bool(xedit_found),
             "exe": str(xedit_found[0]) if xedit_found else None,
@@ -2145,6 +2160,7 @@ def detect_environment(args: Dict[str, Any]) -> Dict[str, Any]:
 
 def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
     environment = detect_environment(args)
+    mo2_env = environment.get("mo2") if isinstance(environment.get("mo2"), dict) else {}
     tool_groups = {
         "alwaysAvailable": [
             "detect_environment",
@@ -2152,6 +2168,12 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "validate_setup",
             "workflow_guide",
             "inventory_mods",
+            "mo2_detect_environment",
+            "mo2_profile_report",
+            "mo2_inventory_mods",
+            "mo2_plugin_report",
+            "mo2_file_conflict_report",
+            "mo2_modded_play_report",
             "known_mod_rule_report",
             "analyze_conflicts",
             "redundant_mod_report",
@@ -2181,6 +2203,13 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "skyrim_case_inbox_import",
             "skyrim_case_bundle",
             "vortex_reversible_automation_plan",
+        ],
+        "mo2ProfileRequired": [
+            "mo2_profile_report",
+            "mo2_inventory_mods",
+            "mo2_plugin_report",
+            "mo2_file_conflict_report",
+            "mo2_modded_play_report",
         ],
         "nexusMetadataOptional": [
             "nexus_validate_key",
@@ -2218,27 +2247,36 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "vortex_profile_restore_plan",
         ],
     }
-    blockers = []
+    vortex_blockers = []
     if environment.get("vortex_exe") is None:
-        blockers.append("Vortex CLI tools need Vortex.exe. Pass vortex_exe if detection missed it.")
+        vortex_blockers.append("Vortex CLI tools need Vortex.exe. Pass vortex_exe if detection missed it.")
     if environment.get("skyrim_dir") is None:
-        blockers.append("Skyrim SE path was not detected. Pass skyrim_dir for plugin/deployment checks.")
+        vortex_blockers.append("Skyrim SE path was not detected. Pass skyrim_dir for plugin/deployment checks.")
     if environment.get("staging_dir") is None or not Path(str(environment.get("staging_dir"))).exists():
-        blockers.append("Vortex staging folder was not detected. Pass staging_dir for mod inventory/conflict reports.")
+        vortex_blockers.append("Vortex staging folder was not detected. Pass staging_dir for mod inventory/conflict reports.")
     if not environment.get("skse_installed"):
-        blockers.append("SKSE was not detected beside SkyrimSE.exe.")
+        vortex_blockers.append("SKSE was not detected beside SkyrimSE.exe.")
+    mo2_blockers = list(mo2_env.get("issues", [])) if isinstance(mo2_env.get("issues"), list) else []
+    mo2_ready = bool(mo2_env.get("readyForReadOnlyProfileScan")) and bool(environment.get("skyrim_dir") or mo2_env.get("skyrimDir"))
+    vortex_ready = len(vortex_blockers) == 0
+    blockers = [] if (vortex_ready or mo2_ready) else vortex_blockers
     return {
         "server": SERVER_NAME,
         "version": SERVER_VERSION,
         "environment": environment,
-        "ready": len(blockers) == 0,
+        "ready": vortex_ready or mo2_ready,
         "blockers": blockers,
+        "managerReadiness": {
+            "vortex": {"ready": vortex_ready, "blockers": vortex_blockers},
+            "mo2": {"ready": mo2_ready, "blockers": mo2_blockers},
+        },
         "toolGroups": tool_groups,
         "safetyDefaults": [
             "Profile writes are dry-run unless apply=true.",
             "Profile writes refuse to run while Vortex.exe is open unless allow_running_vortex=true.",
             "vortex_set_profile_mods, vortex_clone_profile, and vortex_safe_profile_fix write a profile backup before apply=true by default.",
             "Use vortex_profile_restore_plan with apply=false first to preview undo/restore actions.",
+            "MO2 tools added here are read-only and profile-aware; launch Skyrim/SKSE through MO2 for usvfs mods to appear.",
         ],
     }
 
@@ -2266,6 +2304,17 @@ def workflow_catalog() -> List[Dict[str, Any]]:
             "humanSteps": ["Select the intended Vortex profile.", "Click Deploy Mods in Vortex.", "Confirm plugins are enabled.", "Launch through SKSE when SKSE is part of the setup."],
             "directCli": ["py -3 .\\server.py --deployment-doctor", "py -3 .\\server.py --launch-doctor", "py -3 .\\server.py --skyrim-diagnostics --performance-mode slow_model"],
             "menuAction": "32. Deployment Doctor",
+        },
+        {
+            "key": "mo2_profile_diagnostics",
+            "title": "Mod Organizer 2 Profile Diagnostics",
+            "matchTerms": ["mo2", "mod organizer", "modorganizer", "usvfs", "virtual file system", "modlist.txt", "mo2 profile"],
+            "userPrompt": "Use mo2_modded_play_report, then mo2_profile_report and mo2_plugin_report if needed. Tell me whether the selected MO2 profile, enabled mods, plugins, SKSE, and missing masters look ready. Do not edit modlist.txt or plugins.txt.",
+            "tools": ["mo2_modded_play_report", "mo2_profile_report", "mo2_inventory_mods", "mo2_plugin_report", "mo2_file_conflict_report", "skse_runtime_doctor_report"],
+            "whatToRead": ["summary", "findings", "sections.mo2Profile.enabledMods", "sections.mo2Plugins.missingMasters", "sections.skseRuntime.summary"],
+            "humanSteps": ["Select the intended MO2 profile.", "Launch SKSE from MO2's Run dropdown so usvfs is active.", "Launch xEdit/SSEEdit through MO2 when inspecting records from that profile."],
+            "directCli": ["py -3 .\\server.py --mo2-diagnostics", "py -3 .\\server.py --tool mo2_plugin_report", "py -3 .\\server.py --tool mo2_file_conflict_report"],
+            "menuAction": "39. MO2 Diagnostics",
         },
         {
             "key": "known_mod_stack_rules",
@@ -3132,6 +3181,844 @@ def plugin_report(args: Dict[str, Any]) -> Dict[str, Any]:
         "missingEnabledPlugins": missing_enabled,
         "missingMasters": missing_masters,
         "pluginHeaders": plugin_details,
+    }
+
+
+def normalize_mo2_ini_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def read_mo2_ini(path: Optional[Path]) -> configparser.ConfigParser:
+    parser = configparser.ConfigParser(strict=False, interpolation=None)
+    if path and path.exists() and path.is_file():
+        try:
+            parser.read_string(read_text(path, 2_000_000))
+        except Exception:
+            pass
+    return parser
+
+
+def mo2_ini_value(parser: configparser.ConfigParser, names: Iterable[str]) -> Optional[str]:
+    normalized = {normalize_mo2_ini_key(name) for name in names}
+    for section in parser.sections():
+        try:
+            items = parser.items(section)
+        except configparser.Error:
+            continue
+        for key, value in items:
+            if normalize_mo2_ini_key(key) in normalized and str(value).strip():
+                return str(value).strip()
+    return None
+
+
+def clean_mo2_ini_value(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip().strip('"')
+    if not text:
+        return None
+    if text.lower().startswith("@bytearray(") and text.endswith(")"):
+        text = text[len("@ByteArray(") : -1].strip().strip('"')
+    return text or None
+
+
+def mo2_resolve_config_path(raw: Optional[str], instance_dir: Path, base_dir: Optional[Path] = None) -> Optional[Path]:
+    text = clean_mo2_ini_value(raw)
+    if not text:
+        return None
+    base = base_dir or instance_dir
+    text = re.sub(r"%BASE_DIR%", lambda _match: str(base), text, flags=re.IGNORECASE)
+    text = text.replace("/", "\\") if os.name == "nt" and WINDOWS_DRIVE_RE.match(text) else text
+    looks_absolute = bool(
+        WINDOWS_DRIVE_RE.match(strip_windows_extended_prefix(text))
+        or text.startswith(("/", "\\\\"))
+        or text.startswith("~")
+        or WINDOWS_PERCENT_ENV_RE.search(text)
+        or "$" in text
+    )
+    if looks_absolute:
+        return expand_path(text)
+    return (base / text).resolve()
+
+
+def unique_paths(paths: Iterable[Optional[Path]]) -> List[Path]:
+    seen: set[str] = set()
+    result: List[Path] = []
+    for path in paths:
+        if not path:
+            continue
+        try:
+            resolved = path.resolve()
+        except OSError:
+            resolved = path
+        key = str(resolved).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(resolved)
+    return result
+
+
+def mo2_exe_candidates(args: Dict[str, Any], instance_dir: Optional[Path] = None) -> List[Path]:
+    candidates: List[Optional[Path]] = []
+    explicit = expand_path(args.get("mo2_exe") or os.environ.get(MO2_EXE_ENV_VAR))
+    candidates.append(explicit)
+    if instance_dir:
+        candidates.extend(instance_dir / name for name in MO2_EXE_NAMES)
+
+    local = default_local_appdata()
+    if local:
+        candidates.extend(
+            [
+                local / "Programs" / "Mod Organizer 2" / "ModOrganizer.exe",
+                local / "Programs" / "ModOrganizer2" / "ModOrganizer.exe",
+                local / "ModOrganizer2" / "ModOrganizer.exe",
+                local / "Mod Organizer 2" / "ModOrganizer.exe",
+            ]
+        )
+        programs = local / "Programs"
+        if programs.exists():
+            for folder_name in ("Mod Organizer 2", "ModOrganizer2", "MO2"):
+                for exe_name in MO2_EXE_NAMES:
+                    candidates.append(programs / folder_name / exe_name)
+
+    for env_name in ("ProgramFiles", "ProgramFiles(x86)"):
+        env_path = windows_env_value(env_name)
+        if env_path:
+            root = expand_path(env_path)
+            if root:
+                for folder_name in ("Mod Organizer 2", "ModOrganizer2", "MO2"):
+                    for exe_name in MO2_EXE_NAMES:
+                        candidates.append(root / folder_name / exe_name)
+
+    docs = default_documents()
+    if docs:
+        for folder_name in ("Mod Organizer 2", "ModOrganizer2", "MO2"):
+            for exe_name in MO2_EXE_NAMES:
+                candidates.append(docs / folder_name / exe_name)
+
+    return unique_paths(candidates)
+
+
+def find_mo2_exe(args: Dict[str, Any], instance_dir: Optional[Path] = None) -> Optional[Path]:
+    for candidate in mo2_exe_candidates(args, instance_dir):
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    return None
+
+
+def mo2_instance_candidates(args: Dict[str, Any]) -> List[Path]:
+    candidates: List[Optional[Path]] = []
+    explicit = expand_path(args.get("mo2_instance_dir") or args.get("mo2_instance") or os.environ.get(MO2_INSTANCE_ENV_VAR))
+    candidates.append(explicit)
+
+    local = default_local_appdata()
+    appdata = expand_path(windows_env_value("APPDATA")) if windows_env_value("APPDATA") else None
+    roots = [local / "ModOrganizer" if local else None, appdata / "ModOrganizer" if appdata else None]
+    for root in roots:
+        if not root:
+            continue
+        candidates.append(root)
+        if root.exists():
+            try:
+                candidates.extend(path for path in root.iterdir() if path.is_dir())
+                instances = root / "instances"
+                if instances.exists():
+                    candidates.extend(path for path in instances.iterdir() if path.is_dir())
+            except OSError:
+                pass
+        for game_name in ("Skyrim Special Edition", "SkyrimSE", "Skyrim SE", "skyrimse"):
+            candidates.append(root / game_name)
+
+    exe = find_mo2_exe(args)
+    if exe:
+        candidates.append(exe.parent)
+
+    docs = default_documents()
+    if docs:
+        candidates.extend(
+            [
+                docs / "Mod Organizer 2",
+                docs / "ModOrganizer2",
+                docs / "MO2",
+                docs / "Mod Organizer 2" / "Skyrim Special Edition",
+            ]
+        )
+
+    return unique_paths(candidates)
+
+
+def mo2_instance_score(path: Path) -> int:
+    score = 0
+    ini_path = path / "ModOrganizer.ini"
+    mods = path / "mods"
+    profiles = path / "profiles"
+    if path.exists():
+        score += 2
+    if ini_path.exists():
+        score += 20
+    if mods.exists():
+        score += 8
+    if profiles.exists():
+        score += 8
+    if any((path / name).exists() for name in MO2_EXE_NAMES):
+        score += 4
+    if (path / "portable.txt").exists():
+        score += 4
+    lowered = path.name.lower()
+    if "skyrim" in lowered:
+        score += 10
+    parser = read_mo2_ini(ini_path)
+    game_name = mo2_ini_value(parser, ["gameName", "game_name", "managed_game"])
+    game_path = mo2_ini_value(parser, ["gamePath", "game_path", "managedGame", "managed_game", "gameDirectory"])
+    if game_name and "skyrim" in game_name.lower():
+        score += 25
+    if game_path and "skyrim" in game_path.lower():
+        score += 20
+    return score
+
+
+def find_mo2_instance_dir(args: Dict[str, Any]) -> Optional[Path]:
+    explicit = expand_path(args.get("mo2_instance_dir") or args.get("mo2_instance") or os.environ.get(MO2_INSTANCE_ENV_VAR))
+    if explicit:
+        return explicit
+    candidates = mo2_instance_candidates(args)
+    scored = [(mo2_instance_score(path), path) for path in candidates]
+    scored.sort(key=lambda item: (-item[0], str(item[1]).lower()))
+    for score, path in scored:
+        if score > 0 and ((path / "ModOrganizer.ini").exists() or (path / "mods").exists() or (path / "profiles").exists()):
+            return path
+    return scored[0][1] if scored else None
+
+
+def mo2_instance_paths(args: Dict[str, Any]) -> Dict[str, Any]:
+    instance_dir = find_mo2_instance_dir(args)
+    ini_path = instance_dir / "ModOrganizer.ini" if instance_dir else None
+    parser = read_mo2_ini(ini_path)
+    base_raw = mo2_ini_value(parser, ["base_directory", "baseDirectory", "baseDir", "base"])
+    base_dir = mo2_resolve_config_path(base_raw, instance_dir, instance_dir) if instance_dir else None
+    if not base_dir and instance_dir:
+        base_dir = instance_dir
+
+    def path_from_arg_env_ini(arg_name: str, env_name: str, ini_names: List[str], fallback_name: str) -> Optional[Path]:
+        override = expand_path(args.get(arg_name) or os.environ.get(env_name))
+        if override:
+            return override
+        if not instance_dir:
+            return None
+        raw = mo2_ini_value(parser, ini_names)
+        configured = mo2_resolve_config_path(raw, instance_dir, base_dir)
+        if configured:
+            return configured
+        return (base_dir or instance_dir) / fallback_name
+
+    mods_dir = path_from_arg_env_ini(
+        "mo2_mods_dir",
+        MO2_MODS_DIR_ENV_VAR,
+        ["mod_directory", "mods_directory", "modDirectory", "modsDirectory", "mods"],
+        "mods",
+    )
+    profiles_dir = path_from_arg_env_ini(
+        "mo2_profiles_dir",
+        MO2_PROFILES_DIR_ENV_VAR,
+        ["profiles_directory", "profile_directory", "profilesDirectory", "profileDirectory", "profiles"],
+        "profiles",
+    )
+    overwrite_dir = path_from_arg_env_ini(
+        "mo2_overwrite_dir",
+        MO2_OVERWRITE_DIR_ENV_VAR,
+        ["overwrite_directory", "overwriteDirectory", "overwrite"],
+        "overwrite",
+    )
+    downloads_dir = None
+    if instance_dir:
+        raw_downloads = mo2_ini_value(parser, ["download_directory", "downloads_directory", "downloadDirectory", "downloadsDirectory"])
+        downloads_dir = mo2_resolve_config_path(raw_downloads, instance_dir, base_dir) or (base_dir or instance_dir) / "downloads"
+    game_path = mo2_resolve_config_path(
+        mo2_ini_value(parser, ["gamePath", "game_path", "managedGame", "managed_game", "gameDirectory"]),
+        instance_dir,
+        base_dir,
+    ) if instance_dir else None
+    selected_profile = (
+        str(args.get("mo2_profile") or os.environ.get(MO2_PROFILE_ENV_VAR) or "").strip()
+        or clean_mo2_ini_value(mo2_ini_value(parser, ["selected_profile", "selectedProfile", "profile", "active_profile"]))
+    )
+    return {
+        "instance_dir": instance_dir,
+        "ini_path": ini_path,
+        "base_dir": base_dir,
+        "mods_dir": mods_dir,
+        "profiles_dir": profiles_dir,
+        "overwrite_dir": overwrite_dir,
+        "downloads_dir": downloads_dir,
+        "game_path": game_path,
+        "selected_profile": selected_profile,
+        "ini_exists": bool(ini_path and ini_path.exists()),
+    }
+
+
+def mo2_profile_dirs(profiles_dir: Optional[Path]) -> List[Path]:
+    if not profiles_dir or not profiles_dir.exists():
+        return []
+    try:
+        return sorted([path for path in profiles_dir.iterdir() if path.is_dir()], key=lambda path: path.name.lower())
+    except OSError:
+        return []
+
+
+def mo2_find_profile_dir(profiles_dir: Optional[Path], profile_name: Optional[str]) -> Optional[Path]:
+    profiles = mo2_profile_dirs(profiles_dir)
+    if not profiles:
+        return None
+    if profile_name:
+        direct = profiles_dir / profile_name if profiles_dir else None
+        if direct and direct.exists() and direct.is_dir():
+            return direct
+        lowered = profile_name.lower()
+        for path in profiles:
+            if path.name.lower() == lowered:
+                return path
+    return profiles[0]
+
+
+def parse_mo2_modlist(path: Optional[Path]) -> Dict[str, Any]:
+    if not path or not path.exists():
+        return {"path": str(path) if path else None, "exists": False, "entries": []}
+    entries: List[Dict[str, Any]] = []
+    for index, raw in enumerate(read_text(path, 2_000_000).splitlines()):
+        stripped = raw.strip()
+        if not stripped:
+            continue
+        marker = stripped[0] if stripped[0] in {"+", "-", "*", "#"} else ""
+        name = stripped[1:].strip() if marker else stripped
+        is_comment = marker == "#"
+        unmanaged = marker == "*"
+        enabled = marker in {"+", "*"} if marker else True
+        entries.append(
+            {
+                "index": index,
+                "priority": index,
+                "name": name,
+                "marker": marker,
+                "enabled": enabled and not is_comment,
+                "disabled": marker == "-",
+                "unmanaged": unmanaged,
+                "comment": is_comment,
+                "raw": raw,
+            }
+        )
+    enabled_count = sum(1 for entry in entries if entry["enabled"] and not entry["unmanaged"])
+    disabled_count = sum(1 for entry in entries if entry["disabled"])
+    unmanaged_count = sum(1 for entry in entries if entry["unmanaged"])
+    return {
+        "path": str(path),
+        "exists": True,
+        "entries": entries,
+        "enabledModCount": enabled_count,
+        "disabledModCount": disabled_count,
+        "unmanagedEntryCount": unmanaged_count,
+    }
+
+
+def mo2_mod_dir_lookup(mods_dir: Optional[Path]) -> Dict[str, Path]:
+    if not mods_dir or not mods_dir.exists():
+        return {}
+    try:
+        return {path.name.lower(): path for path in mods_dir.iterdir() if path.is_dir()}
+    except OSError:
+        return {}
+
+
+def mo2_profile_state(args: Dict[str, Any]) -> Dict[str, Any]:
+    paths = mo2_instance_paths(args)
+    profile_dir = mo2_find_profile_dir(paths["profiles_dir"], paths.get("selected_profile"))
+    modlist = parse_mo2_modlist(profile_dir / "modlist.txt" if profile_dir else None)
+    plugins_txt = parse_plugin_list(profile_dir / "plugins.txt" if profile_dir else None)
+    loadorder_txt = parse_plugin_list(profile_dir / "loadorder.txt" if profile_dir else None)
+    archives_txt = parse_plugin_list(profile_dir / "archives.txt" if profile_dir else None)
+    lookup = mo2_mod_dir_lookup(paths["mods_dir"])
+    enabled_mods = []
+    disabled_mods = []
+    missing_enabled_dirs = []
+    for entry in modlist.get("entries", []):
+        if not isinstance(entry, dict) or entry.get("comment") or entry.get("unmanaged"):
+            continue
+        name = str(entry.get("name") or "")
+        mod_dir = lookup.get(name.lower())
+        enriched = {**entry, "path": str(mod_dir) if mod_dir else None, "exists": bool(mod_dir)}
+        if entry.get("enabled"):
+            enabled_mods.append(enriched)
+            if not mod_dir:
+                missing_enabled_dirs.append(enriched)
+        elif entry.get("disabled"):
+            disabled_mods.append(enriched)
+    profile_dirs = mo2_profile_dirs(paths["profiles_dir"])
+    return {
+        "manager": "mo2",
+        "instanceDir": str(paths["instance_dir"]) if paths.get("instance_dir") else None,
+        "iniPath": str(paths["ini_path"]) if paths.get("ini_path") else None,
+        "iniExists": bool(paths.get("ini_exists")),
+        "baseDir": str(paths["base_dir"]) if paths.get("base_dir") else None,
+        "modsDir": str(paths["mods_dir"]) if paths.get("mods_dir") else None,
+        "profilesDir": str(paths["profiles_dir"]) if paths.get("profiles_dir") else None,
+        "overwriteDir": str(paths["overwrite_dir"]) if paths.get("overwrite_dir") else None,
+        "downloadsDir": str(paths["downloads_dir"]) if paths.get("downloads_dir") else None,
+        "gamePathFromIni": str(paths["game_path"]) if paths.get("game_path") else None,
+        "availableProfiles": [path.name for path in profile_dirs],
+        "selectedProfile": profile_dir.name if profile_dir else paths.get("selected_profile"),
+        "profileDir": str(profile_dir) if profile_dir else None,
+        "profileExists": bool(profile_dir and profile_dir.exists()),
+        "modlist": modlist,
+        "pluginsTxt": plugins_txt,
+        "loadorderTxt": loadorder_txt,
+        "archivesTxt": archives_txt,
+        "enabledMods": enabled_mods,
+        "disabledMods": disabled_mods,
+        "missingEnabledModDirs": missing_enabled_dirs,
+        "enabledModCount": len(enabled_mods),
+        "disabledModCount": len(disabled_mods),
+        "missingEnabledModDirCount": len(missing_enabled_dirs),
+    }
+
+
+def mo2_profile_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    report = mo2_profile_state(args)
+    report["notes"] = [
+        "MO2 profiles are virtual. Enabled mods are visible to Skyrim only when Skyrim/SKSE is launched through MO2.",
+        "modlist.txt controls which mod folders are enabled for this profile; plugins.txt controls enabled plugins.",
+        "This report is read-only and does not change the selected MO2 profile.",
+    ]
+    return report
+
+
+def mo2_detect_environment(args: Dict[str, Any]) -> Dict[str, Any]:
+    paths = mo2_instance_paths(args)
+    instance_dir = paths.get("instance_dir")
+    mo2_exe = find_mo2_exe(args, instance_dir if isinstance(instance_dir, Path) else None)
+    skyrim_dir = find_skyrim_dir(args.get("skyrim_dir")) or (paths.get("game_path") if isinstance(paths.get("game_path"), Path) else None)
+    issues: List[str] = []
+    if not instance_dir or not Path(instance_dir).exists():
+        issues.append(f"MO2 instance folder was not found. Pass mo2_instance_dir or set {MO2_INSTANCE_ENV_VAR}.")
+    if instance_dir and not paths.get("ini_exists"):
+        issues.append("ModOrganizer.ini was not found in the detected MO2 instance. This may still be a portable instance, but path detection is weaker.")
+    if not path_exists(paths.get("mods_dir")):
+        issues.append("MO2 mods folder was not found. Pass mo2_mods_dir if this instance uses a custom path.")
+    if not path_exists(paths.get("profiles_dir")):
+        issues.append("MO2 profiles folder was not found. Pass mo2_profiles_dir if this instance uses a custom path.")
+    profile = mo2_find_profile_dir(paths.get("profiles_dir"), paths.get("selected_profile"))
+    if not path_exists(profile):
+        issues.append("MO2 selected/default profile was not found. Pass mo2_profile.")
+    if not path_exists(mo2_exe):
+        issues.append("ModOrganizer.exe was not found. Read-only scans can still work, but launch instructions need MO2's executable.")
+    if not path_exists(skyrim_dir):
+        issues.append("SkyrimSE.exe was not found. Pass skyrim_dir or configure the MO2 instance game path.")
+    skse_loader = skyrim_dir / "skse64_loader.exe" if isinstance(skyrim_dir, Path) else None
+    return {
+        "manager": "mo2",
+        "platform": sys.platform,
+        "wsl": wsl_bridge_status(),
+        "mo2Exe": str(mo2_exe) if mo2_exe else None,
+        "mo2ExeCandidates": [str(path) for path in mo2_exe_candidates(args, instance_dir if isinstance(instance_dir, Path) else None)],
+        "instanceDir": str(instance_dir) if instance_dir else None,
+        "instanceCandidates": [str(path) for path in mo2_instance_candidates(args)],
+        "iniPath": str(paths["ini_path"]) if paths.get("ini_path") else None,
+        "iniExists": bool(paths.get("ini_exists")),
+        "baseDir": str(paths["base_dir"]) if paths.get("base_dir") else None,
+        "modsDir": str(paths["mods_dir"]) if paths.get("mods_dir") else None,
+        "profilesDir": str(paths["profiles_dir"]) if paths.get("profiles_dir") else None,
+        "overwriteDir": str(paths["overwrite_dir"]) if paths.get("overwrite_dir") else None,
+        "downloadsDir": str(paths["downloads_dir"]) if paths.get("downloads_dir") else None,
+        "selectedProfile": profile.name if profile else paths.get("selected_profile"),
+        "profileDir": str(profile) if profile else None,
+        "profileExists": bool(path_exists(profile)),
+        "skyrimDir": str(skyrim_dir) if skyrim_dir else None,
+        "skyrimData": str(skyrim_dir / "Data") if isinstance(skyrim_dir, Path) else None,
+        "skseLoader": str(skse_loader) if skse_loader else None,
+        "skseInstalled": bool(path_exists(skse_loader)),
+        "issues": issues,
+        "readyForReadOnlyProfileScan": bool(path_exists(paths.get("mods_dir")) and path_exists(paths.get("profiles_dir")) and path_exists(profile)),
+        "readyForModdedLaunch": bool(path_exists(mo2_exe) and path_exists(skyrim_dir) and path_exists(profile) and path_exists(skse_loader)),
+        "notes": [
+            "MO2 uses usvfs, so enabled mod files usually do not appear in Skyrim Data.",
+            "Launch Skyrim or SKSE from MO2's Run button/dropdown. Launching SkyrimSE.exe directly bypasses MO2 mods.",
+        ],
+    }
+
+
+def mo2_inventory_mods(args: Dict[str, Any]) -> Dict[str, Any]:
+    include_files = bool(args.get("include_files", False))
+    include_disabled = bool(args.get("include_disabled_mods", True))
+    max_mods = int(args.get("max_mods", 1000))
+    max_files_per_mod = int(args.get("max_files_per_mod", 5000))
+    profile = mo2_profile_state(args)
+    mods_dir = expand_path(profile.get("modsDir"))
+    if not mods_dir or not mods_dir.exists():
+        raise ToolError("MO2 mods folder was not found. Pass mo2_mods_dir or mo2_instance_dir.")
+
+    enabled_by_name = {str(item.get("name", "")).lower(): item for item in profile.get("enabledMods", []) if isinstance(item, dict)}
+    disabled_by_name = {str(item.get("name", "")).lower(): item for item in profile.get("disabledMods", []) if isinstance(item, dict)}
+    scan_cache = load_scan_cache(args) if scan_cache_enabled(args) else {}
+    try:
+        all_dirs = sorted([path for path in mods_dir.iterdir() if path.is_dir()], key=lambda path: path.name.lower())
+    except OSError:
+        all_dirs = []
+    if not include_disabled:
+        all_dirs = [path for path in all_dirs if path.name.lower() in enabled_by_name]
+    all_dirs = all_dirs[:max_mods]
+
+    mods = []
+    enabled_summaries = []
+    for mod_dir in all_dirs:
+        summary = mod_summary_cached(mod_dir, include_files=include_files, max_files=max_files_per_mod, args=args, cache=scan_cache)
+        enabled_entry = enabled_by_name.get(mod_dir.name.lower())
+        disabled_entry = disabled_by_name.get(mod_dir.name.lower())
+        profile_state = "enabled" if enabled_entry else "disabled" if disabled_entry else "not_in_selected_profile"
+        priority = (enabled_entry or disabled_entry or {}).get("priority")
+        summary["mo2ProfileState"] = {
+            "selectedProfile": profile.get("selectedProfile"),
+            "state": profile_state,
+            "enabled": bool(enabled_entry),
+            "priority": priority,
+        }
+        mods.append(summary)
+        if enabled_entry:
+            enabled_summaries.append(summary)
+    if scan_cache_enabled(args):
+        write_scan_cache(args, scan_cache)
+    known_rules = evaluate_known_mod_rules(enabled_summaries) if bool(args.get("include_known_rules", True)) else None
+    return {
+        "manager": "mo2",
+        "instanceDir": profile.get("instanceDir"),
+        "modsDir": profile.get("modsDir"),
+        "selectedProfile": profile.get("selectedProfile"),
+        "profileDir": profile.get("profileDir"),
+        "modCount": len(mods),
+        "enabledModCount": len(enabled_summaries),
+        "disabledModCount": profile.get("disabledModCount"),
+        "missingEnabledModDirCount": profile.get("missingEnabledModDirCount"),
+        "missingEnabledModDirs": profile.get("missingEnabledModDirs", [])[:50],
+        "includeDisabledMods": include_disabled,
+        "mods": mods,
+        "knownRules": known_rules,
+        "scanCache": scan_cache_status(args) if bool(args.get("include_scan_cache_status", False)) else None,
+        "notes": [
+            "Known-rule findings are evaluated against enabled MO2 profile mods only.",
+            "MO2 does not deploy this profile to Skyrim Data; it overlays enabled mods at launch through usvfs.",
+        ],
+    }
+
+
+def plugin_file_is_data_root(relative_path: str) -> bool:
+    normalized = relative_path.replace("\\", "/")
+    return "/" not in normalized and Path(normalized).suffix.lower() in {".esp", ".esm", ".esl"}
+
+
+def mo2_virtual_plugin_sources(args: Dict[str, Any]) -> Dict[str, Any]:
+    profile = mo2_profile_state(args)
+    skyrim_dir = find_skyrim_dir(args.get("skyrim_dir"))
+    data_dir = skyrim_dir / "Data" if skyrim_dir else None
+    sources: List[Dict[str, Any]] = []
+    if data_dir and data_dir.exists():
+        sources.append({"kind": "game_data", "name": "Skyrim Data", "priority": -1, "path": data_dir})
+    for item in profile.get("enabledMods", []):
+        if not isinstance(item, dict) or not item.get("path"):
+            continue
+        mod_path = expand_path(item.get("path"))
+        if mod_path and mod_path.exists():
+            sources.append(
+                {
+                    "kind": "mo2_mod",
+                    "name": item.get("name"),
+                    "priority": item.get("priority"),
+                    "path": mod_path,
+                }
+            )
+    return {"profile": profile, "skyrimDir": skyrim_dir, "dataDir": data_dir, "sources": sources}
+
+
+def mo2_plugin_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    virtual = mo2_virtual_plugin_sources(args)
+    profile = virtual["profile"]
+    providers: Dict[str, List[Dict[str, Any]]] = {}
+    available: Dict[str, Dict[str, Any]] = {}
+    plugin_details: Dict[str, Any] = {}
+    max_files = int(args.get("max_files", MAX_DEFAULT_FILES))
+    for source in virtual["sources"]:
+        root = source["path"]
+        for file_path in safe_walk(root, max_files):
+            if file_path.suffix.lower() not in {".esp", ".esm", ".esl"}:
+                continue
+            rel = rel_to(file_path, root)
+            if not plugin_file_is_data_root(rel):
+                continue
+            key = file_path.name.lower()
+            provider = {
+                "sourceKind": source["kind"],
+                "mod": source["name"],
+                "priority": source.get("priority"),
+                "path": str(file_path),
+            }
+            providers.setdefault(key, []).append(provider)
+            available[key] = provider
+            plugin_details[file_path.name] = plugin_masters(file_path)
+
+    plugins_txt = profile.get("pluginsTxt", {"entries": []})
+    loadorder_txt = profile.get("loadorderTxt", {"entries": []})
+    missing_enabled = []
+    for entry in plugins_txt.get("entries", []) if isinstance(plugins_txt, dict) else []:
+        if entry.get("enabled") and str(entry.get("name", "")).lower() not in available:
+            missing_enabled.append(entry.get("name"))
+
+    missing_masters = []
+    enabled_plugin_names = {
+        str(entry.get("name", "")).lower()
+        for entry in plugins_txt.get("entries", [])
+        if isinstance(entry, dict) and entry.get("enabled")
+    } if isinstance(plugins_txt, dict) else set()
+    for plugin_name, detail in plugin_details.items():
+        if enabled_plugin_names and plugin_name.lower() not in enabled_plugin_names:
+            continue
+        for master in detail.get("masters", []):
+            if master.lower() not in available:
+                missing_masters.append({"plugin": plugin_name, "missingMaster": master})
+
+    return {
+        "manager": "mo2",
+        "virtualData": True,
+        "instanceDir": profile.get("instanceDir"),
+        "selectedProfile": profile.get("selectedProfile"),
+        "profileDir": profile.get("profileDir"),
+        "skyrimData": str(virtual["dataDir"]) if virtual.get("dataDir") else None,
+        "sourceCount": len(virtual["sources"]),
+        "availablePluginCount": len(available),
+        "pluginsTxt": plugins_txt,
+        "loadorderTxt": loadorder_txt,
+        "missingEnabledPlugins": missing_enabled,
+        "missingMasters": missing_masters,
+        "pluginProviders": {key: value for key, value in sorted(providers.items())[:300]},
+        "pluginHeaders": plugin_details,
+        "notes": [
+            "This builds MO2's expected virtual plugin view from Skyrim Data plus enabled profile mod folders.",
+            "If a plugin is missing here, MO2 likely cannot expose it to Skyrim for this profile.",
+            "Launch Skyrim/SKSE through MO2; direct Steam/SkyrimSE.exe launch will not see enabled MO2 mods.",
+        ],
+    }
+
+
+def mo2_file_conflict_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    virtual = mo2_virtual_plugin_sources(args)
+    providers: Dict[str, List[Dict[str, Any]]] = {}
+    max_files = int(args.get("max_files", MAX_DEFAULT_FILES))
+    max_conflicts = int(args.get("max_conflicts", 300))
+    hash_files = bool(args.get("hash_files", False))
+    scanned_files = 0
+    for source_index, source in enumerate(virtual["sources"]):
+        if source.get("kind") == "game_data" and not bool(args.get("include_game_data_conflicts", True)):
+            continue
+        root = source["path"]
+        for file_path in safe_walk(root, max_files):
+            if file_path.name.lower().endswith(".mohidden"):
+                continue
+            rel = rel_to(file_path, root).lower()
+            scanned_files += 1
+            try:
+                size = file_path.stat().st_size
+            except OSError:
+                size = None
+            providers.setdefault(rel, []).append(
+                {
+                    "sourceIndex": source_index,
+                    "sourceKind": source["kind"],
+                    "mod": source["name"],
+                    "priority": source.get("priority"),
+                    "path": str(file_path),
+                    "size": size,
+                }
+            )
+
+    conflicts = []
+    for rel, entries in providers.items():
+        if len(entries) <= 1:
+            continue
+        sizes = sorted(set(entry.get("size") for entry in entries))
+        hashes = None
+        if hash_files:
+            hashes = sorted(set(sha256_file(Path(entry["path"])) for entry in entries))
+        entries_sorted = sorted(entries, key=lambda entry: (entry.get("sourceIndex", 0), entry.get("priority") or 0))
+        item = {
+            "relativePath": rel,
+            "kind": classify_file(rel),
+            "providerCount": len(entries),
+            "sameSize": len(sizes) == 1,
+            "sameHash": (len([h for h in hashes or [] if h]) == 1) if hash_files else None,
+            "providers": entries_sorted,
+            "apparentWinner": entries_sorted[-1],
+        }
+        item["explanation"] = explain_conflict_item(item)
+        item["explanation"]["winnerNote"] = (
+            "MO2 resolves loose file conflicts by priority; this apparent winner follows the selected profile order as read from modlist.txt. "
+            "Confirm in MO2's Conflicts tab before changing priorities."
+        )
+        conflicts.append(item)
+    severity_order = {"high": 0, "medium": 1, "low-medium": 2, "low": 3}
+    conflicts.sort(
+        key=lambda item: (
+            severity_order.get(str(item.get("explanation", {}).get("risk")), 9),
+            item["kind"],
+            -item["providerCount"],
+            item["relativePath"],
+        )
+    )
+    return {
+        "manager": "mo2",
+        "virtualData": True,
+        "selectedProfile": virtual["profile"].get("selectedProfile"),
+        "profileDir": virtual["profile"].get("profileDir"),
+        "sourceCount": len(virtual["sources"]),
+        "scannedFilesApprox": scanned_files,
+        "conflictCount": len(conflicts),
+        "conflicts": conflicts[:max_conflicts],
+        "riskSummary": {
+            risk: sum(1 for item in conflicts if item.get("explanation", {}).get("risk") == risk)
+            for risk in ("high", "medium", "low-medium", "low")
+        },
+        "notes": [
+            "This is a read-only approximation of MO2 loose-file conflicts from the active profile's modlist.",
+            "MO2's UI remains the authority for the exact priority/winner and any hidden .mohidden files.",
+        ],
+    }
+
+
+def mo2_modded_play_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    findings: List[Dict[str, Any]] = []
+    sections: Dict[str, Any] = {}
+
+    try:
+        sections["mo2Environment"] = mo2_detect_environment(args)
+    except Exception as exc:
+        sections["mo2Environment"] = {"error": str(exc)}
+        add_finding(findings, "critical", "mo2_environment_failed", str(exc), "Pass mo2_instance_dir and skyrim_dir explicitly.")
+
+    try:
+        sections["mo2Profile"] = mo2_profile_report(args)
+    except Exception as exc:
+        sections["mo2Profile"] = {"error": str(exc)}
+        add_finding(findings, "high", "mo2_profile_failed", str(exc), "Pass mo2_instance_dir, mo2_profile, mo2_mods_dir, or mo2_profiles_dir explicitly.")
+
+    try:
+        sections["mo2Inventory"] = mo2_inventory_mods({**args, "include_files": False, "include_disabled_mods": False})
+    except Exception as exc:
+        sections["mo2Inventory"] = {"error": str(exc)}
+        add_finding(findings, "high", "mo2_inventory_failed", str(exc), "Fix MO2 mods/profile paths, then rerun mo2_inventory_mods.")
+
+    try:
+        sections["mo2Plugins"] = mo2_plugin_report(args)
+    except Exception as exc:
+        sections["mo2Plugins"] = {"error": str(exc)}
+        add_finding(findings, "high", "mo2_plugin_report_failed", str(exc), "Fix MO2 profile paths and skyrim_dir, then rerun mo2_plugin_report.")
+
+    try:
+        sections["skseRuntime"] = skse_runtime_doctor_report(args)
+    except Exception as exc:
+        sections["skseRuntime"] = {"error": str(exc)}
+        add_finding(findings, "medium", "skse_runtime_report_failed", str(exc), "Pass skyrim_dir explicitly and rerun.")
+
+    if bool(args.get("include_conflicts", False)):
+        try:
+            sections["mo2FileConflicts"] = mo2_file_conflict_report(args)
+        except Exception as exc:
+            sections["mo2FileConflicts"] = {"error": str(exc)}
+            add_finding(findings, "low", "mo2_conflict_report_failed", str(exc), "Run mo2_file_conflict_report separately with smaller max_files if needed.")
+
+    env = sections.get("mo2Environment") if isinstance(sections.get("mo2Environment"), dict) else {}
+    for issue in env.get("issues", []) if isinstance(env, dict) else []:
+        severity = "high" if "SkyrimSE.exe" in issue or "profile" in issue.lower() or "mods folder" in issue.lower() else "medium"
+        add_finding(findings, severity, "mo2_environment_issue", issue, "Fix the detected MO2 path/setup issue, then rerun.")
+
+    profile = sections.get("mo2Profile") if isinstance(sections.get("mo2Profile"), dict) else {}
+    if isinstance(profile, dict) and "error" not in profile:
+        if not profile.get("enabledModCount"):
+            add_finding(
+                findings,
+                "high",
+                "mo2_profile_has_no_enabled_mods",
+                "The selected MO2 profile has no enabled mod folders in modlist.txt.",
+                "Select the intended MO2 profile or enable the expected mods in MO2 before launching.",
+            )
+        if profile.get("missingEnabledModDirCount"):
+            add_finding(
+                findings,
+                "high",
+                "mo2_enabled_mod_folders_missing",
+                f"{profile.get('missingEnabledModDirCount')} enabled MO2 mod(s) have no matching folder in the mods directory.",
+                "Check the MO2 mods path and reinstall/restore missing mod folders before launching.",
+                profile.get("missingEnabledModDirs", [])[:40],
+            )
+
+    inventory = sections.get("mo2Inventory") if isinstance(sections.get("mo2Inventory"), dict) else {}
+    known_rules = inventory.get("knownRules") if isinstance(inventory, dict) else None
+    if isinstance(known_rules, dict):
+        findings.extend(item for item in known_rules.get("findings", [])[:20] if isinstance(item, dict))
+
+    plugins = sections.get("mo2Plugins") if isinstance(sections.get("mo2Plugins"), dict) else {}
+    if isinstance(plugins, dict) and "error" not in plugins:
+        missing_enabled = plugins.get("missingEnabledPlugins", [])
+        missing_masters = plugins.get("missingMasters", [])
+        if missing_enabled:
+            add_finding(
+                findings,
+                "high",
+                "mo2_enabled_plugins_missing_from_virtual_data",
+                f"{len(missing_enabled)} enabled plugins.txt plugin(s) were not found in Skyrim Data or enabled MO2 mods.",
+                "In MO2, confirm the mod is enabled, reinstall missing plugins, or disable stale plugins.txt entries.",
+                missing_enabled[:40],
+            )
+        if missing_masters:
+            add_finding(
+                findings,
+                "critical",
+                "missing_plugin_masters",
+                f"{len(missing_masters)} plugin master requirement(s) are missing from the MO2 virtual plugin view.",
+                "Install/enable the required master mods or disable the dependent plugins in the selected MO2 profile.",
+                missing_masters[:40],
+            )
+
+    skse = sections.get("skseRuntime") if isinstance(sections.get("skseRuntime"), dict) else {}
+    skse_summary = skse.get("summary") if isinstance(skse, dict) else {}
+    if isinstance(skse_summary, dict) and skse_summary.get("runtimeState") in {"blocked", "missing"}:
+        add_finding(
+            findings,
+            "high",
+            "skse_runtime_not_ready",
+            f"SKSE Runtime Doctor reports {skse_summary.get('runtimeState')}.",
+            "Install the SKSE build that matches SkyrimSE.exe, then launch skse64_loader.exe from inside MO2.",
+            skse_summary,
+        )
+
+    findings = sort_findings(findings)
+    highest = findings[0].get("severity", "unknown") if findings else "none"
+    ok_to_launch = highest not in {"critical", "high"}
+    launch_route = "mo2_skse" if ok_to_launch else "fix_findings_first"
+    return {
+        "summary": {
+            "manager": "mo2",
+            "okToLaunchModded": ok_to_launch,
+            "recommendedLaunchRoute": launch_route,
+            "highestSeverity": highest,
+            "findingCount": len(findings),
+            "sectionStatus": {key: report_status(value) for key, value in sections.items()},
+        },
+        "findings": findings,
+        "sections": sections,
+        "recommendedActions": [
+            action
+            for action in dict.fromkeys(finding.get("nextAction") for finding in findings if finding.get("nextAction"))
+        ],
+        "notes": [
+            "This MO2 path is read-only. It does not edit modlist.txt, plugins.txt, loadorder.txt, or mod files.",
+            "For MO2, do not judge deployment by looking in Skyrim Data. Use the selected MO2 profile and launch SKSE through MO2 so usvfs is active.",
+            "For xEdit/SSEEdit evidence on MO2 setups, launch xEdit from MO2 so it sees the same virtual Data folder as the game.",
+        ],
     }
 
 
@@ -12430,6 +13317,7 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                         "all",
                         "first_setup",
                         "mods_not_working",
+                        "mo2_profile_diagnostics",
                         "weird_object",
                         "popup",
                         "runtime_logs",
@@ -12463,6 +13351,7 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "scan_cache_dir": {"type": "string"},
                 "use_scan_cache": {"type": "boolean", "default": True},
                 "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
+                "scan_cache_max_entries": {"type": "integer", "default": SCAN_CACHE_DEFAULT_MAX_ENTRIES},
             },
             "additionalProperties": False,
         },
@@ -12531,6 +13420,127 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
             "additionalProperties": False,
         },
         plugin_report,
+    ),
+    "mo2_detect_environment": (
+        "Detect Mod Organizer 2 instance/profile folders, ModOrganizer.exe, Skyrim SE, SKSE, and WSL path readiness.",
+        {
+            "type": "object",
+            "properties": {
+                "mo2_instance_dir": {"type": "string"},
+                "mo2_instance": {"type": "string"},
+                "mo2_profile": {"type": "string"},
+                "mo2_mods_dir": {"type": "string"},
+                "mo2_profiles_dir": {"type": "string"},
+                "mo2_overwrite_dir": {"type": "string"},
+                "mo2_exe": {"type": "string"},
+                "skyrim_dir": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        mo2_detect_environment,
+    ),
+    "mo2_profile_report": (
+        "Read the selected MO2 profile's modlist.txt, plugins.txt, loadorder.txt, and enabled/disabled mod folders.",
+        {
+            "type": "object",
+            "properties": {
+                "mo2_instance_dir": {"type": "string"},
+                "mo2_instance": {"type": "string"},
+                "mo2_profile": {"type": "string"},
+                "mo2_mods_dir": {"type": "string"},
+                "mo2_profiles_dir": {"type": "string"},
+                "mo2_overwrite_dir": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        mo2_profile_report,
+    ),
+    "mo2_inventory_mods": (
+        "Inventory MO2 mod folders and annotate whether each mod is enabled, disabled, or absent from the selected profile.",
+        {
+            "type": "object",
+            "properties": {
+                "mo2_instance_dir": {"type": "string"},
+                "mo2_instance": {"type": "string"},
+                "mo2_profile": {"type": "string"},
+                "mo2_mods_dir": {"type": "string"},
+                "mo2_profiles_dir": {"type": "string"},
+                "include_files": {"type": "boolean", "default": False},
+                "include_disabled_mods": {"type": "boolean", "default": True},
+                "include_known_rules": {"type": "boolean", "default": True},
+                "include_scan_cache_status": {"type": "boolean", "default": False},
+                "max_mods": {"type": "integer", "default": 1000},
+                "max_files_per_mod": {"type": "integer", "default": 5000},
+                "scan_cache_dir": {"type": "string"},
+                "use_scan_cache": {"type": "boolean", "default": True},
+                "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
+            },
+            "additionalProperties": False,
+        },
+        mo2_inventory_mods,
+    ),
+    "mo2_plugin_report": (
+        "Build the selected MO2 profile's virtual plugin view and report missing enabled plugins or missing masters.",
+        {
+            "type": "object",
+            "properties": {
+                "mo2_instance_dir": {"type": "string"},
+                "mo2_instance": {"type": "string"},
+                "mo2_profile": {"type": "string"},
+                "mo2_mods_dir": {"type": "string"},
+                "mo2_profiles_dir": {"type": "string"},
+                "skyrim_dir": {"type": "string"},
+                "max_files": {"type": "integer", "default": MAX_DEFAULT_FILES},
+            },
+            "additionalProperties": False,
+        },
+        mo2_plugin_report,
+    ),
+    "mo2_file_conflict_report": (
+        "Approximate MO2 loose-file conflicts for the selected profile using enabled modlist order.",
+        {
+            "type": "object",
+            "properties": {
+                "mo2_instance_dir": {"type": "string"},
+                "mo2_instance": {"type": "string"},
+                "mo2_profile": {"type": "string"},
+                "mo2_mods_dir": {"type": "string"},
+                "mo2_profiles_dir": {"type": "string"},
+                "skyrim_dir": {"type": "string"},
+                "hash_files": {"type": "boolean", "default": False},
+                "include_game_data_conflicts": {"type": "boolean", "default": True},
+                "max_files": {"type": "integer", "default": MAX_DEFAULT_FILES},
+                "max_conflicts": {"type": "integer", "default": 300},
+            },
+            "additionalProperties": False,
+        },
+        mo2_file_conflict_report,
+    ),
+    "mo2_modded_play_report": (
+        "One-shot read-only MO2 diagnosis for selected profile, enabled mods, virtual plugins, SKSE, and common known-rule problems.",
+        {
+            "type": "object",
+            "properties": {
+                "mo2_instance_dir": {"type": "string"},
+                "mo2_instance": {"type": "string"},
+                "mo2_profile": {"type": "string"},
+                "mo2_mods_dir": {"type": "string"},
+                "mo2_profiles_dir": {"type": "string"},
+                "mo2_overwrite_dir": {"type": "string"},
+                "mo2_exe": {"type": "string"},
+                "skyrim_dir": {"type": "string"},
+                "max_mods": {"type": "integer", "default": 1000},
+                "max_files_per_mod": {"type": "integer", "default": 5000},
+                "max_files": {"type": "integer", "default": MAX_DEFAULT_FILES},
+                "scan_cache_dir": {"type": "string"},
+                "use_scan_cache": {"type": "boolean", "default": True},
+                "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
+                "scan_cache_max_entries": {"type": "integer", "default": SCAN_CACHE_DEFAULT_MAX_ENTRIES},
+                "include_conflicts": {"type": "boolean", "default": False},
+            },
+            "additionalProperties": False,
+        },
+        mo2_modded_play_report,
     ),
     "scan_cache_status": (
         "Show the local mod-summary scan cache used to speed up repeated large-collection diagnostics.",
@@ -14047,6 +15057,13 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         "inbox_dir": parsed.inbox_dir,
         "vortex_appdata": parsed.vortex_appdata,
         "vortex_exe": parsed.vortex_exe,
+        "mo2_instance_dir": parsed.mo2_instance_dir,
+        "mo2_instance": parsed.mo2_instance_dir,
+        "mo2_profile": parsed.mo2_profile,
+        "mo2_mods_dir": parsed.mo2_mods_dir,
+        "mo2_profiles_dir": parsed.mo2_profiles_dir,
+        "mo2_overwrite_dir": parsed.mo2_overwrite_dir,
+        "mo2_exe": parsed.mo2_exe,
         "skyrim_dir": parsed.skyrim_dir,
         "staging_dir": parsed.staging_dir,
         "local_appdata": parsed.local_appdata,
@@ -14175,6 +15192,8 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["nexus_use_cache"] = False
     if parsed.no_scan_cache:
         tool_args["use_scan_cache"] = False
+    if parsed.include_disabled_mods:
+        tool_args["include_disabled_mods"] = True
     if parsed.no_profile_state:
         tool_args["include_profile_state"] = False
     if parsed.no_conflicts:
@@ -14287,6 +15306,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--automation-plan", action="store_true", help="Shortcut for --tool vortex_reversible_automation_plan.")
     parser.add_argument("--report-viewer", action="store_true", help="Shortcut for --tool report_viewer_index.")
     parser.add_argument("--wsl-bridge", action="store_true", help="Shortcut for --tool wsl_bridge_report.")
+    parser.add_argument("--mo2-diagnostics", action="store_true", help="Shortcut for --tool mo2_modded_play_report.")
     parser.add_argument("--runtime-logs", action="store_true", help="Shortcut for --tool skyrim_runtime_log_report.")
     parser.add_argument("--workflow-guide", action="store_true", help="Shortcut for --tool workflow_guide.")
     parser.add_argument("--issue-case", action="store_true", help="Shortcut for --tool skyrim_issue_case_packet.")
@@ -14310,6 +15330,12 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--inbox-dir", help="Evidence inbox folder for skyrim_case_inbox_import.")
     parser.add_argument("--vortex-appdata", help="Override Vortex AppData path.")
     parser.add_argument("--vortex-exe", help="Override Vortex.exe path.")
+    parser.add_argument("--mo2-instance-dir", help="Override Mod Organizer 2 instance/base folder.")
+    parser.add_argument("--mo2-profile", help="Override selected Mod Organizer 2 profile name.")
+    parser.add_argument("--mo2-mods-dir", help="Override Mod Organizer 2 mods folder.")
+    parser.add_argument("--mo2-profiles-dir", help="Override Mod Organizer 2 profiles folder.")
+    parser.add_argument("--mo2-overwrite-dir", help="Override Mod Organizer 2 overwrite folder.")
+    parser.add_argument("--mo2-exe", help="Override ModOrganizer.exe path.")
     parser.add_argument("--skyrim-dir", help="Override Skyrim Special Edition folder.")
     parser.add_argument("--staging-dir", help="Override Vortex Skyrim SE staging folder.")
     parser.add_argument("--local-appdata", help="Override LocalAppData path.")
@@ -14402,6 +15428,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--no-direct-cli", action="store_true", help="Hide direct CLI examples from workflow_guide output.")
     parser.add_argument("--no-nexus-cache", action="store_true", help="Disable the local Nexus metadata cache for this call.")
     parser.add_argument("--no-scan-cache", action="store_true", help="Disable the local mod-summary scan cache for this call.")
+    parser.add_argument("--include-disabled-mods", action="store_true", help="For MO2 inventory, include disabled/not-in-profile mod folders too.")
     parser.add_argument("--apply", action="store_true", help="Apply a write-capable tool. Most tools are dry-run without this.")
     parser.add_argument("--dry-run", action="store_true", help="Preview a direct tool call that supports dry_run.")
     parser.add_argument("--allow-running-vortex", action="store_true", help="Allow Vortex profile writes while Vortex.exe is running.")
@@ -14453,6 +15480,8 @@ def cli_main(argv: List[str]) -> int:
         if parsed.report_viewer
         else "wsl_bridge_report"
         if parsed.wsl_bridge
+        else "mo2_modded_play_report"
+        if parsed.mo2_diagnostics
         else "skyrim_runtime_log_report"
         if parsed.runtime_logs
         else "mod_knowledge_report"
@@ -14486,7 +15515,7 @@ def cli_main(argv: List[str]) -> int:
         else parsed.tool
     )
     if not tool_name:
-        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --known-rules, --safe-session, --skyrim-diagnostics, --deployment-doctor, --launch-doctor, --skse-doctor, --automation-plan, --report-viewer, --wsl-bridge, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-evidence-report, --case-bundle, or --safe-profile-fix")
+        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --known-rules, --safe-session, --skyrim-diagnostics, --deployment-doctor, --launch-doctor, --skse-doctor, --automation-plan, --report-viewer, --wsl-bridge, --mo2-diagnostics, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-evidence-report, --case-bundle, or --safe-profile-fix")
 
     try:
         tool_args = load_cli_tool_args(parsed)

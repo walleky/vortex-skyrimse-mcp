@@ -11,6 +11,7 @@ OpenClaw or MCP client
       -> detect local Steam/Vortex/Skyrim paths
       -> when running in WSL2, map Windows drive paths to /mnt/<drive>
       -> inspect staging folders, plugins, INIs, profiles, conflicts
+      -> inspect MO2 instance/profile files and approximate virtual Data views
       -> optionally recommend a safe workflow from a plain-language problem
       -> optionally inspect Skyrim/Papyrus/SKSE/crash runtime logs
       -> optionally enrich reports with read-only Nexus Mods metadata
@@ -50,6 +51,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - `docs/LAUNCH-DOCTOR.md`: explains the SKSE vs Steam/vanilla launch-route report.
 - `docs/SKSE-RUNTIME-DOCTOR.md`: explains Skyrim runtime/SKSE/Address Library compatibility checks.
 - `docs/WSL-OPENCLAW.md`: explains OpenClaw-in-WSL2 path bridging for Windows Vortex/Steam/Skyrim.
+- `docs/MO2-SUPPORT.md`: explains MO2 instance/profile diagnostics and virtual Data behavior.
 - `docs/REVERSIBLE-AUTOMATION.md`: explains the safety gate for risky automation requests.
 - `docs/SKYRIM-RUNTIME-LOGS.md`: explains runtime log scanning and safe config patching.
 - `docs/TESTING.md`: explains local and CI test commands.
@@ -67,6 +69,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 
 - constants and helpers: server identity, WSL/Windows path expansion, logging helpers, text IO.
 - Steam/Vortex path detection: `find_steam_root`, `steam_libraries`, `find_skyrim_dir`, `default_vortex_appdata`, `find_vortex_exe`.
+- MO2 path/profile detection: `mo2_detect_environment`, `mo2_instance_paths`, `mo2_profile_report`, `parse_mo2_modlist`, `mo2_inventory_mods`, `mo2_plugin_report`, `mo2_file_conflict_report`, `mo2_modded_play_report`.
 - WSL bridge: `is_wsl_environment`, `windows_path_to_wsl_path`, `windows_env_map`, `wsl_bridge_status`, `wsl_bridge_report`.
 - Vortex CLI helpers: `run_vortex_cli`, `vortex_state_get`, `vortex_state_set`.
 - filesystem and mod inspection: `safe_walk`, `mod_summary`, `inventory_mods`, `analyze_conflicts`, `redundant_mod_report`, `mod_knowledge_report`.
@@ -107,6 +110,9 @@ Most tools are read-only. The write tools are narrow and opt-in:
   Markdown/JSON summary only.
 - `skyrim_case_bundle` writes a zip copy of case files only.
 - `vortex_profile_restore_plan` writes only when `apply=true` and previews by default.
+- MO2 tools are read-only. They do not edit `ModOrganizer.ini`, `modlist.txt`,
+  `plugins.txt`, `loadorder.txt`, or priorities. They infer the selected
+  profile's virtual view from files on disk.
 - `in_game_issue_report` is read-only and heuristic. It does not edit plugins,
   delete placed objects, or disable mods.
 - Nexus API tools are read-only. They use this MCP's configured key and must not

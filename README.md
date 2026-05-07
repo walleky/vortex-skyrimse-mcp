@@ -2,10 +2,11 @@
 
 [![CI](https://github.com/walleky/vortex-skyrimse-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/walleky/vortex-skyrimse-mcp/actions/workflows/ci.yml)
 
-Local diagnostics tool for Windows Vortex + Skyrim Special Edition. It can run
+Local diagnostics tool for Windows Vortex or Mod Organizer 2 + Skyrim Special Edition. It can run
 as an MCP server or as a normal command-line tool. It also supports OpenClaw
 running inside WSL2 by mapping Windows paths through `/mnt/c` and checking
-Windows interop for Vortex profile tools.
+Windows interop for Vortex profile tools and Windows-drive visibility for MO2
+profile scans.
 
 It is built for an MCP client such as OpenClaw, Claude Desktop, Cursor, or any
 stdio MCP client. The server is dependency-free Python and talks newline-delimited
@@ -21,6 +22,14 @@ an MCP client.
 - Validate the whole setup in one call for OpenClaw with `validate_setup`.
 - Recommend a safe next workflow from a plain-language problem with `workflow_guide`.
 - Inventory Vortex-staged Skyrim SE mods.
+- Detect Mod Organizer 2 global/portable instances, selected profiles, `mods`,
+  `profiles`, and `overwrite` folders.
+- Read MO2 `modlist.txt`, `plugins.txt`, `loadorder.txt`, and `archives.txt`,
+  then build a virtual-profile plugin report without pretending MO2 deploys
+  files into Skyrim `Data`.
+- Diagnose MO2 missing enabled mod folders, missing enabled plugins, missing
+  masters, SKSE readiness, common known-rule problems, and approximate
+  loose-file conflicts.
 - Run known-rule checks during inventory for common stack problems such as
   FNIS + Pandora, FSMPM without JContainers, and SLAL/Leito without FNIS.
 - Read mod evidence: files, readmes, FOMOD XML, plugins, masters, BSA archives,
@@ -103,6 +112,7 @@ an MCP client.
 
 - [START-HERE.md](START-HERE.md): short install, first prompts, and MCP Doctor.
 - [docs/WSL-OPENCLAW.md](docs/WSL-OPENCLAW.md): OpenClaw-in-WSL2 setup for Windows Vortex/Steam/Skyrim.
+- [docs/MO2-SUPPORT.md](docs/MO2-SUPPORT.md): Mod Organizer 2 profile diagnostics, virtual Data behavior, and launch rules.
 - [docs/WORKFLOW-EXAMPLES.md](docs/WORKFLOW-EXAMPLES.md): copy-paste examples for common OpenClaw and PowerShell workflows.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): code map and runtime flow.
 - [docs/CLI.md](docs/CLI.md): direct command-line mode without an MCP client.
@@ -141,6 +151,10 @@ It does not blindly delete mods, disable plugins, rewrite conflict rules, or sor
 load order. Vortex conflict rules and load-order changes are high-risk because
 the wrong winner can break a save. Profile write tools require exact mod ids and
 are dry-run unless `apply=true`.
+
+For MO2, the MCP is read-only. It does not edit `modlist.txt`, `plugins.txt`,
+or priorities. Skyrim, SKSE, and xEdit must be launched through MO2 for the
+selected profile's virtual files to appear.
 
 ## Install
 
@@ -261,6 +275,7 @@ py -3 .\server.py --skse-doctor
 py -3 .\server.py --automation-plan --request "disable unwanted mods and sort safely"
 py -3 .\server.py --runtime-logs --description "popup says file was not configured properly"
 py -3 .\server.py --skyrim-diagnostics
+py -3 .\server.py --mo2-diagnostics
 py -3 .\server.py --safe-session
 py -3 .\server.py --mod-knowledge
 py -3 .\server.py --known-rules

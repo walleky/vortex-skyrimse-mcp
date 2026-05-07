@@ -42,6 +42,18 @@ Write the broadest one-button Skyrim diagnostics report:
 py -3 .\server.py --skyrim-diagnostics
 ```
 
+Run Mod Organizer 2 diagnostics:
+
+```powershell
+py -3 .\server.py --mo2-diagnostics
+```
+
+With an explicit MO2 instance/profile:
+
+```powershell
+py -3 .\server.py --mo2-diagnostics --mo2-instance-dir "C:\path\to\MO2 instance" --mo2-profile "Default"
+```
+
 Check whether the selected Vortex profile is actually deployed:
 
 ```powershell

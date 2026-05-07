@@ -115,7 +115,22 @@ If OpenClaw is inside WSL2:
 Use wsl_bridge_report, then validate_setup. Tell me whether OpenClaw can see Windows Vortex, Steam, Skyrim SE, staging, plugins.txt, and whether profile tools can call Vortex.exe. Do not apply changes.
 ```
 
-Then check whether Vortex's active profile is really deployed:
+If you use Mod Organizer 2 instead of Vortex:
+
+```text
+Use workflow_guide for this problem: MO2 Skyrim mods are not working. Then run mo2_modded_play_report. Tell me whether the selected MO2 profile, enabled mods, plugins, missing masters, and SKSE route look ready. Do not apply changes.
+```
+
+Direct MO2 check:
+
+```powershell
+py -3 .\server.py --mo2-diagnostics
+```
+
+MO2 rule of thumb: launch SKSE, Skyrim, and xEdit from MO2's Run dropdown so
+the selected profile's virtual files are visible.
+
+For Vortex setups, then check whether Vortex's active profile is really deployed:
 
 ```text
 Use deployment_doctor_report to tell me whether my selected Vortex profile is linked to Skyrim Data and plugins.txt. Do not apply changes.

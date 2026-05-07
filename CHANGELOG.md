@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.38
+
+- Adds read-only Mod Organizer 2 support: instance/profile detection, `modlist.txt` parsing, enabled/disabled mod inventory, virtual plugin checks, missing masters, and approximate loose-file conflicts.
+- Adds `mo2_detect_environment`, `mo2_profile_report`, `mo2_inventory_mods`, `mo2_plugin_report`, `mo2_file_conflict_report`, and `mo2_modded_play_report`.
+- Adds `--mo2-diagnostics` direct CLI shortcut and local menu action 39.
+- Updates workflow routing, WSL setup hints, OpenClaw guidance, architecture docs, and tests for MO2's usvfs/virtual Data behavior.
+- Documents that MO2 users should launch Skyrim, SKSE, and xEdit through MO2 rather than judging success by files copied into Skyrim `Data`.
+
 ## v0.2.37
 
 - Adds `known_mod_rule_report` and `--known-rules` for common Skyrim SE stack/dependency checks such as FNIS + Pandora, FNIS + Nemesis, FSMPM without JContainers, and SLAL/Leito without FNIS.

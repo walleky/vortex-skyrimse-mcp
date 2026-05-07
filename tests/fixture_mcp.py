@@ -57,6 +57,11 @@ def main() -> int:
         plugins_dir = local_appdata / "Skyrim Special Edition"
         my_games = root / "Documents" / "My Games" / "Skyrim Special Edition"
         vortex_exe = root / "AppData" / "Local" / "Programs" / "Vortex" / "Vortex.exe"
+        mo2 = root / "AppData" / "Local" / "ModOrganizer" / "Skyrim Special Edition"
+        mo2_mods = mo2 / "mods"
+        mo2_profiles = mo2 / "profiles"
+        mo2_profile = mo2_profiles / "Default"
+        mo2_overwrite = mo2 / "overwrite"
         log_dir = root / "Logs"
 
         write(skyrim / "SkyrimSE.exe")
@@ -104,6 +109,37 @@ def main() -> int:
         )
         write(my_games / "SKSE" / "CrashLogger.log", "ERROR: failed to load plugin PopupDll.dll\n")
         write(vortex_exe)
+        write(mo2 / "ModOrganizer.exe")
+        write(
+            mo2 / "ModOrganizer.ini",
+            "[Settings]\n"
+            f"gameName=Skyrim Special Edition\nselected_profile=Default\nbase_directory={mo2.as_posix()}\n"
+            "mod_directory=%BASE_DIR%/mods\nprofiles_directory=%BASE_DIR%/profiles\noverwrite_directory=%BASE_DIR%/overwrite\n",
+        )
+        write(mo2_mods / "Weather Mod" / "BrokenWeather.esp", plugin_bytes("MissingMaster.esm"))
+        write(mo2_mods / "Weather Mod" / "scripts" / "shared.pex", "weather")
+        write(mo2_mods / "Lighting Mod" / "scripts" / "shared.pex", "lighting")
+        write(mo2_mods / "Lighting Mod" / "readme.txt", "Lighting tweaks")
+        write(mo2_mods / "FNIS Behavior" / "tools" / "GenerateFNIS_for_Users" / "GenerateFNISforUsers.exe", "tool")
+        write(mo2_mods / "Pandora Behavior Engine" / "Pandora Behaviour Engine.exe", "tool")
+        write(mo2_mods / "FSMPM" / "FSMPM.esp", plugin_bytes("Skyrim.esm"))
+        write(mo2_mods / "Disabled Texture Pack" / "textures" / "unused.dds", "disabled")
+        write(
+            mo2_profile / "modlist.txt",
+            "# This file is read by MO2\n"
+            "*DLC: Dawnguard\n"
+            "+Lighting Mod\n"
+            "+Weather Mod\n"
+            "+FNIS Behavior\n"
+            "+Pandora Behavior Engine\n"
+            "+FSMPM\n"
+            "+Missing Folder Mod\n"
+            "-Disabled Texture Pack\n",
+        )
+        write(mo2_profile / "plugins.txt", "# MO2 profile plugins\n*Skyrim.esm\n*Update.esm\n*BrokenWeather.esp\n*FSMPM.esp\n*MissingEnabled.esp\n")
+        write(mo2_profile / "loadorder.txt", "Skyrim.esm\nUpdate.esm\nBrokenWeather.esp\nFSMPM.esp\n")
+        write(mo2_profile / "archives.txt", "Skyrim - Voices_en0.bsa\n")
+        write(mo2_overwrite / "SKSE" / "Plugins" / "overwrite-note.txt", "overwrite")
         write(log_dir / "tool-20260504.jsonl", '{"event":"tool_error","path":"%USERPROFILE%\\\\example"}\n')
 
         base_args = {
@@ -114,6 +150,12 @@ def main() -> int:
             "local_appdata": str(local_appdata),
             "my_games_dir": str(my_games),
         }
+        mo2_args = {
+            "mo2_instance_dir": str(mo2),
+            "mo2_profile": "Default",
+            "skyrim_dir": str(skyrim),
+            "scan_cache_dir": str(root / "mo2-scan-cache"),
+        }
 
         env = server.detect_environment(base_args)
         assert env["skse_installed"] is True, env
@@ -123,9 +165,53 @@ def main() -> int:
         assert setup["ready"] is True, setup
         assert setup["environment"]["nexus_api"]["configured"] is False, setup
         assert "workflow_guide" in setup["toolGroups"]["alwaysAvailable"], setup
+        assert "mo2_modded_play_report" in setup["toolGroups"]["alwaysAvailable"], setup
+        assert setup["environment"]["mo2"]["readyForReadOnlyProfileScan"] is True, setup
         assert "xedit_diagnostics_report" in setup["toolGroups"]["alwaysAvailable"], setup
         assert "vortex_reversible_automation_plan" in setup["toolGroups"]["alwaysAvailable"], setup
         assert "skse_runtime_doctor_report" in setup["toolGroups"]["alwaysAvailable"], setup
+
+        mo2_env = server.mo2_detect_environment(mo2_args)
+        assert mo2_env["readyForReadOnlyProfileScan"] is True, mo2_env
+        assert mo2_env["selectedProfile"] == "Default", mo2_env
+        mo2_profile_report = server.mo2_profile_report(mo2_args)
+        assert mo2_profile_report["enabledModCount"] == 6, mo2_profile_report
+        assert mo2_profile_report["missingEnabledModDirCount"] == 1, mo2_profile_report
+        assert mo2_profile_report["disabledModCount"] == 1, mo2_profile_report
+        mo2_inventory = server.mo2_inventory_mods({**mo2_args, "include_files": True})
+        assert mo2_inventory["enabledModCount"] == 5, mo2_inventory
+        assert mo2_inventory["missingEnabledModDirCount"] == 1, mo2_inventory
+        assert mo2_inventory["knownRules"]["findingCount"] >= 2, mo2_inventory
+        assert any(item["code"] == "fnis_and_pandora_generators_present" for item in mo2_inventory["knownRules"]["findings"]), mo2_inventory
+        mo2_plugins = server.mo2_plugin_report(mo2_args)
+        assert "MissingEnabled.esp" in mo2_plugins["missingEnabledPlugins"], mo2_plugins
+        assert any(item["missingMaster"] == "MissingMaster.esm" for item in mo2_plugins["missingMasters"]), mo2_plugins
+        mo2_conflicts = server.mo2_file_conflict_report(mo2_args)
+        assert any(item["relativePath"] == "scripts/shared.pex" for item in mo2_conflicts["conflicts"]), mo2_conflicts
+        mo2_play = server.mo2_modded_play_report(mo2_args)
+        assert mo2_play["summary"]["manager"] == "mo2", mo2_play
+        assert mo2_play["summary"]["recommendedLaunchRoute"] == "fix_findings_first", mo2_play
+        assert any(finding["code"] == "mo2_enabled_mod_folders_missing" for finding in mo2_play["findings"]), mo2_play
+        assert any(finding["code"] == "missing_plugin_masters" for finding in mo2_play["findings"]), mo2_play
+
+        mo2_cli = subprocess.run(
+            [
+                sys.executable,
+                str(repo / "server.py"),
+                "--mo2-diagnostics",
+                "--mo2-instance-dir",
+                str(mo2),
+                "--mo2-profile",
+                "Default",
+                "--skyrim-dir",
+                str(skyrim),
+            ],
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        mo2_cli_payload = json.loads(mo2_cli.stdout)
+        assert mo2_cli_payload["summary"]["manager"] == "mo2", mo2_cli_payload
 
         original_windows_file_version = server.windows_file_version
         try:

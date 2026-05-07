@@ -53,6 +53,8 @@ Vortex-SkyrimSE-Menu.cmd
 35. SKSE Runtime Doctor
 36. Report Viewer
 37. Live Evidence Summary
+38. Known Mod Rules
+39. MO2 Diagnostics
 
 Reports are written to:
 
@@ -106,6 +108,8 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action skse-doctor
 .\vortex_skyrimse_menu.ps1 -Action report-viewer
 .\vortex_skyrimse_menu.ps1 -Action evidence-report -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
+.\vortex_skyrimse_menu.ps1 -Action known-rules
+.\vortex_skyrimse_menu.ps1 -Action mo2-diagnostics
 ```
 
 Action 30 imports helper output from `<case folder>\incoming` by default. Use
@@ -139,6 +143,13 @@ reports so you and OpenClaw can find the newest evidence faster.
 Action 37 writes `live-evidence-summary.md` in an issue case folder. It reads
 imported popup OCR, console FormIDs, cells, objects, and screenshot notes, then
 lists the suggested next diagnostic calls without changing mods or profiles.
+
+Action 38 runs common Skyrim SE known-rule checks such as FNIS + Pandora and
+FSMPM without JContainers.
+
+Action 39 runs read-only Mod Organizer 2 diagnostics. For MO2, launch SKSE,
+Skyrim, and xEdit from MO2's Run dropdown so the selected profile's virtual
+files are visible.
 
 If Windows cannot find Python, pass the executable once:
 
