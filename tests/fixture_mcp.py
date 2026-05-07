@@ -117,10 +117,14 @@ def main() -> int:
         assert setup["environment"]["nexus_api"]["configured"] is False, setup
         assert "workflow_guide" in setup["toolGroups"]["alwaysAvailable"], setup
         assert "xedit_diagnostics_report" in setup["toolGroups"]["alwaysAvailable"], setup
+        assert "vortex_reversible_automation_plan" in setup["toolGroups"]["alwaysAvailable"], setup
 
         workflow = server.workflow_guide({"problem": "there is a bed outside the tavern room", "max_workflows": 1})
         assert workflow["workflows"][0]["key"] == "weird_object", workflow
         assert "in_game_issue_report" in workflow["workflows"][0]["tools"], workflow
+
+        automation_workflow = server.workflow_guide({"problem": "delete unwanted mods and sort load order but make it reversible", "max_workflows": 1})
+        assert automation_workflow["workflows"][0]["key"] == "risky_automation", automation_workflow
 
         xedit = server.xedit_diagnostics_report({**base_args, "form_id": "0100ABCD"})
         assert xedit["available"] is True, xedit
@@ -315,6 +319,18 @@ def main() -> int:
 
         server.load_vortex_profile_state = fake_deployment_profile_state
         try:
+            automation = server.vortex_reversible_automation_plan(
+                {
+                    **base_args,
+                    "request": "delete weather mod and sort load order safely",
+                    "disable_mod_ids": ["weather"],
+                    "include_profile_state": False,
+                }
+            )
+            assert automation["dryRunOnly"] is True, automation
+            assert automation["summary"]["profileCloneRequired"] is True, automation
+            assert any(plan["action"] == "delete_or_uninstall_mods" for plan in automation["actionPlans"]), automation
+            assert any(step["tool"] == "vortex_safe_profile_fix" for step in automation["planSteps"]), automation
             doctor = server.deployment_doctor_report({**base_args, "deployment_probe_files_per_mod": 3})
             assert doctor["summary"]["profileToSkyrimLinked"] is False, doctor
             assert doctor["summary"]["deploymentState"] in {"blocked_missing_masters", "needs_deploy"}, doctor

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.32
+
+- Adds `vortex_reversible_automation_plan`, a read-only safety gate for risky automation requests such as delete/uninstall, sort, conflict rules, deploy/purge, updates, plugin edits, and cloned-profile mod toggles.
+- Adds `--automation-plan` direct CLI shortcut and local menu action 34.
+- Documents which actions can be tested through cloned profiles and which must remain Vortex/xEdit-owned, with revert steps.
+- Updates workflow routing so OpenClaw can answer "automate this but make it reversible" without applying changes.
+
 ## v0.2.31
 
 - Adds `skyrim_launch_doctor_report`, a read-only launch-route verdict for SKSE vs Steam/vanilla vs fix deployment/SKSE first.

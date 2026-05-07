@@ -266,6 +266,7 @@ function Show-Actions {
   Write-Host "31. Clone profile and apply fixes"
   Write-Host "32. Deployment Doctor"
   Write-Host "33. Launch Doctor"
+  Write-Host "34. Reversible Automation Plan"
   Write-Host "Q. Quit"
 }
 
@@ -550,6 +551,21 @@ function Invoke-MenuAction {
       Write-Host "Wrote Launch Doctor Markdown: $md" -ForegroundColor Green
       Write-Host "Wrote Launch Doctor JSON: $json" -ForegroundColor Green
       Write-Host "This action did not launch Steam, Skyrim, SKSE, Vortex, or xEdit." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("34", "automation", "automation-plan", "reversible", "reversible-automation") } {
+      $request = $Problem
+      if (!$request -and !$script:StartedWithAction) {
+        $request = Read-Host "Describe the automation you want planned safely"
+      }
+      $argsData = @{
+        request = $request
+      }
+      $argsFile = Write-JsonArgs "automation-plan" $argsData
+      $out = Join-Path $script:ReportDir "reversible-automation-$stamp.json"
+      Invoke-Server (@("--automation-plan", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Wrote reversible automation plan: $out" -ForegroundColor Green
+      Write-Host "This action did not deploy, sort, delete, uninstall, update, edit plugins, or change profiles." -ForegroundColor Green
       return
     }
     { $_ -in @("13", "cache", "scan-cache") } {

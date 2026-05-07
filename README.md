@@ -58,6 +58,8 @@ an MCP client.
   for safer testing.
 - Write Vortex profile backups and preview restore/undo plans before changing a
   profile.
+- Turn risky automation requests into backup-first, cloned-profile-first,
+  revert-aware plans with `vortex_reversible_automation_plan`.
 - Write a no-change safe session report that combines setup validation, optional
   profile backup, play health, in-game issue triage, and log status.
 - Write a one-button `skyrim_diagnostics_report` for OpenClaw or local CLI use:
@@ -93,6 +95,7 @@ an MCP client.
 - [docs/SKYRIM-DIAGNOSTICS.md](docs/SKYRIM-DIAGNOSTICS.md): broad one-button Skyrim SE diagnostics.
 - [docs/DEPLOYMENT-DOCTOR.md](docs/DEPLOYMENT-DOCTOR.md): quickest profile-to-Skyrim deployment verdict.
 - [docs/LAUNCH-DOCTOR.md](docs/LAUNCH-DOCTOR.md): quickest SKSE vs Steam/vanilla launch-route verdict.
+- [docs/REVERSIBLE-AUTOMATION.md](docs/REVERSIBLE-AUTOMATION.md): safety gate for risky automation and undo-aware plans.
 - [docs/SKYRIM-RUNTIME-LOGS.md](docs/SKYRIM-RUNTIME-LOGS.md): Papyrus/SKSE/crash log scanning and safe config patch workflow.
 - [docs/PERFORMANCE.md](docs/PERFORMANCE.md): compact outputs and slow-model guidance.
 - [docs/NEXUS-API.md](docs/NEXUS-API.md): optional read-only Nexus Mods API setup and tools.
@@ -219,6 +222,7 @@ py -3 .\server.py --tool vortex_collection_report
 py -3 .\server.py --deployment-doctor
 py -3 .\server.py --deployment-doctor --baseline-path ".\deployment-doctor-before.json" --output-path ".\deployment-doctor-after.md"
 py -3 .\server.py --launch-doctor
+py -3 .\server.py --automation-plan --request "disable unwanted mods and sort safely"
 py -3 .\server.py --runtime-logs --description "popup says file was not configured properly"
 py -3 .\server.py --skyrim-diagnostics
 py -3 .\server.py --safe-session
@@ -398,6 +402,7 @@ Use apply_ini_fixes with dry_run=false and make_backup=true.
 - `vortex_profile_restore_plan`
 - `vortex_clone_profile`
 - `vortex_set_profile_mods`
+- `vortex_reversible_automation_plan`
 - `skyrim_modded_play_report`
 - `suggest_conflict_fixes`
 - `log_status`
@@ -498,6 +503,10 @@ enabled on a profile, but plugin/sample files are not deployed into Skyrim
 If you are not sure whether to launch through SKSE or Steam/vanilla, run
 `skyrim_launch_doctor_report`. It checks the selected profile, deployment state,
 SKSE files, and launch target before you touch a real save.
+
+If you want OpenClaw to automate something risky, start with
+`vortex_reversible_automation_plan`. It explains what can be tested safely in a
+cloned Vortex profile, what must stay in Vortex/xEdit, and how to undo.
 
 For the broadest first pass, run `skyrim_modded_play_report`. It adds SKSE,
 missing audio archive, missing master, stale `plugins.txt`, and INI checks, then

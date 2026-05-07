@@ -153,6 +153,12 @@ For SKSE/launch confusion:
 Use skyrim_launch_doctor_report. Tell me the recommended launch route and the first blocker if it is not safe to launch yet. Do not launch or change anything.
 ```
 
+For "automate this but make it reversible":
+
+```text
+Use vortex_reversible_automation_plan with this request: disable unwanted mods, sort load order, and keep an undo path. Explain which parts can be tested in a cloned profile and which parts must stay in Vortex/xEdit. Do not apply changes.
+```
+
 For something weird inside the game:
 
 ```text

@@ -14,6 +14,9 @@ These are useful next steps, ordered by value and risk.
 
 ## Recently Added
 
+- Reversible automation planning for risky requests: cloned-profile first,
+  backup first, Vortex/xEdit-owned operations kept manual, and Deployment
+  Doctor/Launch Doctor verification after changes.
 - Read-only xEdit/SSEEdit target hints from FormIDs and plugin names.
 - Read-only xEdit/SSEEdit inspection script generation plus CSV result parsing.
 - One-folder Skyrim issue case packets that combine issue triage, xEdit hints, generated scripts, and OpenClaw next steps.
@@ -29,10 +32,10 @@ These are useful next steps, ordered by value and risk.
 
 ## What Not To Automate Yet
 
-- Do not auto-delete redundant mods.
-- Do not auto-sort load order.
-- Do not auto-write Vortex conflict rules.
-- Do not auto-disable mods from broad guesses.
+- Do not auto-delete redundant mods. Plan a cloned-profile disable test first.
+- Do not auto-sort load order. Let Vortex/LOOT own sorting, then verify.
+- Do not auto-write Vortex conflict rules. Explain rules, then apply in Vortex.
+- Do not auto-disable mods from broad guesses. Use exact mod ids and a clone.
 - Do not trigger deployment, installs, updates, removals, load-order writes, or Nexus account actions from outside Vortex until there is a stable supported API path.
 - Do not read, copy, or reuse Vortex's Nexus API key.
 - Do not edit plugin records or delete placed references automatically from a natural-language in-game report.

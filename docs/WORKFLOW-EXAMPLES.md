@@ -56,6 +56,12 @@ Direct workflow guide:
 py -3 .\server.py --workflow-guide --problem "mods downloaded but not working"
 ```
 
+Risky automation safety gate:
+
+```powershell
+py -3 .\server.py --automation-plan --request "delete redundant mods, sort load order, and make it undoable"
+```
+
 ## Workflow 1: First Setup Check
 
 Use this when you just installed the MCP or OpenClaw seems unsure.
@@ -391,6 +397,7 @@ because it may contain mod names, plugin names, and unusual custom paths.
 | "Wrong Vortex profile?" | `vortex_profile_report` |
 | "Downloaded but not deployed?" | `deployment_doctor_report` |
 | "Should I launch with SKSE?" | `skyrim_launch_doctor_report` |
+| "Automate this but make it reversible" | `vortex_reversible_automation_plan` |
 | "Missing masters or crash?" | `plugin_report` |
 | "What mod added this thing?" | `in_game_issue_report` |
 | "I have a FormID" | `xedit_diagnostics_report` |

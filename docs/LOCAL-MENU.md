@@ -49,6 +49,7 @@ Vortex-SkyrimSE-Menu.cmd
 31. Clone profile and apply fixes
 32. Deployment Doctor
 33. Launch Doctor
+34. Reversible Automation Plan
 
 Reports are written to:
 
@@ -98,6 +99,7 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action deployment-doctor
 .\vortex_skyrimse_menu.ps1 -Action deployment-doctor -DeploymentBaselinePath "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\deployment-doctor-before.json"
 .\vortex_skyrimse_menu.ps1 -Action launch-doctor
+.\vortex_skyrimse_menu.ps1 -Action automation-plan -Problem "disable unwanted mods and sort safely"
 ```
 
 Action 30 imports helper output from `<case folder>\incoming` by default. Use
@@ -116,6 +118,10 @@ against an older Deployment Doctor JSON report.
 Action 33 is the fastest "how should I launch Skyrim?" verdict. It is read-only
 and checks SkyrimSE.exe, SKSE files, active profile state, and Deployment Doctor
 state before recommending SKSE, Steam/vanilla, or a fix-first route.
+
+Action 34 is the safety gate for risky automation requests. It writes a plan
+only: backup first, clone profile first, apply exact mod-id changes to the clone
+only, keep Vortex-owned actions in Vortex, then verify with Deployment Doctor.
 
 If Windows cannot find Python, pass the executable once:
 

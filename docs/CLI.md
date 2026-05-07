@@ -65,6 +65,12 @@ Keep a readable Launch Doctor report:
 py -3 .\server.py --launch-doctor --output-path ".\launch-doctor.md" --output-json ".\launch-doctor.json"
 ```
 
+Plan risky automation without applying changes:
+
+```powershell
+py -3 .\server.py --automation-plan --request "disable redundant mods, sort load order, and keep it revertable"
+```
+
 Write a smaller report for a slower OpenClaw model:
 
 ```powershell

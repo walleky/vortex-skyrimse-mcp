@@ -117,6 +117,19 @@ send the user back to Vortex Deploy Mods before discussing SKSE. If the route is
 `skse`, tell them to launch through `skse64_loader.exe` or the Vortex Dashboard
 SKSE tool they normally use.
 
+For "automate this but make it reversible", including delete/uninstall/sort/conflict/deploy/update/plugin-edit requests:
+
+```text
+vortex_reversible_automation_plan with request=<the user's exact request>
+```
+
+Read `actionPlans`, `planSteps`, and `findings`. The plan is evidence and
+safety routing, not approval to apply. Use exact Vortex mod ids and
+`vortex_safe_profile_fix apply=false` before any cloned-profile test. Keep
+Vortex Deploy/Purge, conflict rules, sorting, installs, updates, uninstalls, and
+xEdit plugin edits in their owning apps, then verify with Deployment Doctor and
+Launch Doctor.
+
 For "crash or missing masters":
 
 ```text

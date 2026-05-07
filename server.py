@@ -40,7 +40,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.31"
+SERVER_VERSION = "0.2.32"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -1781,6 +1781,7 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "skyrim_case_evidence_import",
             "skyrim_case_inbox_import",
             "skyrim_case_bundle",
+            "vortex_reversible_automation_plan",
         ],
         "nexusMetadataOptional": [
             "nexus_validate_key",
@@ -1807,6 +1808,7 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "vortex_clone_profile",
             "vortex_set_profile_mods",
             "vortex_safe_profile_fix",
+            "vortex_reversible_automation_plan",
         ],
         "writeCapableDryRunFirst": [
             "apply_ini_fixes",
@@ -1876,6 +1878,17 @@ def workflow_catalog() -> List[Dict[str, Any]]:
             "humanSteps": ["If Launch Doctor says fix deployment first, deploy in Vortex before launching.", "If it says SKSE, launch through skse64_loader.exe or the Vortex Dashboard SKSE tool.", "If it says review, fix the listed warning before using a real save."],
             "directCli": ["py -3 .\\server.py --launch-doctor"],
             "menuAction": "33. Launch Doctor",
+        },
+        {
+            "key": "risky_automation",
+            "title": "Reversible Automation Plan",
+            "matchTerms": ["delete mods", "delete", "uninstall mods", "uninstall", "auto sort", "sort", "load order", "conflict rules", "disable unwanted", "remove unwanted", "automate", "revert", "reversible", "undo"],
+            "userPrompt": "Use vortex_reversible_automation_plan with my request. Explain which parts can be tested in a cloned profile, which parts must stay in Vortex/xEdit, and how to undo. Do not apply changes.",
+            "tools": ["vortex_reversible_automation_plan", "vortex_profile_mods", "vortex_safe_profile_fix", "deployment_doctor_report", "skyrim_launch_doctor_report"],
+            "whatToRead": ["summary", "actionPlans", "planSteps", "findings", "nextActions"],
+            "humanSteps": ["Use exact Vortex mod ids.", "Preview clone/profile changes first.", "Close Vortex before approved profile writes.", "Deploy manually in Vortex, then verify with Deployment Doctor."],
+            "directCli": ["py -3 .\\server.py --automation-plan --request \"disable these unwanted mods in a cloned profile\""],
+            "menuAction": "34. Reversible Automation Plan",
         },
         {
             "key": "weird_object",
@@ -9352,6 +9365,299 @@ def skyrim_launch_doctor_report(args: Dict[str, Any]) -> Dict[str, Any]:
     return report
 
 
+def automation_requested_text(args: Dict[str, Any]) -> str:
+    parts: List[str] = []
+    for key in ("request", "problem", "description"):
+        value = str(args.get(key) or "").strip()
+        if value:
+            parts.append(value)
+    actions = args.get("requested_actions")
+    if isinstance(actions, list):
+        parts.extend(str(item) for item in actions if str(item).strip())
+    elif actions:
+        parts.append(str(actions))
+    return " ".join(parts).strip()
+
+
+def automation_action_specs() -> List[Dict[str, Any]]:
+    return [
+        {
+            "key": "disable_mods",
+            "terms": ["disable", "turn off", "remove from profile", "unwanted mod"],
+            "risk": "medium",
+            "support": "apply_supported_clone_only",
+            "reversibleBy": ["Switch back to the original Vortex profile.", "Use the profile backup with vortex_profile_restore_plan if needed."],
+            "safeImplementation": "Use vortex_safe_profile_fix with exact disable_mod_ids. It clones the profile first and changes only the clone when apply=true.",
+        },
+        {
+            "key": "enable_mods",
+            "terms": ["enable", "turn on"],
+            "risk": "medium",
+            "support": "apply_supported_clone_only",
+            "reversibleBy": ["Switch back to the original Vortex profile.", "Use the profile backup with vortex_profile_restore_plan if needed."],
+            "safeImplementation": "Use vortex_safe_profile_fix with exact enable_mod_ids. It clones the profile first and changes only the clone when apply=true.",
+        },
+        {
+            "key": "delete_or_uninstall_mods",
+            "terms": ["delete", "uninstall", "remove permanently", "erase"],
+            "risk": "high",
+            "support": "manual_vortex_only",
+            "reversibleBy": ["Do not delete first. Disable in a cloned profile, deploy, test, then uninstall manually in Vortex only after the clone works."],
+            "safeImplementation": "Use cloned-profile disable/quarantine first. This MCP should not delete mod folders or Vortex state directly.",
+        },
+        {
+            "key": "sort_load_order",
+            "terms": ["sort", "load order", "loot"],
+            "risk": "high",
+            "support": "manual_vortex_only",
+            "reversibleBy": ["Keep a profile backup and deployment baseline before sorting.", "Use Vortex/LOOT history and profile restore preview if the sorted result is bad."],
+            "safeImplementation": "Generate diagnostics and a before/after baseline. Let Vortex/LOOT own the actual sort operation.",
+        },
+        {
+            "key": "write_conflict_rules",
+            "terms": ["conflict rule", "winner", "loser", "load after", "load before", "override"],
+            "risk": "high",
+            "support": "manual_vortex_only",
+            "reversibleBy": ["Record the current conflict recommendation and deployment baseline before changing rules.", "Remove or reverse the rule in Vortex if the test profile gets worse."],
+            "safeImplementation": "Use analyze_conflicts and suggest_conflict_fixes as evidence. Apply conflict rules in Vortex UI after reviewing the exact file/provider conflict.",
+        },
+        {
+            "key": "deploy_or_purge",
+            "terms": ["deploy", "purge", "undeploy"],
+            "risk": "medium",
+            "support": "manual_vortex_only",
+            "reversibleBy": ["Vortex purge removes deployed links and Deploy Mods restores them when state is correct.", "Keep Deployment Doctor before/after JSON to prove what changed."],
+            "safeImplementation": "This MCP should ask the user to click Deploy Mods/Purge in Vortex, then verify with deployment_doctor_report baseline comparison.",
+        },
+        {
+            "key": "install_or_update_mods",
+            "terms": ["install", "update", "download", "nexus update", "collection update"],
+            "risk": "high",
+            "support": "manual_vortex_only",
+            "reversibleBy": ["Back up the profile and keep the downloaded archive/source metadata.", "Prefer a cloned profile before updating a working collection."],
+            "safeImplementation": "Use Nexus API tools for read-only source/update metadata. Let Vortex own downloads, installs, updates, and collection changes.",
+        },
+        {
+            "key": "edit_plugin_records",
+            "terms": ["edit plugin", "delete record", "remove object", "delete reference", "fix in xedit", "save plugin"],
+            "risk": "critical",
+            "support": "manual_xedit_only",
+            "reversibleBy": ["Copy/back up the plugin first.", "Use a cloned profile and never test on the only save.", "Keep xEdit CSV evidence and case notes."],
+            "safeImplementation": "Use xEdit inspection scripts and safe experiment plans. The MCP should not save plugin edits or delete placed references automatically.",
+        },
+        {
+            "key": "patch_config",
+            "terms": ["config", "configured", "json", "ini", "toml", "xml", "setting"],
+            "risk": "medium",
+            "support": "apply_supported_exact_text",
+            "reversibleBy": ["apply_config_text_patch writes a backup by default.", "Restore the .bak file or reverse the exact text patch."],
+            "safeImplementation": "Run config_file_report, then apply_config_text_patch with dry_run=true before any apply=true.",
+        },
+    ]
+
+
+def detect_automation_actions(args: Dict[str, Any]) -> List[Dict[str, Any]]:
+    text = automation_requested_text(args).lower()
+    explicit = args.get("action_types")
+    explicit_keys = {str(item).strip().lower() for item in explicit} if isinstance(explicit, list) else set()
+    matches = []
+    for spec in automation_action_specs():
+        term_hit = bool(text and any(term in text for term in spec["terms"]))
+        explicit_hit = spec["key"] in explicit_keys
+        if term_hit or explicit_hit:
+            matches.append(dict(spec))
+    if not matches:
+        matches.append(
+            {
+                "key": "general_safety",
+                "terms": [],
+                "risk": "medium",
+                "support": "plan_only",
+                "reversibleBy": ["Start with diagnostics, profile backup, cloned profile, then one narrow change at a time."],
+                "safeImplementation": "Describe the exact action requested, then rerun this tool with request/action_types and exact mod ids when applicable.",
+            }
+        )
+    return matches
+
+
+def list_arg(args: Dict[str, Any], key: str) -> List[str]:
+    value = args.get(key)
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str) and value.strip():
+        return [item.strip() for item in re.split(r"[,;]", value) if item.strip()]
+    return []
+
+
+def vortex_reversible_automation_plan(args: Dict[str, Any]) -> Dict[str, Any]:
+    include_profile_state = bool(args.get("include_profile_state", True))
+    enable_ids = list_arg(args, "enable_mod_ids")
+    disable_ids = list_arg(args, "disable_mod_ids")
+    requested_text = automation_requested_text(args)
+    actions = detect_automation_actions(args)
+    findings: List[Dict[str, Any]] = []
+    sections: Dict[str, Any] = {}
+
+    try:
+        sections["setup"] = validate_setup(args)
+    except Exception as exc:
+        sections["setup"] = {"error": str(exc)}
+        add_finding(findings, "high", "setup_validation_failed", str(exc), "Fix setup detection before applying any reversible automation.")
+
+    if include_profile_state:
+        try:
+            sections["profiles"] = vortex_profile_report(args)
+        except Exception as exc:
+            sections["profiles"] = {"error": str(exc)}
+            add_finding(findings, "medium", "profile_report_failed", str(exc), "Pass vortex_exe or close Vortex, then rerun before profile automation.")
+
+    try:
+        sections["deploymentDoctor"] = deployment_doctor_report(args)
+    except Exception as exc:
+        sections["deploymentDoctor"] = {"error": str(exc)}
+        add_finding(findings, "medium", "deployment_doctor_failed", str(exc), "Fix path/profile detection before deployment-affecting automation.")
+
+    exact_mod_ids_available = bool(enable_ids or disable_ids)
+    plan_steps = [
+        {
+            "step": 1,
+            "name": "Capture baseline",
+            "tool": "deployment_doctor_report",
+            "apply": False,
+            "why": "Creates before evidence so OpenClaw can compare after deployment or profile changes.",
+        },
+        {
+            "step": 2,
+            "name": "Back up profiles",
+            "tool": "vortex_profile_backup",
+            "apply": False,
+            "why": "Profile restore preview needs a known-good snapshot.",
+            "suggestedArguments": {"include_all_profiles": True},
+        },
+        {
+            "step": 3,
+            "name": "Clone before changing mod state",
+            "tool": "vortex_safe_profile_fix" if exact_mod_ids_available else "vortex_clone_profile",
+            "apply": False,
+            "why": "The original profile remains untouched until the user verifies the cloned test profile.",
+            "suggestedArguments": {
+                "new_profile_name": args.get("new_profile_name") or args.get("test_profile_name") or "OpenClaw Reversible Test",
+                "enable_mod_ids": enable_ids,
+                "disable_mod_ids": disable_ids,
+            }
+            if exact_mod_ids_available
+            else {"new_name": args.get("new_profile_name") or args.get("test_profile_name") or "OpenClaw Reversible Test"},
+        },
+        {
+            "step": 4,
+            "name": "Apply only after explicit approval",
+            "tool": "vortex_safe_profile_fix" if exact_mod_ids_available else "vortex_clone_profile",
+            "apply": True,
+            "requires": ["User approval", "Vortex closed", "Dry-run reviewed"],
+            "why": "This creates or edits only the cloned profile when exact mod ids are supplied.",
+        },
+        {
+            "step": 5,
+            "name": "Deploy manually in Vortex",
+            "tool": "Vortex UI",
+            "apply": "manual",
+            "why": "Vortex owns deployment/purge and conflict-rule application; the MCP verifies after the user deploys.",
+        },
+        {
+            "step": 6,
+            "name": "Verify after change",
+            "tool": "deployment_doctor_report",
+            "apply": False,
+            "suggestedArguments": {"baseline_path": "<before deployment doctor json>"},
+            "why": "Compares before/after to catch regressions.",
+        },
+        {
+            "step": 7,
+            "name": "Launch route check",
+            "tool": "skyrim_launch_doctor_report",
+            "apply": False,
+            "why": "Confirms whether to launch with SKSE, Steam/vanilla, or stop first.",
+        },
+    ]
+
+    action_plans = []
+    for action in actions:
+        if action["risk"] in {"high", "critical"}:
+            add_finding(
+                findings,
+                "high" if action["risk"] == "high" else "critical",
+                f"risky_action_{action['key']}",
+                f"Requested or implied action '{action['key']}' is {action['risk']} risk.",
+                action["safeImplementation"],
+            )
+        action_plan = {
+            "action": action["key"],
+            "risk": action["risk"],
+            "support": action["support"],
+            "safeImplementation": action["safeImplementation"],
+            "reversibleBy": action["reversibleBy"],
+            "canApplyThroughMcpNow": action["support"] in {"apply_supported_clone_only", "apply_supported_exact_text"} and (exact_mod_ids_available or action["key"] == "patch_config"),
+        }
+        if action["key"] in {"disable_mods", "enable_mods"} and not exact_mod_ids_available:
+            action_plan["missingInputs"] = ["exact Vortex mod ids from vortex_profile_mods"]
+            action_plan["canApplyThroughMcpNow"] = False
+        if action["support"].startswith("manual"):
+            action_plan["manualReason"] = "Vortex/xEdit owns this operation; direct state/file edits outside those apps are more likely to corrupt the setup than help."
+        action_plans.append(action_plan)
+
+    dry_run_only = not bool(args.get("confirm_unsafe_automation", False))
+    if dry_run_only:
+        add_finding(
+            findings,
+            "info",
+            "dry_run_only",
+            "This plan did not apply anything. Pass exact ids to the existing clone/profile tools and explicit apply=true only after reviewing the dry run.",
+            "Review actionPlans and planSteps, then run the named tool with apply=false first.",
+        )
+
+    findings = sort_findings(findings)
+    highest = findings[0].get("severity", "none") if findings else "none"
+    return {
+        "generatedAt": iso_now(),
+        "server": SERVER_NAME,
+        "version": SERVER_VERSION,
+        "readOnly": True,
+        "dryRunOnly": True,
+        "requestedText": requested_text,
+        "summary": {
+            "highestSeverity": highest,
+            "findingCount": len(findings),
+            "actionCount": len(action_plans),
+            "exactEnableModIdCount": len(enable_ids),
+            "exactDisableModIdCount": len(disable_ids),
+            "profileCloneRequired": True,
+            "profileBackupRequired": True,
+            "manualVortexStepRequired": any(plan.get("support") == "manual_vortex_only" for plan in action_plans),
+            "manualXeditStepRequired": any(plan.get("support") == "manual_xedit_only" for plan in action_plans),
+        },
+        "actionPlans": action_plans,
+        "planSteps": plan_steps,
+        "findings": findings,
+        "sections": sections,
+        "nextActions": [
+            "Run vortex_profile_mods first if exact mod ids are missing.",
+            "Use vortex_safe_profile_fix with apply=false for exact enable/disable tests; it clones the profile instead of changing the original.",
+            "Keep Vortex-owned operations such as Deploy, Purge, conflict rules, sorting, installs, updates, and uninstalls inside Vortex, then verify with Deployment Doctor.",
+            "Use xEdit tools for read-only evidence only; plugin edits require manual xEdit backups and explicit user approval outside this MCP.",
+        ],
+        "sources": [
+            "https://github.com/Nexus-Mods/Vortex/wiki/MODDINGWIKI-Users-General-Setting-up-Profiles",
+            "https://github.com/Nexus-Mods/Vortex/wiki/MODDINGWIKI-Users-FAQ",
+            "https://github.com/Nexus-Mods/Vortex/wiki/MODDINGWIKI-Users-General-Deployment-Methods",
+            "https://github.com/Nexus-Mods/Vortex/wiki/MODDINGWIKI-Users-Troubleshooting-Command-Line-Parameters",
+        ],
+        "notes": [
+            "Separate profiles are still the safety model. The MCP should test risky mod-state changes in a cloned profile, not the original.",
+            "This tool is an automation gate. It plans dangerous requests and points to reversible tools, but it does not deploy, delete, sort, write conflict rules, install, update, or edit plugins.",
+        ],
+    }
+
+
 def suggest_conflict_fixes(args: Dict[str, Any]) -> Dict[str, Any]:
     conflicts = analyze_conflicts({**args, "hash_files": args.get("hash_files", False)})
     plugins = plugin_report(args) if find_skyrim_dir(args.get("skyrim_dir")) else {}
@@ -11358,6 +11664,58 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         },
         vortex_safe_profile_fix,
     ),
+    "vortex_reversible_automation_plan": (
+        "Plan risky Skyrim/Vortex automation as backup-first, cloned-profile-first, revert-aware steps without applying changes.",
+        {
+            "type": "object",
+            "properties": {
+                "request": {"type": "string"},
+                "problem": {"type": "string"},
+                "description": {"type": "string"},
+                "requested_actions": {"type": "array", "items": {"type": "string"}},
+                "action_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "disable_mods",
+                            "enable_mods",
+                            "delete_or_uninstall_mods",
+                            "sort_load_order",
+                            "write_conflict_rules",
+                            "deploy_or_purge",
+                            "install_or_update_mods",
+                            "edit_plugin_records",
+                            "patch_config",
+                        ],
+                    },
+                },
+                "enable_mod_ids": {"type": "array", "items": {"type": "string"}},
+                "disable_mod_ids": {"type": "array", "items": {"type": "string"}},
+                "new_profile_name": {"type": "string"},
+                "test_profile_name": {"type": "string"},
+                "profile_id": {"type": "string"},
+                "game_id": {"type": "string", "default": GAME_ID},
+                "vortex_exe": {"type": "string"},
+                "vortex_appdata": {"type": "string"},
+                "skyrim_dir": {"type": "string"},
+                "staging_dir": {"type": "string"},
+                "local_appdata": {"type": "string"},
+                "my_games_dir": {"type": "string"},
+                "include_profile_state": {"type": "boolean", "default": True},
+                "confirm_unsafe_automation": {"type": "boolean", "default": False},
+                "max_mods": {"type": "integer", "default": 500},
+                "max_files_per_mod": {"type": "integer", "default": 3000},
+                "deployment_probe_files_per_mod": {"type": "integer", "default": DEPLOYMENT_PROBE_DEFAULT_FILES_PER_MOD},
+                "scan_cache_dir": {"type": "string"},
+                "use_scan_cache": {"type": "boolean", "default": True},
+                "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
+                "timeout_seconds": {"type": "integer", "default": 60},
+            },
+            "additionalProperties": False,
+        },
+        vortex_reversible_automation_plan,
+    ),
     "skyrim_modded_play_report": (
         "One-shot read-only report for why modded Skyrim SE may not be launching with the expected Vortex profile.",
         {
@@ -11740,6 +12098,7 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         "plugin_name": parsed.plugin_name,
         "collection_manifest_path": parsed.collection_manifest_path,
         "collection_manifest_json": parsed.collection_manifest_json,
+        "request": parsed.request,
         "problem": parsed.problem,
         "workflow_key": parsed.workflow_key,
         "path": parsed.path,
@@ -11934,6 +12293,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--skyrim-diagnostics", action="store_true", help="Shortcut for --tool skyrim_diagnostics_report.")
     parser.add_argument("--deployment-doctor", action="store_true", help="Shortcut for --tool deployment_doctor_report.")
     parser.add_argument("--launch-doctor", action="store_true", help="Shortcut for --tool skyrim_launch_doctor_report.")
+    parser.add_argument("--automation-plan", action="store_true", help="Shortcut for --tool vortex_reversible_automation_plan.")
     parser.add_argument("--runtime-logs", action="store_true", help="Shortcut for --tool skyrim_runtime_log_report.")
     parser.add_argument("--workflow-guide", action="store_true", help="Shortcut for --tool workflow_guide.")
     parser.add_argument("--issue-case", action="store_true", help="Shortcut for --tool skyrim_issue_case_packet.")
@@ -11974,6 +12334,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--old-text", help="Exact text to replace for apply_config_text_patch.")
     parser.add_argument("--new-text", help="Replacement text for apply_config_text_patch.")
     parser.add_argument("--description", help="In-game issue description for in_game_issue_report.")
+    parser.add_argument("--request", help="Plain-language request for vortex_reversible_automation_plan.")
     parser.add_argument("--problem", help="Plain-language problem for workflow_guide.")
     parser.add_argument("--workflow-key", help="Specific workflow key for workflow_guide, or all.")
     parser.add_argument("--location", help="In-game location for in_game_issue_report, such as 'Whiterun Bannered Mare'.")
@@ -12087,6 +12448,8 @@ def cli_main(argv: List[str]) -> int:
         if parsed.deployment_doctor
         else "skyrim_launch_doctor_report"
         if parsed.launch_doctor
+        else "vortex_reversible_automation_plan"
+        if parsed.automation_plan
         else "skyrim_runtime_log_report"
         if parsed.runtime_logs
         else "mod_knowledge_report"
@@ -12116,7 +12479,7 @@ def cli_main(argv: List[str]) -> int:
         else parsed.tool
     )
     if not tool_name:
-        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --deployment-doctor, --launch-doctor, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-bundle, or --safe-profile-fix")
+        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --deployment-doctor, --launch-doctor, --automation-plan, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-bundle, or --safe-profile-fix")
 
     try:
         tool_args = load_cli_tool_args(parsed)

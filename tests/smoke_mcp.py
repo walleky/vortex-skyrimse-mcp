@@ -129,6 +129,7 @@ def main() -> int:
     assert "skyrim_diagnostics_report" in listed_names, listed_names
     assert "deployment_doctor_report" in listed_names, listed_names
     assert "skyrim_launch_doctor_report" in listed_names, listed_names
+    assert "vortex_reversible_automation_plan" in listed_names, listed_names
     assert "scan_cache_status" in listed_names, listed_names
     assert "xedit_diagnostics_report" in listed_names, listed_names
     assert "xedit_inspection_script" in listed_names, listed_names
@@ -164,6 +165,8 @@ def main() -> int:
     assert "output_path" in listed_by_name["deployment_doctor_report"]["inputSchema"]["properties"], listed_by_name
     assert "baseline_path" in listed_by_name["deployment_doctor_report"]["inputSchema"]["properties"], listed_by_name
     assert "output_path" in listed_by_name["skyrim_launch_doctor_report"]["inputSchema"]["properties"], listed_by_name
+    assert "request" in listed_by_name["vortex_reversible_automation_plan"]["inputSchema"]["properties"], listed_by_name
+    assert "disable_mod_ids" in listed_by_name["vortex_reversible_automation_plan"]["inputSchema"]["properties"], listed_by_name
     assert "include_xedit_report" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
     assert "report_path" in listed_by_name["xedit_inspection_script"]["inputSchema"]["properties"], listed_by_name
     assert "max_preview_rows" in listed_by_name["xedit_inspection_result_report"]["inputSchema"]["properties"], listed_by_name
@@ -222,6 +225,17 @@ def main() -> int:
     assert launch_md.exists(), launch_json
     assert "Launch Doctor" in launch_md.read_text(encoding="utf-8"), launch_md
 
+    automation_direct = subprocess.run(
+        [sys.executable, str(server), "--automation-plan", "--request", "delete redundant mods and sort load order safely"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    automation_json = json.loads(automation_direct.stdout)
+    assert automation_json["dryRunOnly"] is True, automation_json
+    assert any(plan["action"] == "delete_or_uninstall_mods" for plan in automation_json["actionPlans"]), automation_json
+    assert any(plan["action"] == "sort_load_order" for plan in automation_json["actionPlans"]), automation_json
+
     proc = subprocess.Popen(
         [sys.executable, str(server)],
         stdin=subprocess.PIPE,
@@ -274,6 +288,7 @@ def main() -> int:
             assert "skyrim_diagnostics_report" in names, names
             assert "deployment_doctor_report" in names, names
             assert "skyrim_launch_doctor_report" in names, names
+            assert "vortex_reversible_automation_plan" in names, names
             assert "scan_cache_status" in names, names
             assert "xedit_diagnostics_report" in names, names
             assert "xedit_inspection_script" in names, names
