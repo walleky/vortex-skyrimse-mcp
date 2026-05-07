@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.39
+
+- Tightens MO2 auto-detection so absent/non-existent candidate folders are not reported as the active `instanceDir`.
+- Keeps explicit `mo2_instance_dir` overrides working even when the folder is missing, so reports can explain the bad path clearly.
+- Adds regression coverage for missing MO2 instance handling.
+
 ## v0.2.38
 
 - Adds read-only Mod Organizer 2 support: instance/profile detection, `modlist.txt` parsing, enabled/disabled mod inventory, virtual plugin checks, missing masters, and approximate loose-file conflicts.

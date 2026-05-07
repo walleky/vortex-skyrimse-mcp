@@ -45,7 +45,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.38"
+SERVER_VERSION = "0.2.39"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -3353,17 +3353,25 @@ def mo2_instance_score(path: Path) -> int:
     ini_path = path / "ModOrganizer.ini"
     mods = path / "mods"
     profiles = path / "profiles"
-    if path.exists():
+    path_exists_now = path.exists()
+    has_ini = ini_path.exists()
+    has_mods = mods.exists()
+    has_profiles = profiles.exists()
+    has_exe = any((path / name).exists() for name in MO2_EXE_NAMES)
+    has_portable_marker = (path / "portable.txt").exists()
+    if not any([path_exists_now, has_ini, has_mods, has_profiles, has_exe, has_portable_marker]):
+        return 0
+    if path_exists_now:
         score += 2
-    if ini_path.exists():
+    if has_ini:
         score += 20
-    if mods.exists():
+    if has_mods:
         score += 8
-    if profiles.exists():
+    if has_profiles:
         score += 8
-    if any((path / name).exists() for name in MO2_EXE_NAMES):
+    if has_exe:
         score += 4
-    if (path / "portable.txt").exists():
+    if has_portable_marker:
         score += 4
     lowered = path.name.lower()
     if "skyrim" in lowered:
@@ -3388,7 +3396,7 @@ def find_mo2_instance_dir(args: Dict[str, Any]) -> Optional[Path]:
     for score, path in scored:
         if score > 0 and ((path / "ModOrganizer.ini").exists() or (path / "mods").exists() or (path / "profiles").exists()):
             return path
-    return scored[0][1] if scored else None
+    return None
 
 
 def mo2_instance_paths(args: Dict[str, Any]) -> Dict[str, Any]:

@@ -89,6 +89,11 @@ def main() -> int:
     assert cache_status["maxEntries"] == 100, cache_status
     assert cache_status["prunableEntryCount"] == 0, cache_status
     assert cache_status["sizeBytes"] and cache_status["sizeBytes"] > 0, cache_status
+    assert mcp_server.mo2_instance_score(temp_root / "Skyrim Special Edition") == 0
+    explicit_missing_mo2 = mcp_server.mo2_detect_environment({"mo2_instance_dir": str(temp_root / "missing-mo2")})
+    assert explicit_missing_mo2["instanceDir"].endswith("missing-mo2"), explicit_missing_mo2
+    assert explicit_missing_mo2["readyForReadOnlyProfileScan"] is False, explicit_missing_mo2
+    assert any("MO2 instance folder was not found" in issue for issue in explicit_missing_mo2["issues"]), explicit_missing_mo2
     fixed_clone, fixed_changes, fix_preview = mcp_server.clone_profile_with_fix_changes(
         "clonefix",
         "Fixed Clone",
