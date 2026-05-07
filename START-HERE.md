@@ -153,6 +153,12 @@ For SKSE/launch confusion:
 Use skyrim_launch_doctor_report. Tell me the recommended launch route and the first blocker if it is not safe to launch yet. Do not launch or change anything.
 ```
 
+For SKSE version mismatch confusion:
+
+```text
+Use skse_runtime_doctor_report. Tell me whether my Skyrim runtime matches SKSE and Address Library evidence. Do not install or change anything.
+```
+
 For "automate this but make it reversible":
 
 ```text

@@ -14,6 +14,8 @@ from __future__ import annotations
 import argparse
 import configparser
 import csv
+import ctypes
+import ctypes.wintypes
 import datetime as _dt
 import hashlib
 import json
@@ -40,7 +42,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.32"
+SERVER_VERSION = "0.2.33"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -60,6 +62,12 @@ SCAN_DEFAULT_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
 SCAN_CACHE_DEFAULT_MAX_ENTRIES = 10_000
 DEPLOYMENT_PROBE_DEFAULT_FILES_PER_MOD = 12
 XEDIT_EXE_NAMES = ("SSEEdit.exe", "xEdit.exe", "TES5Edit.exe")
+SKSE_RUNTIME_BUILDS = {
+    "1.6.1170": {"skseBuild": "2.2.6", "channel": "Steam Anniversary Edition", "current": True},
+    "1.6.1179": {"skseBuild": "2.2.6", "channel": "GOG Anniversary Edition", "current": True},
+    "1.5.97": {"skseBuild": "2.0.20", "channel": "Special Edition downgraded/locked", "current": False},
+    "1.4.15": {"skseBuild": "2.0.12", "channel": "Skyrim VR", "current": False},
+}
 RUNTIME_LOG_SUFFIXES = {".log", ".txt"}
 CONFIG_PATCH_SUFFIXES = {".ini", ".json", ".toml", ".yaml", ".yml", ".xml", ".txt", ".cfg", ".conf", ".properties"}
 RUNTIME_LOG_ERROR_TERMS = {
@@ -824,6 +832,62 @@ def epoch_to_iso(value: Any) -> Optional[str]:
         return _dt.datetime.fromtimestamp(seconds).isoformat()
     except (OSError, OverflowError, ValueError):
         return None
+
+
+def windows_file_version(path: Optional[Path]) -> Optional[str]:
+    if not path or not path.exists() or os.name != "nt":
+        return None
+    try:
+        version = ctypes.windll.version  # type: ignore[attr-defined]
+        size = version.GetFileVersionInfoSizeW(str(path), None)
+        if not size:
+            return None
+        buffer = ctypes.create_string_buffer(size)
+        if not version.GetFileVersionInfoW(str(path), 0, size, buffer):
+            return None
+        pointer = ctypes.c_void_p()
+        length = ctypes.wintypes.UINT()
+        if not version.VerQueryValueW(buffer, "\\", ctypes.byref(pointer), ctypes.byref(length)):
+            return None
+        fixed = ctypes.cast(pointer, ctypes.POINTER(ctypes.wintypes.DWORD * 13)).contents
+        file_ms = int(fixed[2])
+        file_ls = int(fixed[3])
+        parts = [
+            (file_ms >> 16) & 0xFFFF,
+            file_ms & 0xFFFF,
+            (file_ls >> 16) & 0xFFFF,
+            file_ls & 0xFFFF,
+        ]
+        return ".".join(str(part) for part in parts)
+    except Exception:
+        return None
+
+
+def normalize_runtime_version(version: Optional[str]) -> Optional[str]:
+    if not version:
+        return None
+    parts = [part for part in re.split(r"[^0-9]+", str(version)) if part != ""]
+    if len(parts) >= 3:
+        return ".".join(parts[:3])
+    return None
+
+
+def skse_runtime_from_dll_name(path: Path) -> Optional[str]:
+    name = path.name.lower()
+    if name == "skse64_steam_loader.dll":
+        return None
+    match = re.fullmatch(r"skse64_(\d+)_(\d+)_(\d+)\.dll", name)
+    if not match:
+        return None
+    return ".".join(match.groups())
+
+
+def address_library_runtime_from_name(path: Path) -> Optional[str]:
+    match = re.search(r"versionlib-(\d+)-(\d+)-(\d+)-(\d+)\.bin$", path.name.lower())
+    if not match:
+        return None
+    major, minor, patch, _build = match.groups()
+    return f"{major}.{minor}.{patch}"
 
 
 def default_documents() -> Optional[Path]:
@@ -1768,6 +1832,7 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "skyrim_diagnostics_report",
             "deployment_doctor_report",
             "skyrim_launch_doctor_report",
+            "skse_runtime_doctor_report",
             "scan_cache_status",
             "xedit_diagnostics_report",
             "xedit_inspection_script",
@@ -1851,7 +1916,7 @@ def workflow_catalog() -> List[Dict[str, Any]]:
             "title": "First Setup Check",
             "matchTerms": ["setup", "install", "detect", "doctor", "configured", "path", "skse", "xedit"],
             "userPrompt": "Use validate_setup, then detect_environment. Tell me whether Vortex, Skyrim SE, staging, plugins.txt, SKSE, and xEdit are detected. Do not apply changes.",
-            "tools": ["validate_setup", "detect_environment"],
+            "tools": ["validate_setup", "detect_environment", "skse_runtime_doctor_report"],
             "whatToRead": ["ready", "blockers", "environment.issues", "toolGroups"],
             "humanSteps": ["Fix setup blockers before disabling mods or changing profiles."],
             "directCli": ["py -3 .\\server.py --tool validate_setup", "py -3 .\\server.py --tool detect_environment"],
@@ -1873,7 +1938,7 @@ def workflow_catalog() -> List[Dict[str, Any]]:
             "title": "Launch Through The Right Route",
             "matchTerms": ["launch", "skse", "skse64_loader", "start game", "run game", "steam launch", "vortex launch", "wrong executable", "right executable"],
             "userPrompt": "Use skyrim_launch_doctor_report. Tell me whether I should launch through SKSE, Steam/vanilla, or fix deployment/SKSE first. Do not launch or change anything.",
-            "tools": ["skyrim_launch_doctor_report", "deployment_doctor_report", "skyrim_runtime_log_report"],
+            "tools": ["skyrim_launch_doctor_report", "skse_runtime_doctor_report", "deployment_doctor_report", "skyrim_runtime_log_report"],
             "whatToRead": ["summary.launchState", "summary.recommendedLaunchRoute", "checks", "nextActions", "commandPreview"],
             "humanSteps": ["If Launch Doctor says fix deployment first, deploy in Vortex before launching.", "If it says SKSE, launch through skse64_loader.exe or the Vortex Dashboard SKSE tool.", "If it says review, fix the listed warning before using a real save."],
             "directCli": ["py -3 .\\server.py --launch-doctor"],
@@ -7695,6 +7760,339 @@ def skyrim_file_health(args: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def skse_runtime_doctor_default_path(args: Dict[str, Any]) -> Optional[Path]:
+    output_path = expand_path(args.get("output_path"))
+    if not output_path:
+        return None
+    if output_path.suffix:
+        return output_path
+    return output_path / f"skse-runtime-doctor-{now_stamp()}.md"
+
+
+def collect_address_library_files(data_dir: Optional[Path], staging_dir: Optional[Path], max_files: int = 80) -> List[Dict[str, Any]]:
+    roots = []
+    if data_dir and data_dir.exists():
+        roots.append(("data", data_dir / "SKSE" / "Plugins"))
+    if staging_dir and staging_dir.exists():
+        roots.append(("staging", staging_dir))
+    results = []
+    seen: set[str] = set()
+    for source, root in roots:
+        if not root.exists():
+            continue
+        iterator = root.rglob("versionlib-*.bin") if source == "staging" else root.glob("versionlib-*.bin")
+        for path in iterator:
+            key = str(path).lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            results.append(
+                {
+                    "source": source,
+                    "path": str(path),
+                    "runtime": address_library_runtime_from_name(path),
+                }
+            )
+            if len(results) >= max_files:
+                return results
+    return results
+
+
+def collect_skse_plugin_dlls(data_dir: Optional[Path], max_files: int = 80) -> List[Dict[str, Any]]:
+    plugins_dir = data_dir / "SKSE" / "Plugins" if data_dir else None
+    if not plugins_dir or not plugins_dir.exists():
+        return []
+    results = []
+    for path in sorted(plugins_dir.glob("*.dll"))[:max_files]:
+        results.append({"path": str(path), "name": path.name})
+    return results
+
+
+def skse_runtime_doctor_markdown(report: Dict[str, Any]) -> str:
+    summary = report.get("summary", {}) if isinstance(report.get("summary"), dict) else {}
+    lines = [
+        "# SKSE Runtime Doctor",
+        "",
+        f"- Generated: {deployment_doctor_md_value(report.get('generatedAt'))}",
+        f"- Server: {deployment_doctor_md_value(report.get('server'))} {deployment_doctor_md_value(report.get('version'))}",
+        f"- Read-only: {deployment_doctor_md_value(report.get('readOnly'))}",
+        "",
+        "## Verdict",
+        "",
+        f"- Runtime state: {deployment_doctor_md_value(summary.get('runtimeState'))}",
+        f"- Skyrim runtime: {deployment_doctor_md_value(summary.get('skyrimRuntime'))}",
+        f"- SKSE target runtime: {deployment_doctor_md_value(summary.get('skseTargetRuntime'))}",
+        f"- Recommended SKSE build: {deployment_doctor_md_value(summary.get('recommendedSkseBuild'))}",
+        f"- Runtime matches SKSE: {deployment_doctor_md_value(summary.get('runtimeMatchesSkse'))}",
+        f"- Address Library matches: {deployment_doctor_md_value(summary.get('addressLibraryMatches'))}",
+        "",
+        "## Checks",
+        "",
+    ]
+    checks = report.get("checks", []) if isinstance(report.get("checks"), list) else []
+    if checks:
+        for check in checks:
+            lines.append(
+                f"- [{deployment_doctor_md_value(check.get('status')).upper()}] "
+                f"{deployment_doctor_md_value(check.get('label'))}: {deployment_doctor_md_value(check.get('message'))}"
+            )
+            if check.get("nextAction"):
+                lines.append(f"  Next: {deployment_doctor_md_value(check.get('nextAction'))}")
+    else:
+        lines.append("- No checks were generated.")
+
+    findings = report.get("findings", []) if isinstance(report.get("findings"), list) else []
+    lines.extend(["", "## Findings", ""])
+    if findings:
+        for item in findings[:30]:
+            lines.append(
+                f"- [{deployment_doctor_md_value(item.get('severity'))}] "
+                f"{deployment_doctor_md_value(item.get('code'))}: {deployment_doctor_md_value(item.get('message'))}"
+            )
+            if item.get("nextAction"):
+                lines.append(f"  Next: {deployment_doctor_md_value(item.get('nextAction'))}")
+    else:
+        lines.append("- No findings were generated.")
+
+    next_actions = report.get("nextActions", []) if isinstance(report.get("nextActions"), list) else []
+    lines.extend(["", "## Next Actions", ""])
+    if next_actions:
+        for action in next_actions:
+            lines.append(f"- {deployment_doctor_md_value(action)}")
+    else:
+        lines.append("- Keep the current SKSE/runtime pairing.")
+
+    notes = report.get("notes", []) if isinstance(report.get("notes"), list) else []
+    if notes:
+        lines.extend(["", "## Notes", ""])
+        for note in notes:
+            lines.append(f"- {deployment_doctor_md_value(note)}")
+    return "\n".join(lines) + "\n"
+
+
+def skse_runtime_doctor_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    findings: List[Dict[str, Any]] = []
+    checks: List[Dict[str, Any]] = []
+    env = detect_environment(args)
+    file_health = skyrim_file_health(args)
+    skyrim_dir = find_skyrim_dir(args.get("skyrim_dir"))
+    data_dir = skyrim_dir / "Data" if skyrim_dir else None
+    _vortex_appdata, _skyrim_dir_context, staging_dir, _my_games = get_context_paths(args)
+    skyrim_exe = skyrim_dir / "SkyrimSE.exe" if skyrim_dir else None
+    skse = file_health.get("skse", {}) if isinstance(file_health.get("skse"), dict) else {}
+    skse_loader = expand_path(skse.get("loader")) if skse.get("loader") else (skyrim_dir / "skse64_loader.exe" if skyrim_dir else None)
+    skse_dll_paths = [expand_path(path) for path in skse.get("dlls", [])] if isinstance(skse.get("dlls"), list) else []
+    skse_dll_paths = [path for path in skse_dll_paths if path]
+    skyrim_file_version = windows_file_version(skyrim_exe)
+    skyrim_runtime = normalize_runtime_version(skyrim_file_version)
+    skse_loader_version = windows_file_version(skse_loader)
+    skse_target_runtimes = sorted({runtime for path in skse_dll_paths if (runtime := skse_runtime_from_dll_name(path))})
+    skse_target = skse_target_runtimes[0] if len(skse_target_runtimes) == 1 else None
+    recommended = SKSE_RUNTIME_BUILDS.get(skyrim_runtime or skse_target or "")
+    address_files = collect_address_library_files(data_dir, staging_dir, int(args.get("max_address_library_files", 80)))
+    address_runtimes = sorted({str(item.get("runtime")) for item in address_files if item.get("runtime")})
+    skse_plugin_dlls = collect_skse_plugin_dlls(data_dir, int(args.get("max_skse_plugin_files", 80)))
+
+    add_doctor_check(
+        checks,
+        "skyrim_runtime",
+        "Skyrim Runtime Version",
+        "pass" if skyrim_runtime else "warn" if skyrim_exe and skyrim_exe.exists() else "fail",
+        f"SkyrimSE.exe file version is {skyrim_file_version}." if skyrim_runtime else "Could not read SkyrimSE.exe file version." if skyrim_exe and skyrim_exe.exists() else "SkyrimSE.exe was not found.",
+        "Pass --skyrim-dir. On Windows, check SkyrimSE.exe Properties > Details if file-version APIs fail.",
+        {"exe": str(skyrim_exe) if skyrim_exe else None, "fileVersion": skyrim_file_version, "runtime": skyrim_runtime},
+    )
+    add_doctor_check(
+        checks,
+        "skse_loader",
+        "SKSE Loader",
+        "pass" if skse_loader and skse_loader.exists() else "fail",
+        "skse64_loader.exe was found." if skse_loader and skse_loader.exists() else "skse64_loader.exe was not found beside SkyrimSE.exe.",
+        "Install the SKSE archive contents into the Skyrim folder beside SkyrimSE.exe.",
+        {"loader": str(skse_loader) if skse_loader else None, "fileVersion": skse_loader_version},
+    )
+    add_doctor_check(
+        checks,
+        "skse_target_runtime",
+        "SKSE Runtime DLL Target",
+        "pass" if len(skse_target_runtimes) == 1 else "fail" if len(skse_target_runtimes) > 1 else "warn",
+        f"SKSE runtime DLL targets Skyrim {skse_target}." if skse_target else f"Multiple SKSE runtime DLL targets were found: {', '.join(skse_target_runtimes)}." if skse_target_runtimes else "No skse64_<runtime>.dll target DLL was found.",
+        "Keep only the SKSE build that matches this Skyrim runtime.",
+        {"dlls": [str(path) for path in skse_dll_paths], "targets": skse_target_runtimes},
+    )
+
+    runtime_matches = bool(skyrim_runtime and skse_target and skyrim_runtime == skse_target)
+    if skyrim_runtime and skse_target:
+        add_doctor_check(
+            checks,
+            "runtime_match",
+            "Skyrim Runtime Matches SKSE",
+            "pass" if runtime_matches else "fail",
+            f"Skyrim runtime {skyrim_runtime} matches SKSE target {skse_target}." if runtime_matches else f"Skyrim runtime {skyrim_runtime} does not match SKSE target {skse_target}.",
+            "Install the SKSE build for the detected Skyrim runtime, or intentionally downgrade/lock Skyrim to the SKSE target runtime.",
+        )
+    else:
+        add_doctor_check(
+            checks,
+            "runtime_match",
+            "Skyrim Runtime Matches SKSE",
+            "unknown",
+            "Need both Skyrim runtime and SKSE runtime DLL target to prove compatibility.",
+            "Fix missing runtime/version evidence, then rerun SKSE Runtime Doctor.",
+        )
+
+    scripts_count = int(skse.get("scriptFileCount", 0) or 0)
+    add_doctor_check(
+        checks,
+        "skse_scripts",
+        "SKSE Scripts",
+        "pass" if scripts_count > 0 else "fail",
+        f"{scripts_count} SKSE script file(s) were found under Data\\Scripts." if scripts_count > 0 else "No SKSE script files were found under Data\\Scripts.",
+        "Copy the SKSE scripts from the SKSE archive into Data\\Scripts, or deploy the SKSE scripts mod through Vortex.",
+        {"scriptFileCount": scripts_count},
+    )
+
+    address_matches: Optional[bool] = None
+    if skyrim_runtime and address_runtimes:
+        address_matches = skyrim_runtime in address_runtimes
+    add_doctor_check(
+        checks,
+        "address_library",
+        "Address Library Evidence",
+        "pass" if address_matches else "warn" if not address_runtimes else "fail",
+        "Address Library versionlib evidence matches the detected runtime."
+        if address_matches
+        else "No Address Library versionlib file was found in deployed/staged evidence."
+        if not address_runtimes
+        else f"Address Library runtime evidence does not include Skyrim {skyrim_runtime}: {', '.join(address_runtimes)}.",
+        "Many SKSE DLL mods need Address Library. Install the SE version for 1.5.97 or AE version for 1.6.x as appropriate.",
+        {"files": address_files[:20], "runtimes": address_runtimes},
+    )
+
+    if skyrim_runtime and skyrim_runtime not in SKSE_RUNTIME_BUILDS:
+        add_finding(
+            findings,
+            "medium",
+            "unknown_skyrim_runtime",
+            f"Skyrim runtime {skyrim_runtime} is not in the built-in SKSE compatibility table.",
+            "Check https://skse.silverlock.org/ for the current SKSE build for this exact runtime.",
+        )
+    if skyrim_runtime and skse_target and skyrim_runtime != skse_target:
+        add_finding(
+            findings,
+            "critical",
+            "skse_runtime_mismatch",
+            f"Skyrim runtime {skyrim_runtime} does not match SKSE runtime DLL target {skse_target}.",
+            "Install the matching SKSE build or restore the intended Skyrim runtime before launching.",
+        )
+    if len(skse_target_runtimes) > 1:
+        add_finding(
+            findings,
+            "high",
+            "multiple_skse_runtime_dlls",
+            f"Multiple SKSE runtime targets are present: {', '.join(skse_target_runtimes)}.",
+            "Remove stale SKSE runtime DLLs and keep only the one from the intended SKSE archive.",
+        )
+    if not (skse_loader and skse_loader.exists()) or not skse_dll_paths or scripts_count <= 0:
+        add_finding(
+            findings,
+            "high",
+            "skse_install_incomplete",
+            "SKSE loader, runtime DLL, or scripts are incomplete.",
+            "Install the SKSE archive into the game folder and Data\\Scripts, then rerun.",
+        )
+    if skse_plugin_dlls and not address_runtimes:
+        add_finding(
+            findings,
+            "medium",
+            "skse_plugins_without_address_library_evidence",
+            f"{len(skse_plugin_dlls)} deployed SKSE plugin DLL(s) were found but no Address Library versionlib evidence was detected.",
+            "If these plugins require Address Library, install the version matching the Skyrim runtime.",
+            skse_plugin_dlls[:20],
+        )
+    if skyrim_runtime == "1.5.97":
+        add_finding(
+            findings,
+            "info",
+            "downgraded_runtime",
+            "Runtime 1.5.97 uses SKSE 2.0.20 and usually the SE Address Library package.",
+            "Keep Skyrim updates locked if this collection intentionally depends on 1.5.97.",
+        )
+
+    failed_checks = [check for check in checks if check.get("status") == "fail"]
+    warning_checks = [check for check in checks if check.get("status") == "warn"]
+    findings = sort_findings(findings)
+    if any(finding.get("severity") == "critical" for finding in findings) or failed_checks:
+        runtime_state = "blocked"
+    elif warning_checks or findings:
+        runtime_state = "review"
+    else:
+        runtime_state = "ready"
+
+    next_actions = []
+    for finding in findings:
+        action = finding.get("nextAction")
+        if action and action not in next_actions:
+            next_actions.append(action)
+    if runtime_state == "ready":
+        next_actions.append("Launch through skse64_loader.exe or the Vortex Dashboard SKSE tool after deployment is linked.")
+    if not next_actions:
+        next_actions.append("Fix failed checks, then rerun SKSE Runtime Doctor.")
+
+    report = {
+        "generatedAt": iso_now(),
+        "server": SERVER_NAME,
+        "version": SERVER_VERSION,
+        "readOnly": True,
+        "summary": {
+            "runtimeState": runtime_state,
+            "skyrimRuntime": skyrim_runtime,
+            "skyrimFileVersion": skyrim_file_version,
+            "skseTargetRuntime": skse_target,
+            "skseTargetRuntimes": skse_target_runtimes,
+            "skseLoaderVersion": skse_loader_version,
+            "recommendedSkseBuild": recommended.get("skseBuild") if recommended else None,
+            "recommendedChannel": recommended.get("channel") if recommended else None,
+            "runtimeMatchesSkse": runtime_matches if skyrim_runtime and skse_target else None,
+            "addressLibraryMatches": address_matches,
+            "addressLibraryRuntimeEvidence": address_runtimes,
+            "deployedSksePluginDllCount": len(skse_plugin_dlls),
+            "highestSeverity": findings[0].get("severity", "none") if findings else "none",
+            "findingCount": len(findings),
+            "failedCheckCount": len(failed_checks),
+            "warningCheckCount": len(warning_checks),
+        },
+        "checks": checks,
+        "findings": findings,
+        "nextActions": next_actions,
+        "sections": {
+            "environment": env,
+            "fileHealth": file_health,
+            "knownRuntimeBuilds": SKSE_RUNTIME_BUILDS,
+            "addressLibraryFiles": address_files,
+            "deployedSksePluginDlls": skse_plugin_dlls,
+        },
+        "sources": [
+            "https://skse.silverlock.org/",
+            "https://www.nexusmods.com/skyrimspecialedition/mods/30379",
+        ],
+        "notes": [
+            "SKSE Runtime Doctor is read-only. It does not install SKSE, edit files, deploy mods, or launch Skyrim.",
+            "Official SKSE currently lists AE 2.2.6 for Steam runtime 1.6.1170, GOG AE 2.2.6 for runtime 1.6.1179, SE 2.0.20 for runtime 1.5.97, and VR 2.0.12 for runtime 1.4.15.",
+            "Exact SKSE plugin DLL compatibility still depends on each plugin author; this report checks the core runtime pairing and Address Library evidence.",
+        ],
+    }
+    output_path = skse_runtime_doctor_default_path(args)
+    if output_path:
+        report["output_path"] = str(output_path)
+        output_report = redact_paths_in_value(report) if bool(args.get("redact_user_paths", False)) else report
+        write_text(output_path, skse_runtime_doctor_markdown(output_report))
+        log_event("support", "skse_runtime_doctor_report_written", {"output_path": str(output_path), "runtimeState": runtime_state})
+        if bool(args.get("redact_user_paths", False)):
+            return output_report
+    return report
+
+
 def vortex_profile_deployment_report(args: Dict[str, Any]) -> Dict[str, Any]:
     snapshot = load_vortex_profile_state(args, include_mods=True)
     profile_id, profile = require_profile(snapshot, args.get("profile_id"))
@@ -9049,6 +9447,8 @@ def launch_doctor_skse_status(file_health: Dict[str, Any]) -> Dict[str, Any]:
     dlls = [str(path) for path in skse.get("dlls", [])] if isinstance(skse.get("dlls"), list) else []
     dll_names = {Path(path).name.lower() for path in dlls}
     runtime_dlls = sorted(name for name in dll_names if name.startswith("skse64_") and name != "skse64_steam_loader.dll")
+    # Newer SKSE builds no longer require skse64_steam_loader.dll, so it is
+    # evidence, not a hard requirement.
     return {
         "loaderPath": skse.get("loader"),
         "loaderExists": bool(skse.get("loaderExists")),
@@ -9056,7 +9456,7 @@ def launch_doctor_skse_status(file_health: Dict[str, Any]) -> Dict[str, Any]:
         "runtimeDlls": runtime_dlls,
         "runtimeDllPresent": bool(runtime_dlls),
         "scriptFileCount": int(skse.get("scriptFileCount", 0) or 0),
-        "ready": bool(skse.get("loaderExists")) and "skse64_steam_loader.dll" in dll_names and bool(runtime_dlls) and int(skse.get("scriptFileCount", 0) or 0) > 0,
+        "ready": bool(skse.get("loaderExists")) and bool(runtime_dlls) and int(skse.get("scriptFileCount", 0) or 0) > 0,
     }
 
 
@@ -11544,6 +11944,25 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         },
         skyrim_launch_doctor_report,
     ),
+    "skse_runtime_doctor_report": (
+        "Read-only SKSE compatibility check for Skyrim runtime version, SKSE target DLL, SKSE scripts, and Address Library evidence.",
+        {
+            "type": "object",
+            "properties": {
+                "skyrim_dir": {"type": "string"},
+                "staging_dir": {"type": "string"},
+                "vortex_appdata": {"type": "string"},
+                "local_appdata": {"type": "string"},
+                "my_games_dir": {"type": "string"},
+                "output_path": {"type": "string"},
+                "redact_user_paths": {"type": "boolean", "default": False},
+                "max_address_library_files": {"type": "integer", "default": 80},
+                "max_skse_plugin_files": {"type": "integer", "default": 80},
+            },
+            "additionalProperties": False,
+        },
+        skse_runtime_doctor_report,
+    ),
     "vortex_profile_backup": (
         "Write a JSON backup of the active or selected Vortex Skyrim SE profile for later restore previews.",
         {
@@ -12293,6 +12712,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--skyrim-diagnostics", action="store_true", help="Shortcut for --tool skyrim_diagnostics_report.")
     parser.add_argument("--deployment-doctor", action="store_true", help="Shortcut for --tool deployment_doctor_report.")
     parser.add_argument("--launch-doctor", action="store_true", help="Shortcut for --tool skyrim_launch_doctor_report.")
+    parser.add_argument("--skse-doctor", action="store_true", help="Shortcut for --tool skse_runtime_doctor_report.")
     parser.add_argument("--automation-plan", action="store_true", help="Shortcut for --tool vortex_reversible_automation_plan.")
     parser.add_argument("--runtime-logs", action="store_true", help="Shortcut for --tool skyrim_runtime_log_report.")
     parser.add_argument("--workflow-guide", action="store_true", help="Shortcut for --tool workflow_guide.")
@@ -12448,6 +12868,8 @@ def cli_main(argv: List[str]) -> int:
         if parsed.deployment_doctor
         else "skyrim_launch_doctor_report"
         if parsed.launch_doctor
+        else "skse_runtime_doctor_report"
+        if parsed.skse_doctor
         else "vortex_reversible_automation_plan"
         if parsed.automation_plan
         else "skyrim_runtime_log_report"
@@ -12479,7 +12901,7 @@ def cli_main(argv: List[str]) -> int:
         else parsed.tool
     )
     if not tool_name:
-        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --deployment-doctor, --launch-doctor, --automation-plan, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-bundle, or --safe-profile-fix")
+        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --deployment-doctor, --launch-doctor, --skse-doctor, --automation-plan, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-bundle, or --safe-profile-fix")
 
     try:
         tool_args = load_cli_tool_args(parsed)

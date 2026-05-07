@@ -129,6 +129,7 @@ def main() -> int:
     assert "skyrim_diagnostics_report" in listed_names, listed_names
     assert "deployment_doctor_report" in listed_names, listed_names
     assert "skyrim_launch_doctor_report" in listed_names, listed_names
+    assert "skse_runtime_doctor_report" in listed_names, listed_names
     assert "vortex_reversible_automation_plan" in listed_names, listed_names
     assert "scan_cache_status" in listed_names, listed_names
     assert "xedit_diagnostics_report" in listed_names, listed_names
@@ -165,6 +166,7 @@ def main() -> int:
     assert "output_path" in listed_by_name["deployment_doctor_report"]["inputSchema"]["properties"], listed_by_name
     assert "baseline_path" in listed_by_name["deployment_doctor_report"]["inputSchema"]["properties"], listed_by_name
     assert "output_path" in listed_by_name["skyrim_launch_doctor_report"]["inputSchema"]["properties"], listed_by_name
+    assert "output_path" in listed_by_name["skse_runtime_doctor_report"]["inputSchema"]["properties"], listed_by_name
     assert "request" in listed_by_name["vortex_reversible_automation_plan"]["inputSchema"]["properties"], listed_by_name
     assert "disable_mod_ids" in listed_by_name["vortex_reversible_automation_plan"]["inputSchema"]["properties"], listed_by_name
     assert "include_xedit_report" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
@@ -224,6 +226,18 @@ def main() -> int:
     assert "summary" in launch_json or "error" in launch_json, launch_json
     assert launch_md.exists(), launch_json
     assert "Launch Doctor" in launch_md.read_text(encoding="utf-8"), launch_md
+
+    skse_md = temp_root / "skse-runtime-doctor-smoke.md"
+    skse_direct = subprocess.run(
+        [sys.executable, str(server), "--skse-doctor", "--output-path", str(skse_md)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    skse_json = json.loads(skse_direct.stdout)
+    assert "summary" in skse_json or "error" in skse_json, skse_json
+    assert skse_md.exists(), skse_json
+    assert "SKSE Runtime Doctor" in skse_md.read_text(encoding="utf-8"), skse_md
 
     automation_direct = subprocess.run(
         [sys.executable, str(server), "--automation-plan", "--request", "delete redundant mods and sort load order safely"],
@@ -288,6 +302,7 @@ def main() -> int:
             assert "skyrim_diagnostics_report" in names, names
             assert "deployment_doctor_report" in names, names
             assert "skyrim_launch_doctor_report" in names, names
+            assert "skse_runtime_doctor_report" in names, names
             assert "vortex_reversible_automation_plan" in names, names
             assert "scan_cache_status" in names, names
             assert "xedit_diagnostics_report" in names, names

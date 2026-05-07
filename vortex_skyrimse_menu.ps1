@@ -267,6 +267,7 @@ function Show-Actions {
   Write-Host "32. Deployment Doctor"
   Write-Host "33. Launch Doctor"
   Write-Host "34. Reversible Automation Plan"
+  Write-Host "35. SKSE Runtime Doctor"
   Write-Host "Q. Quit"
 }
 
@@ -566,6 +567,15 @@ function Invoke-MenuAction {
       Invoke-Server (@("--automation-plan", "--args-file", $argsFile, "--output-json", $out) + $common)
       Write-Host "Wrote reversible automation plan: $out" -ForegroundColor Green
       Write-Host "This action did not deploy, sort, delete, uninstall, update, edit plugins, or change profiles." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("35", "skse-doctor", "skse-runtime", "runtime-doctor") } {
+      $md = Join-Path $script:ReportDir "skse-runtime-doctor-$stamp.md"
+      $json = Join-Path $script:ReportDir "skse-runtime-doctor-$stamp.json"
+      Invoke-Server (@("--skse-doctor", "--output-path", $md, "--output-json", $json) + $common)
+      Write-Host "Wrote SKSE Runtime Doctor Markdown: $md" -ForegroundColor Green
+      Write-Host "Wrote SKSE Runtime Doctor JSON: $json" -ForegroundColor Green
+      Write-Host "This action did not install SKSE, edit files, deploy mods, or launch Skyrim." -ForegroundColor Green
       return
     }
     { $_ -in @("13", "cache", "scan-cache") } {

@@ -46,6 +46,9 @@ if (($MenuOutput -join "`n") -notmatch "Launch Doctor") {
 if (($MenuOutput -join "`n") -notmatch "Reversible Automation Plan") {
   throw "Menu did not list the reversible automation action."
 }
+if (($MenuOutput -join "`n") -notmatch "SKSE Runtime Doctor") {
+  throw "Menu did not list the SKSE Runtime Doctor action."
+}
 if (($MenuOutput -join "`n") -notmatch "Config file validator") {
   throw "Menu did not list the config file validator action."
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.33
+
+- Adds `skse_runtime_doctor_report`, a read-only compatibility check for Skyrim runtime version, SKSE runtime DLL target, SKSE scripts, and Address Library evidence.
+- Adds `--skse-doctor` direct CLI shortcut and local menu action 35.
+- Relaxes Launch Doctor's SKSE check so `skse64_steam_loader.dll` is treated as evidence, not a hard requirement for newer SKSE builds.
+- Adds regression coverage for SKSE runtime mismatch and matching 1.5.97 / SKSE 2.0.20 evidence.
+
 ## v0.2.32
 
 - Adds `vortex_reversible_automation_plan`, a read-only safety gate for risky automation requests such as delete/uninstall, sort, conflict rules, deploy/purge, updates, plugin edits, and cloned-profile mod toggles.

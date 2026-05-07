@@ -14,6 +14,8 @@ These are useful next steps, ordered by value and risk.
 
 ## Recently Added
 
+- SKSE Runtime Doctor for Skyrim runtime, SKSE target DLL, SKSE scripts, and
+  Address Library evidence, including the 1.5.97 / SKSE 2.0.20 path.
 - Reversible automation planning for risky requests: cloned-profile first,
   backup first, Vortex/xEdit-owned operations kept manual, and Deployment
   Doctor/Launch Doctor verification after changes.

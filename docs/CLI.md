@@ -65,6 +65,18 @@ Keep a readable Launch Doctor report:
 py -3 .\server.py --launch-doctor --output-path ".\launch-doctor.md" --output-json ".\launch-doctor.json"
 ```
 
+Check SKSE/runtime compatibility:
+
+```powershell
+py -3 .\server.py --skse-doctor
+```
+
+Keep a readable SKSE Runtime Doctor report:
+
+```powershell
+py -3 .\server.py --skse-doctor --output-path ".\skse-runtime-doctor.md" --output-json ".\skse-runtime-doctor.json"
+```
+
 Plan risky automation without applying changes:
 
 ```powershell

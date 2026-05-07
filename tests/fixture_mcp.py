@@ -68,6 +68,8 @@ def main() -> int:
         write(data / "Update.esm", plugin_bytes("Skyrim.esm"))
         write(data / "MyMod.esp", plugin_bytes("Skyrim.esm"))
         write(data / "Scripts" / "skse.pex", "skse script")
+        write(data / "SKSE" / "Plugins" / "versionlib-1-5-97-0.bin", "address library")
+        write(data / "SKSE" / "Plugins" / "ExampleSksePlugin.dll", "dll")
         write(data / "Skyrim - Voices_en0.bsa", "voices")
         write(data / "Skyrim - Sounds.bsa", "sounds")
         write(staging / "Weather Mod" / "BrokenWeather.esp", plugin_bytes("MissingMaster.esm"))
@@ -118,6 +120,23 @@ def main() -> int:
         assert "workflow_guide" in setup["toolGroups"]["alwaysAvailable"], setup
         assert "xedit_diagnostics_report" in setup["toolGroups"]["alwaysAvailable"], setup
         assert "vortex_reversible_automation_plan" in setup["toolGroups"]["alwaysAvailable"], setup
+        assert "skse_runtime_doctor_report" in setup["toolGroups"]["alwaysAvailable"], setup
+
+        original_windows_file_version = server.windows_file_version
+        try:
+            server.windows_file_version = lambda path: "1.6.1170.0" if path and Path(path).name == "SkyrimSE.exe" else None
+            skse_doctor = server.skse_runtime_doctor_report(base_args)
+            assert skse_doctor["summary"]["runtimeState"] == "blocked", skse_doctor
+            assert skse_doctor["summary"]["skyrimRuntime"] == "1.6.1170", skse_doctor
+            assert skse_doctor["summary"]["skseTargetRuntime"] == "1.5.97", skse_doctor
+            assert any(finding["code"] == "skse_runtime_mismatch" for finding in skse_doctor["findings"]), skse_doctor
+            server.windows_file_version = lambda path: "1.5.97.0" if path and Path(path).name == "SkyrimSE.exe" else None
+            skse_doctor_match = server.skse_runtime_doctor_report(base_args)
+            assert skse_doctor_match["summary"]["runtimeMatchesSkse"] is True, skse_doctor_match
+            assert skse_doctor_match["summary"]["recommendedSkseBuild"] == "2.0.20", skse_doctor_match
+            assert skse_doctor_match["summary"]["addressLibraryMatches"] is True, skse_doctor_match
+        finally:
+            server.windows_file_version = original_windows_file_version
 
         workflow = server.workflow_guide({"problem": "there is a bed outside the tavern room", "max_workflows": 1})
         assert workflow["workflows"][0]["key"] == "weird_object", workflow

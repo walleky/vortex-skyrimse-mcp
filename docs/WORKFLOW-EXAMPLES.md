@@ -62,6 +62,12 @@ Risky automation safety gate:
 py -3 .\server.py --automation-plan --request "delete redundant mods, sort load order, and make it undoable"
 ```
 
+SKSE/runtime compatibility check:
+
+```powershell
+py -3 .\server.py --skse-doctor
+```
+
 ## Workflow 1: First Setup Check
 
 Use this when you just installed the MCP or OpenClaw seems unsure.
@@ -397,6 +403,7 @@ because it may contain mod names, plugin names, and unusual custom paths.
 | "Wrong Vortex profile?" | `vortex_profile_report` |
 | "Downloaded but not deployed?" | `deployment_doctor_report` |
 | "Should I launch with SKSE?" | `skyrim_launch_doctor_report` |
+| "Does SKSE match my Skyrim version?" | `skse_runtime_doctor_report` |
 | "Automate this but make it reversible" | `vortex_reversible_automation_plan` |
 | "Missing masters or crash?" | `plugin_report` |
 | "What mod added this thing?" | `in_game_issue_report` |

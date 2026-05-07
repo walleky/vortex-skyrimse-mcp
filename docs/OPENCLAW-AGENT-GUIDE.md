@@ -117,6 +117,18 @@ send the user back to Vortex Deploy Mods before discussing SKSE. If the route is
 `skse`, tell them to launch through `skse64_loader.exe` or the Vortex Dashboard
 SKSE tool they normally use.
 
+For "SKSE version mismatch", "SKSE loader problem", "Address Library", or
+"SKSE DLL failed to load":
+
+```text
+skse_runtime_doctor_report
+```
+
+Read `summary.skyrimRuntime`, `summary.skseTargetRuntime`,
+`summary.runtimeMatchesSkse`, `summary.addressLibraryMatches`, and `findings`.
+If it reports `skse_runtime_mismatch`, fix the runtime/SKSE pair before chasing
+mod conflicts.
+
 For "automate this but make it reversible", including delete/uninstall/sort/conflict/deploy/update/plugin-edit requests:
 
 ```text

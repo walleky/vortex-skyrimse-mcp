@@ -67,6 +67,12 @@ Use skyrim_launch_doctor_report. Tell me whether I should launch through SKSE, S
 - `summary.recommendedLaunchRoute=fix_skse_first`: SKSE is required or expected
   but the local SKSE files are incomplete.
 
+If SKSE itself looks suspicious, run:
+
+```powershell
+py -3 .\server.py --skse-doctor
+```
+
 ## Important Limit
 
 Launch Doctor checks installed SKSE file evidence. Exact SKSE-to-Skyrim runtime

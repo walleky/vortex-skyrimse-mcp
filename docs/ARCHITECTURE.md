@@ -45,6 +45,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - `docs/SAFE-SESSION.md`: explains the one-call safe-session report flow.
 - `docs/SKYRIM-DIAGNOSTICS.md`: explains the broad one-button diagnostics report.
 - `docs/LAUNCH-DOCTOR.md`: explains the SKSE vs Steam/vanilla launch-route report.
+- `docs/SKSE-RUNTIME-DOCTOR.md`: explains Skyrim runtime/SKSE/Address Library compatibility checks.
 - `docs/REVERSIBLE-AUTOMATION.md`: explains the safety gate for risky automation requests.
 - `docs/SKYRIM-RUNTIME-LOGS.md`: explains runtime log scanning and safe config patching.
 - `docs/TESTING.md`: explains local and CI test commands.
@@ -75,8 +76,8 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - INI/config checks and writes: `ini_report`, `config_file_report`, `config_patch_suggestions`, `apply_ini_fixes`, `read_text_file`, `apply_config_text_patch`.
 - setup validation: `validate_setup`.
 - workflow routing: `workflow_guide`, `workflow_catalog`, `workflow_score`.
-- profile/deployment tools: `vortex_profile_report`, `vortex_profile_mods`, `vortex_compare_profiles`, `vortex_profile_deployment_report`, `deployment_doctor_report`, `skyrim_launch_doctor_report`, `vortex_reversible_automation_plan`, `vortex_profile_backup`, `vortex_profile_restore_plan`, `vortex_clone_profile`, `vortex_set_profile_mods`, `vortex_safe_profile_fix`.
-- play readiness: `skyrim_modded_play_report`, `skyrim_launch_doctor_report`, `suggest_conflict_fixes`.
+- profile/deployment tools: `vortex_profile_report`, `vortex_profile_mods`, `vortex_compare_profiles`, `vortex_profile_deployment_report`, `deployment_doctor_report`, `skyrim_launch_doctor_report`, `skse_runtime_doctor_report`, `vortex_reversible_automation_plan`, `vortex_profile_backup`, `vortex_profile_restore_plan`, `vortex_clone_profile`, `vortex_set_profile_mods`, `vortex_safe_profile_fix`.
+- play readiness: `skyrim_modded_play_report`, `skyrim_launch_doctor_report`, `skse_runtime_doctor_report`, `suggest_conflict_fixes`.
 - support/report tools: `safe_session_report`, `skyrim_diagnostics_report`, `mod_knowledge_report`, `log_status`, `bug_report_bundle`, `write_report`.
 - MCP registration, CLI, and loop: `TOOLS`, `tool_list`, `handle_call`, `cli_main`, `handle_message`, `serve_stdio`.
 
