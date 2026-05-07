@@ -152,6 +152,7 @@ def main() -> int:
     assert "vortex_profile_restore_plan" in listed_names, listed_names
     assert "vortex_safe_profile_fix" in listed_names, listed_names
     assert "apply_config_text_patch" in listed_names, listed_names
+    assert "report_viewer_index" in listed_names, listed_names
     assert "performance_mode" in listed_by_name["in_game_issue_report"]["inputSchema"]["properties"], listed_by_name
     assert "response_mode" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
     assert "include_runtime_logs" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
@@ -168,6 +169,7 @@ def main() -> int:
     assert "output_path" in listed_by_name["skyrim_launch_doctor_report"]["inputSchema"]["properties"], listed_by_name
     assert "output_path" in listed_by_name["skse_runtime_doctor_report"]["inputSchema"]["properties"], listed_by_name
     assert "request" in listed_by_name["vortex_reversible_automation_plan"]["inputSchema"]["properties"], listed_by_name
+    assert "report_dir" in listed_by_name["report_viewer_index"]["inputSchema"]["properties"], listed_by_name
     assert "disable_mod_ids" in listed_by_name["vortex_reversible_automation_plan"]["inputSchema"]["properties"], listed_by_name
     assert "include_xedit_report" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
     assert "report_path" in listed_by_name["xedit_inspection_script"]["inputSchema"]["properties"], listed_by_name
@@ -249,6 +251,35 @@ def main() -> int:
     assert automation_json["dryRunOnly"] is True, automation_json
     assert any(plan["action"] == "delete_or_uninstall_mods" for plan in automation_json["actionPlans"]), automation_json
     assert any(plan["action"] == "sort_load_order" for plan in automation_json["actionPlans"]), automation_json
+
+    viewer_dir = temp_root / "viewer-reports"
+    viewer_dir.mkdir(exist_ok=True)
+    (viewer_dir / "deployment-doctor-sample.json").write_text(
+        json.dumps({"summary": {"deploymentState": "linked", "ready": True}, "findings": []}),
+        encoding="utf-8",
+    )
+    (viewer_dir / "notes.md").write_text("# Sample Report\n\nEverything is linked.\n", encoding="utf-8")
+    viewer_html = viewer_dir / "report-viewer.html"
+    viewer_direct = subprocess.run(
+        [
+            sys.executable,
+            str(server),
+            "--report-viewer",
+            "--report-dir",
+            str(viewer_dir),
+            "--output-path",
+            str(viewer_html),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    viewer_json = json.loads(viewer_direct.stdout)
+    assert viewer_json["fileCount"] >= 2, viewer_json
+    assert viewer_html.exists(), viewer_json
+    viewer_text = viewer_html.read_text(encoding="utf-8")
+    assert "Vortex Skyrim SE Report Viewer" in viewer_text
+    assert "deployment-doctor-sample.json" in viewer_text
 
     proc = subprocess.Popen(
         [sys.executable, str(server)],
@@ -334,6 +365,7 @@ def main() -> int:
             assert "vortex_safe_profile_fix" in names, names
             assert "skyrim_modded_play_report" in names, names
             assert "log_status" in names, names
+            assert "report_viewer_index" in names, names
             assert "bug_report_bundle" in names, names
         if msg["id"] == 3:
             assert data["result"]["isError"] is False, data

@@ -373,6 +373,23 @@ Some tools write their own report files, such as `mod_knowledge_report`. You can
 py -3 .\server.py --mod-knowledge --output-json .\last-tool-result.json
 ```
 
+## Report Viewer
+
+Create a static HTML index of generated reports:
+
+```powershell
+py -3 .\server.py --report-viewer
+```
+
+Use a custom folder:
+
+```powershell
+py -3 .\server.py --report-viewer --report-dir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports"
+```
+
+The viewer writes `report-viewer.html` by default. It previews report files only;
+it does not open Vortex, deploy mods, launch Skyrim, or edit profiles.
+
 ## Safety
 
 Direct CLI mode uses the same tool implementations and safety rules as MCP mode. Read-only tools stay read-only. Write-capable tools still require explicit write arguments such as `dry_run=false` or `apply=true`.

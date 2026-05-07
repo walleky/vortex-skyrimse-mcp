@@ -7,13 +7,14 @@ These are useful next steps, ordered by value and risk.
 1. Add a live Skyrim evidence bridge: screenshot/OCR for popups, plus optional SKSE/console telemetry for current cell and clicked FormID.
 2. Add Nexus GraphQL file-content search behind an explicit read-only flag for "which Nexus mod contains this plugin/script/mesh?" questions.
 3. Add more plugin metadata parsing for ESP/ESM headers beyond masters, such as plugin version and record counts.
-4. Add a tiny local HTML report viewer for generated JSON/Markdown/CSV outputs.
-5. Add richer Vortex collection detection if Vortex exposes more stable CLI paths.
-6. Add a synthetic Vortex profile fixture so profile/deployment behavior can be tested without a real Vortex install.
-7. Add a profile restore apply helper in the local menu only after the preview UX is clear enough for nontechnical users.
+4. Add richer Vortex collection detection if Vortex exposes more stable CLI paths.
+5. Add a synthetic Vortex profile fixture so profile/deployment behavior can be tested without a real Vortex install.
+6. Add a profile restore apply helper in the local menu only after the preview UX is clear enough for nontechnical users.
 
 ## Recently Added
 
+- Static local HTML report viewer for generated JSON, Markdown, CSV, log,
+  script, and zip report files.
 - SKSE Runtime Doctor for Skyrim runtime, SKSE target DLL, SKSE scripts, and
   Address Library evidence, including the 1.5.97 / SKSE 2.0.20 path.
 - Reversible automation planning for risky requests: cloned-profile first,

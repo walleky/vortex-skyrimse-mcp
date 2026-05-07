@@ -78,7 +78,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - workflow routing: `workflow_guide`, `workflow_catalog`, `workflow_score`.
 - profile/deployment tools: `vortex_profile_report`, `vortex_profile_mods`, `vortex_compare_profiles`, `vortex_profile_deployment_report`, `deployment_doctor_report`, `skyrim_launch_doctor_report`, `skse_runtime_doctor_report`, `vortex_reversible_automation_plan`, `vortex_profile_backup`, `vortex_profile_restore_plan`, `vortex_clone_profile`, `vortex_set_profile_mods`, `vortex_safe_profile_fix`.
 - play readiness: `skyrim_modded_play_report`, `skyrim_launch_doctor_report`, `skse_runtime_doctor_report`, `suggest_conflict_fixes`.
-- support/report tools: `safe_session_report`, `skyrim_diagnostics_report`, `mod_knowledge_report`, `log_status`, `bug_report_bundle`, `write_report`.
+- support/report tools: `safe_session_report`, `skyrim_diagnostics_report`, `mod_knowledge_report`, `log_status`, `report_viewer_index`, `bug_report_bundle`, `write_report`.
 - MCP registration, CLI, and loop: `TOOLS`, `tool_list`, `handle_call`, `cli_main`, `handle_message`, `serve_stdio`.
 
 ## Safety Model
@@ -177,3 +177,7 @@ bug_report_bundle with zip_output=true and redact_user_paths=true
 ```
 
 `bug_report_bundle` writes a JSON file with environment data, play/deployment/plugin/INI reports, and recent log tails. With `zip_output=true`, it also writes one attachable zip containing the JSON, recent log tails, and a short README. With `redact_user_paths=true`, user profile, AppData, and LocalAppData paths are replaced before writing the bundle.
+
+`report_viewer_index` writes a static HTML file for a reports folder. It scans
+report-shaped files, extracts small summaries, and links back to the local
+source files. It is read-only except for writing the viewer HTML snapshot.

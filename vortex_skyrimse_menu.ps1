@@ -268,6 +268,7 @@ function Show-Actions {
   Write-Host "33. Launch Doctor"
   Write-Host "34. Reversible Automation Plan"
   Write-Host "35. SKSE Runtime Doctor"
+  Write-Host "36. Report Viewer"
   Write-Host "Q. Quit"
 }
 
@@ -576,6 +577,20 @@ function Invoke-MenuAction {
       Write-Host "Wrote SKSE Runtime Doctor Markdown: $md" -ForegroundColor Green
       Write-Host "Wrote SKSE Runtime Doctor JSON: $json" -ForegroundColor Green
       Write-Host "This action did not install SKSE, edit files, deploy mods, or launch Skyrim." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("36", "viewer", "report-viewer", "reports") } {
+      $html = Join-Path $script:ReportDir "report-viewer.html"
+      $out = Join-Path $script:ReportDir "report-viewer-$stamp.json"
+      $argsFile = Write-JsonArgs "report-viewer" @{
+        report_dir = $script:ReportDir
+        output_path = $html
+        include_subdirs = $true
+      }
+      Invoke-Server (@("--report-viewer", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Wrote report viewer HTML: $html" -ForegroundColor Green
+      Write-Host "Wrote JSON result: $out" -ForegroundColor Green
+      Write-Host "This action only indexes and previews report files." -ForegroundColor Green
       return
     }
     { $_ -in @("13", "cache", "scan-cache") } {

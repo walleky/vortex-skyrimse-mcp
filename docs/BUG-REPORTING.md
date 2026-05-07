@@ -30,6 +30,15 @@ Or run MCP Doctor:
 .\mcp_doctor.ps1
 ```
 
+To browse everything already generated on the machine:
+
+```powershell
+.\vortex_skyrimse_menu.ps1 -Action report-viewer
+```
+
+This writes `report-viewer.html` in the reports folder. It is useful for local
+triage, but attach the redacted bug zip when sharing outside your machine.
+
 ## What To Attach
 
 Attach:

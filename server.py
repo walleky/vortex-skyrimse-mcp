@@ -18,6 +18,7 @@ import ctypes
 import ctypes.wintypes
 import datetime as _dt
 import hashlib
+import html
 import json
 import os
 import re
@@ -42,7 +43,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.33"
+SERVER_VERSION = "0.2.34"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -69,6 +70,8 @@ SKSE_RUNTIME_BUILDS = {
     "1.4.15": {"skseBuild": "2.0.12", "channel": "Skyrim VR", "current": False},
 }
 RUNTIME_LOG_SUFFIXES = {".log", ".txt"}
+REPORT_VIEW_TEXT_EXTENSIONS = {".json", ".md", ".markdown", ".csv", ".txt", ".log", ".jsonl", ".pas"}
+REPORT_VIEW_FILE_EXTENSIONS = REPORT_VIEW_TEXT_EXTENSIONS | {".zip"}
 CONFIG_PATCH_SUFFIXES = {".ini", ".json", ".toml", ".yaml", ".yml", ".xml", ".txt", ".cfg", ".conf", ".properties"}
 RUNTIME_LOG_ERROR_TERMS = {
     "access violation",
@@ -10673,6 +10676,467 @@ def write_report(args: Dict[str, Any]) -> Dict[str, Any]:
     return {"output_path": str(output_path), "sections": list(report.keys())}
 
 
+def default_report_dir(override: Optional[str] = None) -> Path:
+    override_path = expand_path(override)
+    if override_path:
+        return override_path.resolve()
+    docs = default_documents() or Path.cwd()
+    return (docs / "vortex-skyrimse-mcp-reports").resolve()
+
+
+def report_viewer_int_arg(args: Dict[str, Any], key: str, default: int, lower: int, upper: int) -> int:
+    raw = args.get(key, default)
+    if raw is None:
+        raw = default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ToolError(f"{key} must be an integer.") from exc
+    return max(lower, min(value, upper))
+
+
+def report_viewer_kind(path: Path) -> str:
+    lower = path.name.lower()
+    patterns = (
+        ("deployment", ("deployment-doctor", "deployment")),
+        ("launch", ("launch-doctor", "launch")),
+        ("skse", ("skse-runtime-doctor", "skse")),
+        ("automation", ("reversible-automation", "automation-plan", "automation")),
+        ("diagnostics", ("skyrim-diagnostics", "diagnostics")),
+        ("safe-session", ("safe-session", "session")),
+        ("mod-knowledge", ("mod-knowledge", "knowledge")),
+        ("issue-case", ("issue-case", "case-bundle", "case-evidence", "case-inbox", "safe-experiment", "what-now")),
+        ("xedit", ("xedit-inspection", "xedit-result", "xedit")),
+        ("runtime-logs", ("skyrim-runtime-logs", "runtime-log")),
+        ("bug-report", ("bug-report", "bundle")),
+        ("profile", ("profile-backup", "restore-preview", "safe-profile-fix")),
+        ("collection", ("vortex-collection", "collection-match", "collection")),
+        ("config", ("config-file", "ini-report", "config")),
+        ("logs", ("log-status", ".jsonl", ".log")),
+        ("scan-cache", ("scan-cache",)),
+        ("workflow", ("workflow-guide", "workflow")),
+    )
+    for kind, terms in patterns:
+        if any(term in lower for term in terms):
+            return kind
+    suffix = path.suffix.lower().lstrip(".")
+    return suffix or "file"
+
+
+def report_viewer_format_size(size: int) -> str:
+    units = ("B", "KB", "MB", "GB")
+    value = float(size)
+    unit = units[0]
+    for unit in units:
+        if value < 1024 or unit == units[-1]:
+            break
+        value /= 1024
+    if unit == "B":
+        return f"{int(value)} {unit}"
+    return f"{value:.1f} {unit}"
+
+
+def report_viewer_summary_items_from_json(data: Any) -> List[Dict[str, str]]:
+    items: List[Dict[str, str]] = []
+
+    def add(label: str, value: Any) -> None:
+        if value in (None, "", [], {}):
+            return
+        if isinstance(value, (list, dict)):
+            rendered = json.dumps(value, ensure_ascii=False, default=str)
+        else:
+            rendered = str(value)
+        if len(rendered) > 240:
+            rendered = rendered[:237] + "..."
+        items.append({"label": label, "value": rendered})
+
+    if isinstance(data, dict):
+        add("serverVersion", data.get("version") or data.get("serverVersion"))
+        summary = data.get("summary")
+        if isinstance(summary, dict):
+            for key in (
+                "ready",
+                "state",
+                "deploymentState",
+                "launchState",
+                "runtimeState",
+                "highestSeverity",
+                "findingCount",
+                "issueCount",
+                "okToLaunchNow",
+                "profileToSkyrimLinked",
+                "recommendedLaunchRoute",
+                "selectedProfileName",
+                "activeProfileName",
+                "responseMode",
+                "performanceMode",
+            ):
+                if key in summary:
+                    add(key, summary.get(key))
+        for key in ("error", "output_path", "zip_path", "log_dir", "report_dir"):
+            if key in data:
+                add(key, data.get(key))
+        for key in ("findings", "issues", "actions", "nextActions", "workflows", "sections"):
+            value = data.get(key)
+            if isinstance(value, list):
+                add(f"{key} count", len(value))
+                for item in value[:3]:
+                    if isinstance(item, dict):
+                        add(key, item.get("message") or item.get("title") or item.get("action") or item.get("key") or item)
+                    else:
+                        add(key, item)
+            elif isinstance(value, dict):
+                add(f"{key} count", len(value))
+        if "setupValidationError" in data:
+            add("setupValidationError", data.get("setupValidationError"))
+    elif isinstance(data, list):
+        add("items", len(data))
+    return items[:18]
+
+
+def report_viewer_status(entry: Dict[str, Any]) -> str:
+    probe = json.dumps(
+        {
+            "name": entry.get("name"),
+            "kind": entry.get("kind"),
+            "summaryItems": entry.get("summaryItems"),
+            "preview": str(entry.get("preview") or "")[:3000],
+        },
+        ensure_ascii=False,
+        default=str,
+    ).lower()
+    if any(term in probe for term in ("fatal", "critical", "traceback", "exception")):
+        return "error"
+    if any(term in probe for term in ("blocked", "failed", " failure", "missing", "mismatch", "not found", "error")):
+        return "warn"
+    if any(term in probe for term in ("ready", "ok", "passed", "linked", "compatible")):
+        return "ok"
+    return "info"
+
+
+def report_viewer_read_entry(path: Path, report_dir: Path, max_preview_bytes: int) -> Dict[str, Any]:
+    stat = path.stat()
+    suffix = path.suffix.lower()
+    entry: Dict[str, Any] = {
+        "name": path.name,
+        "relativePath": rel_to(path, report_dir),
+        "path": str(path),
+        "uri": "",
+        "extension": suffix or "(none)",
+        "kind": report_viewer_kind(path),
+        "sizeBytes": stat.st_size,
+        "sizeLabel": report_viewer_format_size(stat.st_size),
+        "modifiedAt": _dt.datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+        "preview": "",
+        "previewTruncated": False,
+        "summaryItems": [],
+    }
+    try:
+        entry["uri"] = path.resolve().as_uri()
+    except ValueError:
+        entry["uri"] = str(path)
+
+    if suffix in REPORT_VIEW_TEXT_EXTENSIONS:
+        try:
+            text, encoding, truncated = read_text_with_encoding(path, max_preview_bytes)
+            entry["preview"] = text
+            entry["encoding"] = encoding
+            entry["previewTruncated"] = truncated
+            if suffix == ".json" and stat.st_size <= 2_000_000:
+                try:
+                    entry["summaryItems"] = report_viewer_summary_items_from_json(json.loads(read_text(path, 2_000_000)))
+                except Exception as exc:
+                    entry["summaryItems"] = [{"label": "jsonParseError", "value": str(exc)}]
+            elif suffix in {".md", ".markdown"}:
+                headings = [line.strip("# ").strip() for line in text.splitlines() if line.startswith("#")]
+                entry["summaryItems"] = [{"label": "heading", "value": heading} for heading in headings[:5]]
+            elif suffix == ".csv":
+                try:
+                    rows = list(csv.reader(text.splitlines()))
+                    entry["summaryItems"] = [
+                        {"label": "csvRowsPreviewed", "value": str(max(0, len(rows) - 1))},
+                        {"label": "columns", "value": ", ".join(rows[0][:12]) if rows else ""},
+                    ]
+                except Exception as exc:
+                    entry["summaryItems"] = [{"label": "csvPreviewError", "value": str(exc)}]
+        except OSError as exc:
+            entry["summaryItems"] = [{"label": "readError", "value": str(exc)}]
+    elif suffix == ".zip":
+        try:
+            with zipfile.ZipFile(path) as archive:
+                names = archive.namelist()
+            entry["summaryItems"] = [
+                {"label": "zipEntries", "value": str(len(names))},
+                {"label": "firstEntries", "value": ", ".join(names[:8])},
+            ]
+        except Exception as exc:
+            entry["summaryItems"] = [{"label": "zipReadError", "value": str(exc)}]
+    else:
+        entry["summaryItems"] = [{"label": "preview", "value": "No text preview for this file type."}]
+
+    entry["status"] = report_viewer_status(entry)
+    return entry
+
+
+def report_viewer_candidate_files(report_dir: Path, include_subdirs: bool, max_files: int) -> List[Path]:
+    if not report_dir.exists():
+        return []
+    scan_limit = max(max_files * 8, max_files, 200)
+    if include_subdirs:
+        iterator = safe_walk(report_dir, scan_limit)
+    else:
+        iterator = (path for path in report_dir.iterdir() if path.is_file())
+    candidates: List[Path] = []
+    for path in iterator:
+        try:
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in REPORT_VIEW_FILE_EXTENSIONS:
+                continue
+            candidates.append(path)
+        except OSError:
+            continue
+    def mtime(path: Path) -> float:
+        try:
+            return path.stat().st_mtime
+        except OSError:
+            return 0.0
+
+    candidates = sorted(candidates, key=mtime, reverse=True)
+    return candidates[:max_files]
+
+
+def report_viewer_html(report: Dict[str, Any]) -> str:
+    def h(value: Any) -> str:
+        return html.escape(str(value), quote=True)
+
+    counts = report.get("countsByExtension") or {}
+    count_badges = "\n".join(
+        f'<span class="pill">{h(ext)} {h(count)}</span>' for ext, count in sorted(counts.items())
+    )
+    cards: List[str] = []
+    for entry in report.get("files", []):
+        summary = "".join(
+            f"<li><strong>{h(item.get('label', 'item'))}</strong>: {h(item.get('value', ''))}</li>"
+            for item in entry.get("summaryItems", [])
+        )
+        if not summary:
+            summary = "<li>No summary fields found.</li>"
+        preview = h(entry.get("preview") or "")
+        if entry.get("previewTruncated"):
+            preview += "\n\n[preview truncated]"
+        if not preview:
+            preview = "No preview available for this file."
+        cards.append(
+            "\n".join(
+                [
+                    f'<article class="card status-{h(entry.get("status", "info"))}" data-kind="{h(entry.get("kind", ""))}" data-name="{h(entry.get("name", ""))}">',
+                    "  <div class=\"card-head\">",
+                    f'    <div><h2>{h(entry.get("name"))}</h2><p>{h(entry.get("relativePath"))}</p></div>',
+                    f'    <a href="{h(entry.get("uri") or entry.get("path"))}">Open file</a>',
+                    "  </div>",
+                    "  <div class=\"meta\">",
+                    f'    <span>{h(entry.get("kind"))}</span>',
+                    f'    <span>{h(entry.get("extension"))}</span>',
+                    f'    <span>{h(entry.get("sizeLabel"))}</span>',
+                    f'    <span>{h(entry.get("modifiedAt"))}</span>',
+                    "  </div>",
+                    f"  <ul>{summary}</ul>",
+                    f"  <details><summary>Preview</summary><pre>{preview}</pre></details>",
+                    "</article>",
+                ]
+            )
+        )
+    if not cards:
+        cards.append('<article class="card status-info"><h2>No report files found</h2><p>Run a diagnostic, bug bundle, or menu action first, then regenerate this viewer.</p></article>')
+
+    generated_at = h(report.get("generatedAt"))
+    report_dir = h(report.get("reportDir"))
+    file_count = h(report.get("fileCount"))
+    newest = h(report.get("newestModifiedAt") or "none")
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vortex Skyrim SE Report Viewer</title>
+  <style>
+    :root {{
+      color-scheme: light dark;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #17202a;
+      --muted: #5d6b7a;
+      --line: #d9e0e7;
+      --accent: #1e7a78;
+      --warn: #a45a00;
+      --error: #b3261e;
+      --ok: #1c6b33;
+      font-family: Segoe UI, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }}
+    @media (prefers-color-scheme: dark) {{
+      :root {{
+        --bg: #111417;
+        --panel: #1a2026;
+        --text: #eef3f7;
+        --muted: #adbac7;
+        --line: #34404a;
+      }}
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; background: var(--bg); color: var(--text); }}
+    header {{ padding: 28px clamp(16px, 4vw, 48px) 18px; border-bottom: 1px solid var(--line); background: var(--panel); }}
+    h1 {{ margin: 0 0 8px; font-size: 28px; line-height: 1.15; letter-spacing: 0; }}
+    h2 {{ margin: 0; font-size: 18px; line-height: 1.25; letter-spacing: 0; }}
+    p {{ margin: 4px 0; color: var(--muted); }}
+    main {{ max-width: 1180px; margin: 0 auto; padding: 18px clamp(12px, 3vw, 32px) 40px; }}
+    .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 14px 0; }}
+    .summary div, .toolbar, .card {{ border: 1px solid var(--line); background: var(--panel); border-radius: 8px; }}
+    .summary div {{ padding: 12px; }}
+    .summary strong {{ display: block; font-size: 20px; }}
+    .toolbar {{ position: sticky; top: 0; z-index: 2; display: flex; gap: 10px; align-items: center; padding: 10px; margin-bottom: 12px; }}
+    input {{ width: 100%; min-height: 38px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: transparent; color: var(--text); font: inherit; }}
+    .pills {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }}
+    .pill {{ border: 1px solid var(--line); border-radius: 999px; padding: 4px 8px; color: var(--muted); background: color-mix(in srgb, var(--panel), var(--bg) 35%); }}
+    .card {{ margin: 10px 0; padding: 14px; border-left: 6px solid var(--accent); }}
+    .status-ok {{ border-left-color: var(--ok); }}
+    .status-warn {{ border-left-color: var(--warn); }}
+    .status-error {{ border-left-color: var(--error); }}
+    .card-head {{ display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }}
+    a {{ color: var(--accent); font-weight: 600; text-decoration: none; white-space: nowrap; }}
+    a:hover {{ text-decoration: underline; }}
+    .meta {{ display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }}
+    .meta span {{ border: 1px solid var(--line); border-radius: 6px; padding: 4px 7px; color: var(--muted); }}
+    ul {{ margin: 8px 0 10px; padding-left: 20px; }}
+    li {{ margin: 3px 0; }}
+    details {{ border-top: 1px solid var(--line); padding-top: 8px; }}
+    summary {{ cursor: pointer; font-weight: 600; }}
+    pre {{ overflow: auto; max-height: 460px; white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px; border-radius: 6px; background: color-mix(in srgb, var(--panel), #000 7%); }}
+    .hidden {{ display: none; }}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Vortex Skyrim SE Report Viewer</h1>
+    <p>Generated {generated_at}</p>
+    <p>{report_dir}</p>
+    <div class="pills">{count_badges}</div>
+  </header>
+  <main>
+    <section class="summary">
+      <div><strong>{file_count}</strong><span>files indexed</span></div>
+      <div><strong>{newest}</strong><span>newest report</span></div>
+      <div><strong>read-only</strong><span>opens and previews files only</span></div>
+    </section>
+    <section class="toolbar">
+      <input id="filter" type="search" placeholder="Filter by filename, kind, summary text, or path" autocomplete="off">
+    </section>
+    <section id="cards">
+{chr(10).join(cards)}
+    </section>
+  </main>
+  <script>
+    const filter = document.getElementById('filter');
+    const cards = Array.from(document.querySelectorAll('.card'));
+    filter.addEventListener('input', () => {{
+      const q = filter.value.trim().toLowerCase();
+      for (const card of cards) {{
+        card.classList.toggle('hidden', q && !card.innerText.toLowerCase().includes(q));
+      }}
+    }});
+  </script>
+</body>
+</html>
+"""
+
+
+def report_viewer_index(args: Dict[str, Any]) -> Dict[str, Any]:
+    report_dir = default_report_dir(args.get("report_dir"))
+    output_path = expand_path(args.get("output_path"))
+    if not output_path:
+        output_path = report_dir / "report-viewer.html"
+    max_files = report_viewer_int_arg(args, "max_files", 300, 1, 3000)
+    max_preview_bytes = report_viewer_int_arg(args, "max_preview_bytes", 20_000, 1000, 200_000)
+    include_subdirs = bool(args.get("include_subdirs", True))
+
+    candidates = report_viewer_candidate_files(report_dir, include_subdirs, max_files)
+    files: List[Dict[str, Any]] = []
+    for path in candidates:
+        try:
+            files.append(report_viewer_read_entry(path, report_dir, max_preview_bytes))
+        except OSError as exc:
+            files.append(
+                {
+                    "name": path.name,
+                    "relativePath": rel_to(path, report_dir),
+                    "path": str(path),
+                    "uri": str(path),
+                    "extension": path.suffix.lower() or "(none)",
+                    "kind": report_viewer_kind(path),
+                    "sizeBytes": 0,
+                    "sizeLabel": "unknown",
+                    "modifiedAt": "",
+                    "preview": "",
+                    "previewTruncated": False,
+                    "summaryItems": [{"label": "readError", "value": str(exc)}],
+                    "status": "warn",
+                }
+            )
+
+    counts: Dict[str, int] = {}
+    newest = None
+    for entry in files:
+        ext = str(entry.get("extension") or "(none)")
+        counts[ext] = counts.get(ext, 0) + 1
+        modified = entry.get("modifiedAt")
+        if modified and (newest is None or str(modified) > newest):
+            newest = str(modified)
+
+    report = {
+        "generatedAt": iso_now(),
+        "server": SERVER_NAME,
+        "version": SERVER_VERSION,
+        "reportDir": str(report_dir),
+        "outputPath": str(output_path),
+        "fileCount": len(files),
+        "countsByExtension": counts,
+        "newestModifiedAt": newest,
+        "includeSubdirs": include_subdirs,
+        "maxFiles": max_files,
+        "maxPreviewBytes": max_preview_bytes,
+        "readOnly": True,
+        "files": files,
+    }
+    write_text(output_path, report_viewer_html(report))
+    log_event(
+        "support",
+        "report_viewer_written",
+        {"output_path": str(output_path), "report_dir": str(report_dir), "file_count": len(files)},
+    )
+    newest_files = [
+        {
+            "name": entry.get("name"),
+            "kind": entry.get("kind"),
+            "modifiedAt": entry.get("modifiedAt"),
+            "path": entry.get("path"),
+        }
+        for entry in files[:10]
+    ]
+    return {
+        "output_path": str(output_path),
+        "report_dir": str(report_dir),
+        "fileCount": len(files),
+        "countsByExtension": counts,
+        "newestModifiedAt": newest,
+        "newestFiles": newest_files,
+        "readOnly": True,
+        "notes": [
+            "Open the HTML file in a browser to browse generated JSON, Markdown, CSV, log, script, and zip report summaries.",
+            "The viewer is static and read-only. Regenerate it after creating new reports.",
+        ],
+    }
+
+
 def log_status(args: Dict[str, Any]) -> Dict[str, Any]:
     log_dir = default_log_dir(args.get("log_dir"))
     max_files = int(args.get("max_files", 20))
@@ -12195,6 +12659,21 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         },
         log_status,
     ),
+    "report_viewer_index": (
+        "Write a static read-only HTML viewer for generated report JSON, Markdown, CSV, log, script, and zip files.",
+        {
+            "type": "object",
+            "properties": {
+                "report_dir": {"type": "string"},
+                "output_path": {"type": "string"},
+                "include_subdirs": {"type": "boolean", "default": True},
+                "max_files": {"type": "integer", "default": 300},
+                "max_preview_bytes": {"type": "integer", "default": 20000},
+            },
+            "additionalProperties": False,
+        },
+        report_viewer_index,
+    ),
     "bug_report_bundle": (
         "Write a bug-report JSON bundle with setup validation, environment checks, play/deployment reports, and recent MCP logs.",
         {
@@ -12496,6 +12975,7 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         "backup_dir": parsed.backup_dir,
         "session_json_path": parsed.session_json_path,
         "log_dir": parsed.log_dir,
+        "report_dir": parsed.report_dir,
         "description": parsed.description,
         "location": parsed.location,
         "object": parsed.object,
@@ -12714,6 +13194,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--launch-doctor", action="store_true", help="Shortcut for --tool skyrim_launch_doctor_report.")
     parser.add_argument("--skse-doctor", action="store_true", help="Shortcut for --tool skse_runtime_doctor_report.")
     parser.add_argument("--automation-plan", action="store_true", help="Shortcut for --tool vortex_reversible_automation_plan.")
+    parser.add_argument("--report-viewer", action="store_true", help="Shortcut for --tool report_viewer_index.")
     parser.add_argument("--runtime-logs", action="store_true", help="Shortcut for --tool skyrim_runtime_log_report.")
     parser.add_argument("--workflow-guide", action="store_true", help="Shortcut for --tool workflow_guide.")
     parser.add_argument("--issue-case", action="store_true", help="Shortcut for --tool skyrim_issue_case_packet.")
@@ -12749,6 +13230,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--backup-dir", help="Folder for automatic profile backups.")
     parser.add_argument("--session-json-path", help="JSON output path for --safe-session.")
     parser.add_argument("--log-dir", help="Override MCP log folder for log_status and support reports.")
+    parser.add_argument("--report-dir", help="Report folder for report_viewer_index.")
     parser.add_argument("--path", help="Target path for read_text_file or apply_config_text_patch.")
     parser.add_argument("--report-path", help="CSV report path for xedit_inspection_script or xedit_inspection_result_report.")
     parser.add_argument("--old-text", help="Exact text to replace for apply_config_text_patch.")
@@ -12872,6 +13354,8 @@ def cli_main(argv: List[str]) -> int:
         if parsed.skse_doctor
         else "vortex_reversible_automation_plan"
         if parsed.automation_plan
+        else "report_viewer_index"
+        if parsed.report_viewer
         else "skyrim_runtime_log_report"
         if parsed.runtime_logs
         else "mod_knowledge_report"
@@ -12901,7 +13385,7 @@ def cli_main(argv: List[str]) -> int:
         else parsed.tool
     )
     if not tool_name:
-        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --deployment-doctor, --launch-doctor, --skse-doctor, --automation-plan, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-bundle, or --safe-profile-fix")
+        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --deployment-doctor, --launch-doctor, --skse-doctor, --automation-plan, --report-viewer, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-bundle, or --safe-profile-fix")
 
     try:
         tool_args = load_cli_tool_args(parsed)

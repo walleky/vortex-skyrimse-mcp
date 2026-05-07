@@ -394,6 +394,16 @@ Human next step:
 Attach the zip to a bug report or ask OpenClaw to read it. Review it first
 because it may contain mod names, plugin names, and unusual custom paths.
 
+For local browsing instead of an attachable bug zip:
+
+```text
+report_viewer_index
+```
+
+This writes `report-viewer.html` in the reports folder. It is a local map of
+generated reports, not a replacement for reading the source JSON/Markdown before
+making exact changes.
+
 ## Quick Cheat Sheet
 
 | User says | Best first tool |
@@ -413,6 +423,7 @@ because it may contain mod names, plugin names, and unusual custom paths.
 | "What can I remove?" | `mod_knowledge_report` |
 | "Collection seems off" | `vortex_collection_report` |
 | "OpenClaw got confused" | `bug_report_bundle` |
+| "Show me all reports" | `report_viewer_index` |
 
 ## Golden Rule
 

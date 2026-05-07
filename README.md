@@ -84,6 +84,8 @@ an MCP client.
 - Write a JSON report that another agent can analyze.
 - Write MCP logs by area (`server`, `tool`, `vortex-cli`, `support`) and create
   a bug-report bundle with recent log tails.
+- Generate a static read-only HTML report viewer so users and OpenClaw can
+  browse generated reports without digging through folders.
 - Run the same tools directly from PowerShell for no-OpenClaw workflows.
 
 ## Documentation
@@ -99,6 +101,7 @@ an MCP client.
 - [docs/LAUNCH-DOCTOR.md](docs/LAUNCH-DOCTOR.md): quickest SKSE vs Steam/vanilla launch-route verdict.
 - [docs/SKSE-RUNTIME-DOCTOR.md](docs/SKSE-RUNTIME-DOCTOR.md): SKSE runtime/build compatibility checks.
 - [docs/REVERSIBLE-AUTOMATION.md](docs/REVERSIBLE-AUTOMATION.md): safety gate for risky automation and undo-aware plans.
+- [docs/REPORT-VIEWER.md](docs/REPORT-VIEWER.md): static read-only HTML index for generated reports.
 - [docs/SKYRIM-RUNTIME-LOGS.md](docs/SKYRIM-RUNTIME-LOGS.md): Papyrus/SKSE/crash log scanning and safe config patch workflow.
 - [docs/PERFORMANCE.md](docs/PERFORMANCE.md): compact outputs and slow-model guidance.
 - [docs/NEXUS-API.md](docs/NEXUS-API.md): optional read-only Nexus Mods API setup and tools.
@@ -411,6 +414,7 @@ Use apply_ini_fixes with dry_run=false and make_backup=true.
 - `skyrim_modded_play_report`
 - `suggest_conflict_fixes`
 - `log_status`
+- `report_viewer_index`
 - `bug_report_bundle`
 - `write_report`
 
@@ -451,7 +455,8 @@ If detection misses your setup, pass `skyrim_dir`, `staging_dir`,
   `vortex_profile_mods`, `vortex_compare_profiles`,
   `vortex_profile_deployment_report`, `deployment_doctor_report`,
   `skyrim_modded_play_report`,
-  `suggest_conflict_fixes`, `log_status`, `bug_report_bundle`, and
+  `suggest_conflict_fixes`, `log_status`, `report_viewer_index`,
+  `bug_report_bundle`, and
   `write_report` do not modify Vortex or Skyrim.
 - `apply_ini_fixes` can write INI files only when `dry_run=false`.
 - `apply_ini_fixes` creates backups by default.

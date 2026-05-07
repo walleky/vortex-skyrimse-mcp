@@ -51,6 +51,14 @@ Or run:
 
 This calls the same `mod_knowledge_report` tool without needing OpenClaw.
 
+To make one browser page for the reports folder, run:
+
+```powershell
+.\vortex_skyrimse_menu.ps1 -Action report-viewer
+```
+
+Then open `Documents\vortex-skyrimse-mcp-reports\report-viewer.html`.
+
 MCP Doctor runs the server self-test, runs the MCP handshake smoke test, writes
 `openclaw.mcp.generated.json`, prints the OpenClaw registration command, and can
 open the OpenClaw config folder. It also writes a transcript log under the MCP

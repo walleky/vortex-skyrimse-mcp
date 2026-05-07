@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.34
+
+- Adds `report_viewer_index`, a read-only static HTML index for generated JSON, Markdown, CSV, log, script, and zip report files.
+- Adds `--report-viewer` direct CLI shortcut and local menu action 36.
+- Documents the report viewer workflow for users and OpenClaw agents.
+- Adds smoke, fixture, and PowerShell menu coverage for viewer generation and discovery.
+
 ## v0.2.33
 
 - Adds `skse_runtime_doctor_report`, a read-only compatibility check for Skyrim runtime version, SKSE runtime DLL target, SKSE scripts, and Address Library evidence.

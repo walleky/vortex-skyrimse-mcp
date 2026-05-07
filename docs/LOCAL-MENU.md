@@ -51,6 +51,7 @@ Vortex-SkyrimSE-Menu.cmd
 33. Launch Doctor
 34. Reversible Automation Plan
 35. SKSE Runtime Doctor
+36. Report Viewer
 
 Reports are written to:
 
@@ -102,6 +103,7 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action launch-doctor
 .\vortex_skyrimse_menu.ps1 -Action automation-plan -Problem "disable unwanted mods and sort safely"
 .\vortex_skyrimse_menu.ps1 -Action skse-doctor
+.\vortex_skyrimse_menu.ps1 -Action report-viewer
 ```
 
 Action 30 imports helper output from `<case folder>\incoming` by default. Use
@@ -127,6 +129,10 @@ only, keep Vortex-owned actions in Vortex, then verify with Deployment Doctor.
 
 Action 35 checks whether the detected Skyrim runtime matches the installed SKSE
 runtime DLL target, SKSE scripts, and Address Library evidence.
+
+Action 36 writes `report-viewer.html` in the reports folder. It is a static
+read-only page that indexes generated JSON, Markdown, CSV, log, script, and zip
+reports so you and OpenClaw can find the newest evidence faster.
 
 If Windows cannot find Python, pass the executable once:
 

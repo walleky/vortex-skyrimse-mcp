@@ -991,6 +991,23 @@ def main() -> int:
             assert "bundle.json" in names, names
             assert any(name.startswith("logs/") for name in names), names
 
+        viewer_html = root / "reports-viewer.html"
+        viewer = server.report_viewer_index(
+            {
+                "report_dir": str(root),
+                "output_path": str(viewer_html),
+                "include_subdirs": True,
+                "max_files": 30,
+                "max_preview_bytes": 12000,
+            }
+        )
+        assert viewer["readOnly"] is True, viewer
+        assert viewer["fileCount"] >= 3, viewer
+        assert viewer_html.exists(), viewer
+        viewer_text = viewer_html.read_text(encoding="utf-8")
+        assert "Vortex Skyrim SE Report Viewer" in viewer_text
+        assert "bundle.json" in viewer_text
+
     print("Fixture MCP tests passed")
     return 0
 

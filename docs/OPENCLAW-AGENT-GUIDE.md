@@ -291,6 +291,16 @@ Then tell the user:
 
 Do not paste the whole bundle into chat unless the user asks. Summarize the key findings first.
 
+When the user wants to browse the generated files instead of sharing a bug zip:
+
+```text
+report_viewer_index
+```
+
+Read `output_path`, tell the user where the HTML viewer was written, and remind
+them it is a local read-only snapshot. Use it to find the right source report;
+read the source JSON/Markdown directly before making exact recommendations.
+
 ## Testing Flow
 
 When the user asks whether the repo still works after an update:
