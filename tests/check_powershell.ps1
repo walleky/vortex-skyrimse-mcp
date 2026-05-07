@@ -40,6 +40,9 @@ if (($MenuOutput -join "`n") -notmatch "Skyrim runtime logs") {
 if (($MenuOutput -join "`n") -notmatch "Deployment Doctor") {
   throw "Menu did not list the Deployment Doctor action."
 }
+if (($MenuOutput -join "`n") -notmatch "Launch Doctor") {
+  throw "Menu did not list the Launch Doctor action."
+}
 if (($MenuOutput -join "`n") -notmatch "Config file validator") {
   throw "Menu did not list the config file validator action."
 }

@@ -265,6 +265,7 @@ function Show-Actions {
   Write-Host "30. Import case inbox"
   Write-Host "31. Clone profile and apply fixes"
   Write-Host "32. Deployment Doctor"
+  Write-Host "33. Launch Doctor"
   Write-Host "Q. Quit"
 }
 
@@ -540,6 +541,15 @@ function Invoke-MenuAction {
       Write-Host "Wrote Deployment Doctor Markdown: $md" -ForegroundColor Green
       Write-Host "Wrote Deployment Doctor JSON: $json" -ForegroundColor Green
       Write-Host "This action did not deploy, enable, disable, sort, delete, or edit mods." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("33", "launch", "launch-doctor", "skse-launch", "skse") } {
+      $md = Join-Path $script:ReportDir "launch-doctor-$stamp.md"
+      $json = Join-Path $script:ReportDir "launch-doctor-$stamp.json"
+      Invoke-Server (@("--launch-doctor", "--output-path", $md, "--output-json", $json) + $common)
+      Write-Host "Wrote Launch Doctor Markdown: $md" -ForegroundColor Green
+      Write-Host "Wrote Launch Doctor JSON: $json" -ForegroundColor Green
+      Write-Host "This action did not launch Steam, Skyrim, SKSE, Vortex, or xEdit." -ForegroundColor Green
       return
     }
     { $_ -in @("13", "cache", "scan-cache") } {

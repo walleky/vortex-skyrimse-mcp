@@ -40,7 +40,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.30"
+SERVER_VERSION = "0.2.31"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -1767,6 +1767,7 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "bug_report_bundle",
             "skyrim_diagnostics_report",
             "deployment_doctor_report",
+            "skyrim_launch_doctor_report",
             "scan_cache_status",
             "xedit_diagnostics_report",
             "xedit_inspection_script",
@@ -1799,6 +1800,7 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "vortex_compare_profiles",
             "vortex_profile_deployment_report",
             "deployment_doctor_report",
+            "skyrim_launch_doctor_report",
             "vortex_collection_report",
             "vortex_profile_backup",
             "vortex_profile_restore_plan",
@@ -1858,11 +1860,22 @@ def workflow_catalog() -> List[Dict[str, Any]]:
             "title": "Mods Downloaded But Not Working In Game",
             "matchTerms": ["mods not working", "not working", "downloaded", "vanilla", "deploy", "deployment", "profile", "skyrim launches", "not active", "not showing", "audio"],
             "userPrompt": "Use deployment_doctor_report first. Tell me whether my selected Vortex profile is linked to Skyrim Data and plugins.txt. Do not apply changes.",
-            "tools": ["deployment_doctor_report", "skyrim_diagnostics_report", "vortex_profile_deployment_report", "plugin_report"],
+            "tools": ["deployment_doctor_report", "skyrim_launch_doctor_report", "skyrim_diagnostics_report", "vortex_profile_deployment_report", "plugin_report"],
             "whatToRead": ["summary.deploymentState", "checks", "findings", "nextActions"],
             "humanSteps": ["Select the intended Vortex profile.", "Click Deploy Mods in Vortex.", "Confirm plugins are enabled.", "Launch through SKSE when SKSE is part of the setup."],
-            "directCli": ["py -3 .\\server.py --deployment-doctor", "py -3 .\\server.py --skyrim-diagnostics --performance-mode slow_model"],
+            "directCli": ["py -3 .\\server.py --deployment-doctor", "py -3 .\\server.py --launch-doctor", "py -3 .\\server.py --skyrim-diagnostics --performance-mode slow_model"],
             "menuAction": "32. Deployment Doctor",
+        },
+        {
+            "key": "launch_check",
+            "title": "Launch Through The Right Route",
+            "matchTerms": ["launch", "skse", "skse64_loader", "start game", "run game", "steam launch", "vortex launch", "wrong executable", "right executable"],
+            "userPrompt": "Use skyrim_launch_doctor_report. Tell me whether I should launch through SKSE, Steam/vanilla, or fix deployment/SKSE first. Do not launch or change anything.",
+            "tools": ["skyrim_launch_doctor_report", "deployment_doctor_report", "skyrim_runtime_log_report"],
+            "whatToRead": ["summary.launchState", "summary.recommendedLaunchRoute", "checks", "nextActions", "commandPreview"],
+            "humanSteps": ["If Launch Doctor says fix deployment first, deploy in Vortex before launching.", "If it says SKSE, launch through skse64_loader.exe or the Vortex Dashboard SKSE tool.", "If it says review, fix the listed warning before using a real save."],
+            "directCli": ["py -3 .\\server.py --launch-doctor"],
+            "menuAction": "33. Launch Doctor",
         },
         {
             "key": "weird_object",
@@ -9009,6 +9022,336 @@ def deployment_doctor_report(args: Dict[str, Any]) -> Dict[str, Any]:
     return report
 
 
+def launch_doctor_default_path(args: Dict[str, Any]) -> Optional[Path]:
+    output_path = expand_path(args.get("output_path"))
+    if not output_path:
+        return None
+    if output_path.suffix:
+        return output_path
+    return output_path / f"launch-doctor-{now_stamp()}.md"
+
+
+def launch_doctor_skse_status(file_health: Dict[str, Any]) -> Dict[str, Any]:
+    skse = file_health.get("skse", {}) if isinstance(file_health.get("skse"), dict) else {}
+    dlls = [str(path) for path in skse.get("dlls", [])] if isinstance(skse.get("dlls"), list) else []
+    dll_names = {Path(path).name.lower() for path in dlls}
+    runtime_dlls = sorted(name for name in dll_names if name.startswith("skse64_") and name != "skse64_steam_loader.dll")
+    return {
+        "loaderPath": skse.get("loader"),
+        "loaderExists": bool(skse.get("loaderExists")),
+        "steamLoaderDllPresent": "skse64_steam_loader.dll" in dll_names,
+        "runtimeDlls": runtime_dlls,
+        "runtimeDllPresent": bool(runtime_dlls),
+        "scriptFileCount": int(skse.get("scriptFileCount", 0) or 0),
+        "ready": bool(skse.get("loaderExists")) and "skse64_steam_loader.dll" in dll_names and bool(runtime_dlls) and int(skse.get("scriptFileCount", 0) or 0) > 0,
+    }
+
+
+def launch_doctor_needs_skse(deployment: Dict[str, Any]) -> bool:
+    checked_mods = deployment.get("checkedMods", []) if isinstance(deployment.get("checkedMods"), list) else []
+    for mod in checked_mods:
+        if not isinstance(mod, dict):
+            continue
+        if int(mod.get("sksePluginCount", 0) or 0) > 0:
+            return True
+        probe = mod.get("deployProbe", {}) if isinstance(mod.get("deployProbe"), dict) else {}
+        samples = probe.get("samples", []) if isinstance(probe.get("samples"), list) else []
+        if any(isinstance(sample, dict) and sample.get("kind") == "skse_plugin" for sample in samples):
+            return True
+    return False
+
+
+def launch_doctor_markdown(report: Dict[str, Any]) -> str:
+    summary = report.get("summary", {}) if isinstance(report.get("summary"), dict) else {}
+    lines = [
+        "# Skyrim SE Launch Doctor",
+        "",
+        f"- Generated: {deployment_doctor_md_value(report.get('generatedAt'))}",
+        f"- Server: {deployment_doctor_md_value(report.get('server'))} {deployment_doctor_md_value(report.get('version'))}",
+        f"- Read-only: {deployment_doctor_md_value(report.get('readOnly'))}",
+        "",
+        "## Verdict",
+        "",
+        f"- Launch state: {deployment_doctor_md_value(summary.get('launchState'))}",
+        f"- OK to launch now: {deployment_doctor_md_value(summary.get('okToLaunchNow'))}",
+        f"- Recommended launch route: {deployment_doctor_md_value(summary.get('recommendedLaunchRoute'))}",
+        f"- Selected profile: {deployment_doctor_md_value(summary.get('selectedProfileName'))}",
+        f"- Selected profile active: {deployment_doctor_md_value(summary.get('selectedProfileActive'))}",
+        f"- Deployment state: {deployment_doctor_md_value(summary.get('deploymentState'))}",
+        f"- SKSE ready: {deployment_doctor_md_value(summary.get('skseReady'))}",
+        f"- Enabled mods needing SKSE evidence: {deployment_doctor_md_value(summary.get('needsSkse'))}",
+        "",
+    ]
+    command_preview = report.get("commandPreview", {}) if isinstance(report.get("commandPreview"), dict) else {}
+    if command_preview:
+        lines.extend(["## Launch Preview", ""])
+        for key in ("preferredExecutable", "fallbackExecutable", "note"):
+            if key in command_preview:
+                lines.append(f"- {key}: {deployment_doctor_md_value(command_preview.get(key))}")
+        lines.append("")
+
+    checks = report.get("checks", []) if isinstance(report.get("checks"), list) else []
+    lines.extend(["## Checks", ""])
+    if checks:
+        for check in checks:
+            lines.append(
+                f"- [{deployment_doctor_md_value(check.get('status')).upper()}] "
+                f"{deployment_doctor_md_value(check.get('label'))}: {deployment_doctor_md_value(check.get('message'))}"
+            )
+            if check.get("nextAction"):
+                lines.append(f"  Next: {deployment_doctor_md_value(check.get('nextAction'))}")
+    else:
+        lines.append("- No checks were generated.")
+
+    findings = report.get("findings", []) if isinstance(report.get("findings"), list) else []
+    lines.extend(["", "## Findings", ""])
+    if findings:
+        for item in findings[:30]:
+            lines.append(
+                f"- [{deployment_doctor_md_value(item.get('severity'))}] "
+                f"{deployment_doctor_md_value(item.get('code'))}: {deployment_doctor_md_value(item.get('message'))}"
+            )
+            if item.get("nextAction"):
+                lines.append(f"  Next: {deployment_doctor_md_value(item.get('nextAction'))}")
+    else:
+        lines.append("- No findings were generated.")
+
+    next_actions = report.get("nextActions", []) if isinstance(report.get("nextActions"), list) else []
+    lines.extend(["", "## Next Actions", ""])
+    if next_actions:
+        for action in next_actions:
+            lines.append(f"- {deployment_doctor_md_value(action)}")
+    else:
+        lines.append("- Launch using the recommended route.")
+
+    notes = report.get("notes", []) if isinstance(report.get("notes"), list) else []
+    if notes:
+        lines.extend(["", "## Notes", ""])
+        for note in notes:
+            lines.append(f"- {deployment_doctor_md_value(note)}")
+    return "\n".join(lines) + "\n"
+
+
+def skyrim_launch_doctor_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    doctor_args = dict(args)
+    doctor_args.pop("output_path", None)
+    doctor_args.pop("redact_user_paths", None)
+    doctor_args.pop("baseline_path", None)
+    try:
+        doctor = deployment_doctor_report(doctor_args)
+    except Exception as exc:
+        doctor = {
+            "summary": {"deploymentState": "blocked", "profileToSkyrimLinked": False},
+            "checks": [],
+            "findings": [
+                {
+                    "severity": "high",
+                    "code": "deployment_doctor_failed",
+                    "message": str(exc),
+                    "nextAction": "Fix path detection, then rerun Launch Doctor.",
+                }
+            ],
+            "nextActions": ["Fix path detection, then rerun Launch Doctor."],
+            "sections": {},
+        }
+
+    sections = doctor.get("sections", {}) if isinstance(doctor.get("sections"), dict) else {}
+    file_health = sections.get("fileHealth", {}) if isinstance(sections.get("fileHealth"), dict) else {}
+    deployment = sections.get("deployment", {}) if isinstance(sections.get("deployment"), dict) else {}
+    env = sections.get("environment", {}) if isinstance(sections.get("environment"), dict) else {}
+    doctor_summary = doctor.get("summary", {}) if isinstance(doctor.get("summary"), dict) else {}
+
+    skyrim_dir = find_skyrim_dir(args.get("skyrim_dir")) or expand_path(file_health.get("skyrim_dir") if isinstance(file_health, dict) else None)
+    skyrim_exe = skyrim_dir / "SkyrimSE.exe" if skyrim_dir else None
+    data_dir = skyrim_dir / "Data" if skyrim_dir else None
+    skse_status = launch_doctor_skse_status(file_health)
+    needs_skse = launch_doctor_needs_skse(deployment)
+    profile = deployment.get("profile", {}) if isinstance(deployment.get("profile"), dict) else {}
+    deployment_state = str(doctor_summary.get("deploymentState") or "blocked")
+    profile_linked = bool(doctor_summary.get("profileToSkyrimLinked"))
+
+    checks: List[Dict[str, Any]] = []
+    add_doctor_check(
+        checks,
+        "skyrim_exe",
+        "SkyrimSE.exe",
+        "pass" if skyrim_exe and skyrim_exe.exists() else "fail",
+        "SkyrimSE.exe was found." if skyrim_exe and skyrim_exe.exists() else "SkyrimSE.exe was not found.",
+        "Pass --skyrim-dir or run Skyrim SE once through Steam.",
+        str(skyrim_exe) if skyrim_exe else None,
+    )
+    add_doctor_check(
+        checks,
+        "skyrim_data",
+        "Skyrim Data Folder",
+        "pass" if data_dir and data_dir.exists() else "fail",
+        "Skyrim Data was found." if data_dir and data_dir.exists() else "Skyrim Data was not found.",
+        "Pass --skyrim-dir and confirm the detected Skyrim Special Edition folder.",
+        str(data_dir) if data_dir else None,
+    )
+    add_doctor_check(
+        checks,
+        "skse_launch_target",
+        "SKSE Launch Target",
+        "pass" if skse_status["ready"] else "fail" if needs_skse else "warn",
+        "SKSE loader, DLLs, and scripts look ready."
+        if skse_status["ready"]
+        else "SKSE is incomplete, but enabled mods appear to need it."
+        if needs_skse
+        else "SKSE is not fully ready; use vanilla/Steam only if this profile does not need SKSE.",
+        "Install the SKSE build matching your Skyrim runtime, then deploy/test again." if not skse_status["ready"] else "Launch through skse64_loader.exe.",
+        skse_status,
+    )
+    add_doctor_check(
+        checks,
+        "selected_profile",
+        "Selected Vortex Profile",
+        "pass" if profile and profile.get("active") else "warn" if profile else "fail",
+        f"Selected profile is active: {profile.get('name') or profile.get('id')}."
+        if profile and profile.get("active")
+        else f"Selected profile is not marked active: {profile.get('name') or profile.get('id')}."
+        if profile
+        else "No selected Vortex profile could be read.",
+        "Open Vortex, select the intended Skyrim SE profile, then deploy mods." if not (profile and profile.get("active")) else "Keep this profile selected before deploying and launching.",
+        profile or None,
+    )
+    add_doctor_check(
+        checks,
+        "deployment_ready",
+        "Profile Deployed To Skyrim",
+        "pass" if profile_linked else "warn" if deployment_state == "review" else "fail",
+        f"Deployment Doctor state is {deployment_state}.",
+        "In Vortex, select the intended profile, click Deploy Mods, confirm plugins are enabled, then rerun Launch Doctor.",
+        {
+            "deploymentState": deployment_state,
+            "profileToSkyrimLinked": profile_linked,
+            "missingDataPluginCount": doctor_summary.get("missingDataPluginCount"),
+            "disabledPluginCount": doctor_summary.get("disabledPluginCount"),
+            "sampleMissingModCount": doctor_summary.get("sampleMissingModCount"),
+            "missingMasterCount": doctor_summary.get("missingMasterCount"),
+        },
+    )
+
+    base_findings = doctor.get("findings", []) if isinstance(doctor.get("findings"), list) else []
+    findings = [dict(item) for item in base_findings if isinstance(item, dict)]
+    if needs_skse and not skse_status["ready"]:
+        add_finding(
+            findings,
+            "high",
+            "skse_required_but_incomplete",
+            "The selected profile has SKSE plugin evidence, but SKSE does not look fully installed.",
+            "Install the SKSE build matching your Skyrim runtime; loader and DLLs go beside SkyrimSE.exe, scripts go under Data\\Scripts.",
+        )
+    if profile and not profile.get("active"):
+        add_finding(
+            findings,
+            "medium",
+            "selected_profile_not_active",
+            "The selected/read profile is not marked as Vortex's active profile.",
+            "Select that profile in Vortex, deploy, then rerun Launch Doctor before starting Skyrim.",
+        )
+
+    failed_checks = [check for check in checks if check.get("status") == "fail"]
+    warning_checks = [check for check in checks if check.get("status") == "warn"]
+    if failed_checks:
+        launch_state = "blocked"
+    elif warning_checks:
+        launch_state = "review"
+    else:
+        launch_state = "ready"
+
+    skyrim_ready = bool(skyrim_exe and skyrim_exe.exists() and data_dir and data_dir.exists())
+    if not skyrim_ready or not profile:
+        route = "fix_setup_first"
+        preferred = None
+    elif launch_state == "ready" and skse_status["ready"]:
+        route = "skse"
+        preferred = skse_status.get("loaderPath")
+    elif launch_state == "ready":
+        route = "steam_or_vanilla"
+        preferred = str(skyrim_exe) if skyrim_exe else None
+    elif not profile_linked:
+        route = "fix_deployment_first"
+        preferred = None
+    elif needs_skse and not skse_status["ready"]:
+        route = "fix_skse_first"
+        preferred = None
+    else:
+        route = "review_first"
+        preferred = skse_status.get("loaderPath") if skse_status["ready"] else str(skyrim_exe) if skyrim_exe else None
+
+    next_actions = []
+    if route == "fix_setup_first":
+        next_actions.append("Fix detected Skyrim/Vortex paths first. Pass skyrim_dir, vortex_exe, staging_dir, and local_appdata if automatic detection picked the wrong locations.")
+    if route == "fix_deployment_first":
+        next_actions.append("Open Vortex, select the intended Skyrim SE profile, click Deploy Mods, confirm plugins are enabled, then rerun Launch Doctor.")
+    if route == "fix_skse_first" or any(check.get("key") == "skse_launch_target" and check.get("status") == "fail" for check in checks):
+        next_actions.append("Install/fix SKSE for the detected Skyrim runtime, then deploy and rerun Launch Doctor.")
+    if route == "skse":
+        next_actions.append("Launch modded Skyrim through skse64_loader.exe, preferably from the Vortex Dashboard SKSE tool if that is your normal route.")
+    if route == "steam_or_vanilla":
+        next_actions.append("Launch through Steam/SkyrimSE.exe only if this profile truly does not require SKSE.")
+    for finding in sort_findings(findings):
+        action = finding.get("nextAction")
+        if action and action not in next_actions:
+            next_actions.append(action)
+    if not next_actions:
+        next_actions.append("Review warnings, then launch using the recommended route.")
+
+    findings = sort_findings(findings)
+    report = {
+        "generatedAt": iso_now(),
+        "server": SERVER_NAME,
+        "version": SERVER_VERSION,
+        "readOnly": True,
+        "summary": {
+            "launchState": launch_state,
+            "okToLaunchNow": launch_state == "ready",
+            "recommendedLaunchRoute": route,
+            "deploymentState": deployment_state,
+            "profileToSkyrimLinked": profile_linked,
+            "selectedProfileId": profile.get("id") if profile else None,
+            "selectedProfileName": profile.get("name") if profile else None,
+            "selectedProfileActive": profile.get("active") if profile else None,
+            "enabledProfileModCount": profile.get("enabledModCount") if profile else None,
+            "skseReady": skse_status["ready"],
+            "needsSkse": needs_skse,
+            "highestSeverity": findings[0].get("severity", "none") if findings else "none",
+            "findingCount": len(findings),
+            "failedCheckCount": len(failed_checks),
+            "warningCheckCount": len(warning_checks),
+        },
+        "commandPreview": {
+            "preferredExecutable": preferred,
+            "fallbackExecutable": str(skyrim_exe) if skyrim_exe else None,
+            "note": "This report does not launch Skyrim. It only tells OpenClaw and the user which route is safest.",
+        },
+        "checks": checks,
+        "findings": findings,
+        "nextActions": next_actions,
+        "sections": {
+            "environment": env,
+            "fileHealth": file_health,
+            "deploymentSummary": doctor_summary,
+            "deploymentChecks": doctor.get("checks", []),
+        },
+        "notes": [
+            "Launch Doctor is read-only. It does not start Steam, Skyrim, SKSE, Vortex, or xEdit.",
+            "A ready SKSE check means the expected SKSE loader, runtime DLL, steam loader DLL, and scripts were found; exact SKSE-to-Skyrim runtime compatibility may still require checking the installed SKSE package name.",
+            "If deployment is not linked, launching from the right executable still will not make missing deployed mods appear.",
+        ],
+    }
+    output_path = launch_doctor_default_path(args)
+    if output_path:
+        report["output_path"] = str(output_path)
+        output_report = redact_paths_in_value(report) if bool(args.get("redact_user_paths", False)) else report
+        write_text(output_path, launch_doctor_markdown(output_report))
+        log_event("support", "skyrim_launch_doctor_report_written", {"output_path": str(output_path), "launchState": launch_state})
+        if bool(args.get("redact_user_paths", False)):
+            return output_report
+    return report
+
+
 def suggest_conflict_fixes(args: Dict[str, Any]) -> Dict[str, Any]:
     conflicts = analyze_conflicts({**args, "hash_files": args.get("hash_files", False)})
     plugins = plugin_report(args) if find_skyrim_dir(args.get("skyrim_dir")) else {}
@@ -10868,6 +11211,33 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         },
         deployment_doctor_report,
     ),
+    "skyrim_launch_doctor_report": (
+        "Read-only verdict for whether the next Skyrim SE launch should use SKSE, Steam/vanilla, or stop for deployment/SKSE fixes first.",
+        {
+            "type": "object",
+            "properties": {
+                "profile_id": {"type": "string"},
+                "game_id": {"type": "string", "default": GAME_ID},
+                "vortex_exe": {"type": "string"},
+                "vortex_appdata": {"type": "string"},
+                "skyrim_dir": {"type": "string"},
+                "staging_dir": {"type": "string"},
+                "local_appdata": {"type": "string"},
+                "my_games_dir": {"type": "string"},
+                "output_path": {"type": "string"},
+                "redact_user_paths": {"type": "boolean", "default": False},
+                "max_mods": {"type": "integer", "default": 500},
+                "max_files_per_mod": {"type": "integer", "default": 3000},
+                "deployment_probe_files_per_mod": {"type": "integer", "default": DEPLOYMENT_PROBE_DEFAULT_FILES_PER_MOD},
+                "scan_cache_dir": {"type": "string"},
+                "use_scan_cache": {"type": "boolean", "default": True},
+                "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
+                "timeout_seconds": {"type": "integer", "default": 60},
+            },
+            "additionalProperties": False,
+        },
+        skyrim_launch_doctor_report,
+    ),
     "vortex_profile_backup": (
         "Write a JSON backup of the active or selected Vortex Skyrim SE profile for later restore previews.",
         {
@@ -11563,6 +11933,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--safe-session", action="store_true", help="Shortcut for --tool safe_session_report.")
     parser.add_argument("--skyrim-diagnostics", action="store_true", help="Shortcut for --tool skyrim_diagnostics_report.")
     parser.add_argument("--deployment-doctor", action="store_true", help="Shortcut for --tool deployment_doctor_report.")
+    parser.add_argument("--launch-doctor", action="store_true", help="Shortcut for --tool skyrim_launch_doctor_report.")
     parser.add_argument("--runtime-logs", action="store_true", help="Shortcut for --tool skyrim_runtime_log_report.")
     parser.add_argument("--workflow-guide", action="store_true", help="Shortcut for --tool workflow_guide.")
     parser.add_argument("--issue-case", action="store_true", help="Shortcut for --tool skyrim_issue_case_packet.")
@@ -11714,6 +12085,8 @@ def cli_main(argv: List[str]) -> int:
         if parsed.safe_session
         else "deployment_doctor_report"
         if parsed.deployment_doctor
+        else "skyrim_launch_doctor_report"
+        if parsed.launch_doctor
         else "skyrim_runtime_log_report"
         if parsed.runtime_logs
         else "mod_knowledge_report"
@@ -11743,7 +12116,7 @@ def cli_main(argv: List[str]) -> int:
         else parsed.tool
     )
     if not tool_name:
-        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --deployment-doctor, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-bundle, or --safe-profile-fix")
+        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --deployment-doctor, --launch-doctor, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-bundle, or --safe-profile-fix")
 
     try:
         tool_args = load_cli_tool_args(parsed)

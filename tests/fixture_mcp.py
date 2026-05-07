@@ -347,6 +347,20 @@ def main() -> int:
             assert doctor_with_baseline["baselineComparison"]["available"] is True, doctor_with_baseline
             assert doctor_with_baseline["baselineComparison"]["stateChanged"] is True, doctor_with_baseline
             assert any(change["key"] == "profile_plugins_deployed" for change in doctor_with_baseline["baselineComparison"]["changedChecks"]), doctor_with_baseline
+            launch_md = root / "Reports" / "launch-doctor.md"
+            launch = server.skyrim_launch_doctor_report(
+                {
+                    **base_args,
+                    "deployment_probe_files_per_mod": 3,
+                    "output_path": str(launch_md),
+                }
+            )
+            assert launch["readOnly"] is True, launch
+            assert launch["summary"]["recommendedLaunchRoute"] == "fix_deployment_first", launch
+            assert launch["summary"]["skseReady"] is True, launch
+            assert launch["commandPreview"]["fallbackExecutable"].endswith("SkyrimSE.exe"), launch
+            assert launch_md.exists(), launch
+            assert "Launch Doctor" in launch_md.read_text(encoding="utf-8"), launch
         finally:
             server.load_vortex_profile_state = original_load_profile_state_for_deployment
 

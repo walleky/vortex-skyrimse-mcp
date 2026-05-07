@@ -113,3 +113,10 @@ Open Vortex -> select the intended Skyrim SE profile -> Deploy Mods -> confirm P
 
 Then rerun Deployment Doctor. It should become the clean baseline before you
 start disabling mods or chasing deeper xEdit conflicts.
+
+After Deployment Doctor is linked, run Launch Doctor if you are unsure whether
+to start through SKSE or Steam/vanilla:
+
+```powershell
+py -3 .\server.py --launch-doctor
+```

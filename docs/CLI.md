@@ -53,6 +53,18 @@ Compare after deploying in Vortex:
 py -3 .\server.py --deployment-doctor --baseline-path ".\deployment-doctor-before.json" --output-path ".\deployment-doctor-after.md" --output-json ".\deployment-doctor-after.json"
 ```
 
+Check whether the next launch should use SKSE, Steam/vanilla, or wait:
+
+```powershell
+py -3 .\server.py --launch-doctor
+```
+
+Keep a readable Launch Doctor report:
+
+```powershell
+py -3 .\server.py --launch-doctor --output-path ".\launch-doctor.md" --output-json ".\launch-doctor.json"
+```
+
 Write a smaller report for a slower OpenClaw model:
 
 ```powershell

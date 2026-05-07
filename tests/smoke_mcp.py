@@ -128,6 +128,7 @@ def main() -> int:
     assert "safe_session_report" in listed_names, listed_names
     assert "skyrim_diagnostics_report" in listed_names, listed_names
     assert "deployment_doctor_report" in listed_names, listed_names
+    assert "skyrim_launch_doctor_report" in listed_names, listed_names
     assert "scan_cache_status" in listed_names, listed_names
     assert "xedit_diagnostics_report" in listed_names, listed_names
     assert "xedit_inspection_script" in listed_names, listed_names
@@ -162,6 +163,7 @@ def main() -> int:
     assert "deployment_probe_files_per_mod" in listed_by_name["deployment_doctor_report"]["inputSchema"]["properties"], listed_by_name
     assert "output_path" in listed_by_name["deployment_doctor_report"]["inputSchema"]["properties"], listed_by_name
     assert "baseline_path" in listed_by_name["deployment_doctor_report"]["inputSchema"]["properties"], listed_by_name
+    assert "output_path" in listed_by_name["skyrim_launch_doctor_report"]["inputSchema"]["properties"], listed_by_name
     assert "include_xedit_report" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
     assert "report_path" in listed_by_name["xedit_inspection_script"]["inputSchema"]["properties"], listed_by_name
     assert "max_preview_rows" in listed_by_name["xedit_inspection_result_report"]["inputSchema"]["properties"], listed_by_name
@@ -207,6 +209,18 @@ def main() -> int:
     assert "summary" in doctor_json or "error" in doctor_json, doctor_json
     assert doctor_md.exists(), doctor_json
     assert "Deployment Doctor" in doctor_md.read_text(encoding="utf-8"), doctor_md
+
+    launch_md = temp_root / "launch-doctor-smoke.md"
+    launch_direct = subprocess.run(
+        [sys.executable, str(server), "--launch-doctor", "--output-path", str(launch_md)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    launch_json = json.loads(launch_direct.stdout)
+    assert "summary" in launch_json or "error" in launch_json, launch_json
+    assert launch_md.exists(), launch_json
+    assert "Launch Doctor" in launch_md.read_text(encoding="utf-8"), launch_md
 
     proc = subprocess.Popen(
         [sys.executable, str(server)],
@@ -259,6 +273,7 @@ def main() -> int:
             assert "safe_session_report" in names, names
             assert "skyrim_diagnostics_report" in names, names
             assert "deployment_doctor_report" in names, names
+            assert "skyrim_launch_doctor_report" in names, names
             assert "scan_cache_status" in names, names
             assert "xedit_diagnostics_report" in names, names
             assert "xedit_inspection_script" in names, names

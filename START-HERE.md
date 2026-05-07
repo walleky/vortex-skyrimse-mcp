@@ -99,6 +99,12 @@ Use deployment_doctor_report to tell me whether my selected Vortex profile is li
 After you deploy in Vortex, rerun Deployment Doctor with the previous JSON as a
 baseline so OpenClaw can explain what improved or regressed.
 
+Then check the safest launch route:
+
+```text
+Use skyrim_launch_doctor_report. Tell me whether I should launch through SKSE, Steam/vanilla, or fix deployment/SKSE first. Do not launch or change anything.
+```
+
 Optional Nexus metadata:
 
 ```powershell
@@ -139,6 +145,12 @@ For mods downloaded but not working:
 
 ```text
 Use deployment_doctor_report first. Tell me whether my selected Vortex profile is linked to Skyrim Data and plugins.txt. Do not apply changes.
+```
+
+For SKSE/launch confusion:
+
+```text
+Use skyrim_launch_doctor_report. Tell me the recommended launch route and the first blocker if it is not safe to launch yet. Do not launch or change anything.
 ```
 
 For something weird inside the game:

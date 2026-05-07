@@ -104,6 +104,19 @@ When the user deploys in Vortex, rerun `deployment_doctor_report` with
 `baseline_path` pointing at the previous Deployment Doctor JSON. Read
 `baselineComparison` before suggesting deeper fixes.
 
+For "should I launch from Steam, Vortex, or SKSE?":
+
+```text
+skyrim_launch_doctor_report
+```
+
+Read `summary.recommendedLaunchRoute`, `checks`, and `nextActions`. Do not
+launch the game from the MCP. If the route is `fix_setup_first`, ask for or pass
+explicit paths before deeper diagnosis. If the route is `fix_deployment_first`,
+send the user back to Vortex Deploy Mods before discussing SKSE. If the route is
+`skse`, tell them to launch through `skse64_loader.exe` or the Vortex Dashboard
+SKSE tool they normally use.
+
 For "crash or missing masters":
 
 ```text

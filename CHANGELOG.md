@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.31
+
+- Adds `skyrim_launch_doctor_report`, a read-only launch-route verdict for SKSE vs Steam/vanilla vs fix deployment/SKSE first.
+- Adds `--launch-doctor` direct CLI shortcut and local menu action 33.
+- Writes optional Launch Doctor Markdown reports through `output_path`.
+- Updates workflow routing and docs so OpenClaw can answer "how should I launch Skyrim?" without changing anything.
+
 ## v0.2.30
 
 - Adds optional Deployment Doctor Markdown output through `output_path` / `--output-path`.

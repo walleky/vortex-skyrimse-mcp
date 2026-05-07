@@ -99,6 +99,7 @@ What OpenClaw should call:
 
 ```text
 deployment_doctor_report
+skyrim_launch_doctor_report after Deployment Doctor is linked or after the user asks how to launch
 ```
 
 If Deployment Doctor is not enough:
@@ -123,6 +124,13 @@ In Vortex, select the intended Skyrim SE profile, click Deploy Mods, confirm the
 Plugins tab is enabled, then launch through SKSE if the setup uses SKSE.
 Rerun Deployment Doctor with `baseline_path` set to the first JSON result so
 OpenClaw can explain what changed.
+
+Then run Launch Doctor if you are unsure whether to use SKSE, Steam/vanilla, or
+fix something first:
+
+```text
+Use skyrim_launch_doctor_report. Tell me the recommended launch route and do not launch or change anything.
+```
 
 ## Workflow 3: Weird Object In Game
 
@@ -382,6 +390,7 @@ because it may contain mod names, plugin names, and unusual custom paths.
 | "Mods are not showing in Skyrim" | `skyrim_diagnostics_report` |
 | "Wrong Vortex profile?" | `vortex_profile_report` |
 | "Downloaded but not deployed?" | `deployment_doctor_report` |
+| "Should I launch with SKSE?" | `skyrim_launch_doctor_report` |
 | "Missing masters or crash?" | `plugin_report` |
 | "What mod added this thing?" | `in_game_issue_report` |
 | "I have a FormID" | `xedit_diagnostics_report` |

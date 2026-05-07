@@ -48,6 +48,7 @@ Vortex-SkyrimSE-Menu.cmd
 30. Import case inbox
 31. Clone profile and apply fixes
 32. Deployment Doctor
+33. Launch Doctor
 
 Reports are written to:
 
@@ -96,6 +97,7 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action safe-profile-fix -SafeProfileName "OpenClaw Fixed Test" -DisableModIds "exact-vortex-mod-id"
 .\vortex_skyrimse_menu.ps1 -Action deployment-doctor
 .\vortex_skyrimse_menu.ps1 -Action deployment-doctor -DeploymentBaselinePath "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\deployment-doctor-before.json"
+.\vortex_skyrimse_menu.ps1 -Action launch-doctor
 ```
 
 Action 30 imports helper output from `<case folder>\incoming` by default. Use
@@ -110,6 +112,10 @@ read-only and checks the selected profile against Skyrim `Data`, `plugins.txt`,
 sampled deployed files, SKSE, audio archives, and missing masters.
 Pass `-DeploymentBaselinePath` after deploying in Vortex to compare the new run
 against an older Deployment Doctor JSON report.
+
+Action 33 is the fastest "how should I launch Skyrim?" verdict. It is read-only
+and checks SkyrimSE.exe, SKSE files, active profile state, and Deployment Doctor
+state before recommending SKSE, Steam/vanilla, or a fix-first route.
 
 If Windows cannot find Python, pass the executable once:
 

@@ -71,6 +71,8 @@ an MCP client.
   versions/source metadata.
 - Check whether plugins from the selected Vortex profile appear in Skyrim
   `Data` and are enabled in `plugins.txt`.
+- Check whether the next launch should use SKSE, Steam/vanilla, or stop for
+  deployment/SKSE fixes first.
 - Produce a one-shot modded play report that combines environment, SKSE, audio
   archive, profile deployment, plugin, and INI checks into prioritized findings.
 - Enable or disable exact Vortex mod ids in a selected profile only when
@@ -90,6 +92,7 @@ an MCP client.
 - [docs/SAFE-SESSION.md](docs/SAFE-SESSION.md): one safe first report for OpenClaw or local troubleshooting.
 - [docs/SKYRIM-DIAGNOSTICS.md](docs/SKYRIM-DIAGNOSTICS.md): broad one-button Skyrim SE diagnostics.
 - [docs/DEPLOYMENT-DOCTOR.md](docs/DEPLOYMENT-DOCTOR.md): quickest profile-to-Skyrim deployment verdict.
+- [docs/LAUNCH-DOCTOR.md](docs/LAUNCH-DOCTOR.md): quickest SKSE vs Steam/vanilla launch-route verdict.
 - [docs/SKYRIM-RUNTIME-LOGS.md](docs/SKYRIM-RUNTIME-LOGS.md): Papyrus/SKSE/crash log scanning and safe config patch workflow.
 - [docs/PERFORMANCE.md](docs/PERFORMANCE.md): compact outputs and slow-model guidance.
 - [docs/NEXUS-API.md](docs/NEXUS-API.md): optional read-only Nexus Mods API setup and tools.
@@ -215,6 +218,7 @@ py -3 .\server.py --safe-profile-fix --new-profile-name "OpenClaw Fixed Test" --
 py -3 .\server.py --tool vortex_collection_report
 py -3 .\server.py --deployment-doctor
 py -3 .\server.py --deployment-doctor --baseline-path ".\deployment-doctor-before.json" --output-path ".\deployment-doctor-after.md"
+py -3 .\server.py --launch-doctor
 py -3 .\server.py --runtime-logs --description "popup says file was not configured properly"
 py -3 .\server.py --skyrim-diagnostics
 py -3 .\server.py --safe-session
@@ -389,6 +393,7 @@ Use apply_ini_fixes with dry_run=false and make_backup=true.
 - `vortex_compare_profiles`
 - `vortex_profile_deployment_report`
 - `deployment_doctor_report`
+- `skyrim_launch_doctor_report`
 - `vortex_profile_backup`
 - `vortex_profile_restore_plan`
 - `vortex_clone_profile`
@@ -489,6 +494,10 @@ If Skyrim launches but the mods do not show up, run
 `deployment_doctor_report`. It checks the common mismatch: Vortex says a mod is
 enabled on a profile, but plugin/sample files are not deployed into Skyrim
 `Data` or the plugin is not enabled in `%LOCALAPPDATA%\Skyrim Special Edition\plugins.txt`.
+
+If you are not sure whether to launch through SKSE or Steam/vanilla, run
+`skyrim_launch_doctor_report`. It checks the selected profile, deployment state,
+SKSE files, and launch target before you touch a real save.
 
 For the broadest first pass, run `skyrim_modded_play_report`. It adds SKSE,
 missing audio archive, missing master, stale `plugins.txt`, and INI checks, then
