@@ -42,6 +42,9 @@ an MCP client.
 - Give read-only xEdit/SSEEdit target hints from FormIDs and plugin names, and
   generate read-only xEdit inspection scripts that export matching selected
   records to CSV for OpenClaw to summarize.
+- Summarize imported case evidence such as popup OCR text, console FormIDs,
+  cells, objects, and screenshot notes so OpenClaw can reuse captured evidence
+  without asking the user to retype it.
 - Inspect Vortex collection-like state when Vortex exposes it, and compare a
   manifest-like collection JSON file to locally staged Nexus mod/file metadata.
 - Inspect Skyrim INI settings and apply a narrow safe set of INI fixes with
@@ -406,6 +409,16 @@ Use apply_ini_fixes with dry_run=false and make_backup=true.
 - `deployment_doctor_report`
 - `skyrim_launch_doctor_report`
 - `skse_runtime_doctor_report`
+- `skyrim_issue_case_packet`
+- `skyrim_issue_case_status`
+- `skyrim_issue_case_note`
+- `skyrim_safe_experiment_plan`
+- `skyrim_case_what_now`
+- `skyrim_live_bridge_status`
+- `skyrim_case_evidence_import`
+- `skyrim_case_inbox_import`
+- `skyrim_case_evidence_report`
+- `skyrim_case_bundle`
 - `vortex_profile_backup`
 - `vortex_profile_restore_plan`
 - `vortex_clone_profile`
@@ -455,7 +468,7 @@ If detection misses your setup, pass `skyrim_dir`, `staging_dir`,
   `vortex_profile_mods`, `vortex_compare_profiles`,
   `vortex_profile_deployment_report`, `deployment_doctor_report`,
   `skyrim_modded_play_report`,
-  `suggest_conflict_fixes`, `log_status`, `report_viewer_index`,
+  issue-case tools, `suggest_conflict_fixes`, `log_status`, `report_viewer_index`,
   `bug_report_bundle`, and
   `write_report` do not modify Vortex or Skyrim.
 - `apply_ini_fixes` can write INI files only when `dry_run=false`.

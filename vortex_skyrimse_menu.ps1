@@ -269,6 +269,7 @@ function Show-Actions {
   Write-Host "34. Reversible Automation Plan"
   Write-Host "35. SKSE Runtime Doctor"
   Write-Host "36. Report Viewer"
+  Write-Host "37. Live Evidence Summary"
   Write-Host "Q. Quit"
 }
 
@@ -591,6 +592,22 @@ function Invoke-MenuAction {
       Write-Host "Wrote report viewer HTML: $html" -ForegroundColor Green
       Write-Host "Wrote JSON result: $out" -ForegroundColor Green
       Write-Host "This action only indexes and previews report files." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("37", "evidence-report", "live-evidence-summary", "evidence-summary") } {
+      $caseDir = $IssueCaseDir
+      if (!$caseDir) {
+        if ($script:StartedWithAction) {
+          throw "Pass -IssueCaseDir with -Action evidence-report."
+        }
+        $caseDir = Read-Host "Paste the issue case folder path"
+      }
+      $argsData = @{ case_dir = $caseDir }
+      $argsFile = Write-JsonArgs "evidence-report" $argsData
+      $out = Join-Path $script:ReportDir "live-evidence-summary-$stamp.result.json"
+      Invoke-Server (@("--case-evidence-report", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Wrote live evidence summary for: $caseDir" -ForegroundColor Green
+      Write-Host "Open live-evidence-summary.md. This action does not change mods or profiles." -ForegroundColor Green
       return
     }
     { $_ -in @("13", "cache", "scan-cache") } {

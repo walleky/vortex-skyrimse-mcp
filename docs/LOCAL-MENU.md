@@ -52,6 +52,7 @@ Vortex-SkyrimSE-Menu.cmd
 34. Reversible Automation Plan
 35. SKSE Runtime Doctor
 36. Report Viewer
+37. Live Evidence Summary
 
 Reports are written to:
 
@@ -104,6 +105,7 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action automation-plan -Problem "disable unwanted mods and sort safely"
 .\vortex_skyrimse_menu.ps1 -Action skse-doctor
 .\vortex_skyrimse_menu.ps1 -Action report-viewer
+.\vortex_skyrimse_menu.ps1 -Action evidence-report -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
 ```
 
 Action 30 imports helper output from `<case folder>\incoming` by default. Use
@@ -133,6 +135,10 @@ runtime DLL target, SKSE scripts, and Address Library evidence.
 Action 36 writes `report-viewer.html` in the reports folder. It is a static
 read-only page that indexes generated JSON, Markdown, CSV, log, script, and zip
 reports so you and OpenClaw can find the newest evidence faster.
+
+Action 37 writes `live-evidence-summary.md` in an issue case folder. It reads
+imported popup OCR, console FormIDs, cells, objects, and screenshot notes, then
+lists the suggested next diagnostic calls without changing mods or profiles.
 
 If Windows cannot find Python, pass the executable once:
 
@@ -197,6 +203,8 @@ SKSE telemetry would need.
 
 Actions 28-30 are for handoff. Evidence import appends popup OCR, console
 FormIDs, cell names, and future helper output to `live-evidence.md/jsonl`.
+Action 37 summarizes that evidence so OpenClaw can use the latest captured
+popup/FormID instead of asking you to type it again.
 Case inbox imports helper files from `incoming`, and bundle zips the case folder
 for review; inspect the zip before posting it.
 

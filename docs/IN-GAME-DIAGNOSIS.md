@@ -143,3 +143,17 @@ A future live bridge would need one or more of these:
 - read-only xEdit/SSEEdit integration for cell and record lookup
 
 That would make questions like "what object am I looking at?" much stronger. Until then, plain popup descriptions work for the first pass, while exact popup text, screenshots/OCR, and console FormIDs make second-pass diagnosis stronger.
+
+## Captured Evidence Summary
+
+When a screenshot/OCR, console, or helper file has already been imported into a
+case folder, use:
+
+```text
+skyrim_case_evidence_report
+```
+
+It summarizes the latest popup/OCR text, reference FormID, base FormID, cell,
+object, screenshot path, and suggested next tool calls. OpenClaw should read
+`latestPopupText`, `latestReferenceFormId`, and `suggestedToolArgs` before
+asking the user for the same evidence again.

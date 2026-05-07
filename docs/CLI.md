@@ -390,6 +390,19 @@ py -3 .\server.py --report-viewer --report-dir "$env:USERPROFILE\Documents\vorte
 The viewer writes `report-viewer.html` by default. It previews report files only;
 it does not open Vortex, deploy mods, launch Skyrim, or edit profiles.
 
+## Case Evidence Summary
+
+After importing popup OCR, console FormID, cell, object, or screenshot-note
+evidence into an issue case folder:
+
+```powershell
+py -3 .\server.py --case-evidence-report --case-dir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
+```
+
+This writes `live-evidence-summary.md` in the case folder and returns suggested
+next diagnostic calls. It does not change Vortex, Skyrim, plugins, profiles, or
+mods.
+
 ## Safety
 
 Direct CLI mode uses the same tool implementations and safety rules as MCP mode. Read-only tools stay read-only. Write-capable tools still require explicit write arguments such as `dry_run=false` or `apply=true`.

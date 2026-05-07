@@ -13,6 +13,9 @@ These are useful next steps, ordered by value and risk.
 
 ## Recently Added
 
+- Live/case evidence summaries that extract latest popup/OCR text, FormIDs,
+  cells, objects, screenshots, and suggested next tool calls from append-only
+  issue-case evidence.
 - Static local HTML report viewer for generated JSON, Markdown, CSV, log,
   script, and zip report files.
 - SKSE Runtime Doctor for Skyrim runtime, SKSE target DLL, SKSE scripts, and

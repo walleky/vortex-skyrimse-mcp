@@ -648,6 +648,24 @@ def main() -> int:
         assert evidence["entry"]["suggestedToolArgs"]["xedit_diagnostics_report"]["form_id"] == "0100ABCD", evidence
         assert "popup" in Path(evidence["evidencePath"]).read_text(encoding="utf-8").lower(), evidence
 
+        evidence_report = server.skyrim_case_evidence_report({"case_dir": case_packet["caseDir"]})
+        assert evidence_report["evidenceCount"] == 1, evidence_report
+        assert evidence_report["diagnosticQuality"] == "strong", evidence_report
+        assert evidence_report["latestPopupText"] == "Bannered Mare bed warning popup", evidence_report
+        assert evidence_report["latestReferenceFormId"] == "0100ABCD", evidence_report
+        assert Path(evidence_report["outputPath"]).exists(), evidence_report
+
+        status_with_evidence = server.skyrim_issue_case_status(
+            {
+                **base_args,
+                "case_dir": case_packet["caseDir"],
+                "max_preview_rows": 5,
+            }
+        )
+        status_payload = json.loads(Path(status_with_evidence["jsonPath"]).read_text(encoding="utf-8"))
+        assert status_payload["liveEvidence"]["evidenceCount"] == 1, status_payload
+        assert status_payload["liveEvidence"]["latestPopupText"] == "Bannered Mare bed warning popup", status_payload
+
         inbox_dir = Path(case_packet["caseDir"]) / "incoming"
         write(
             inbox_dir / "popup-capture.json",
@@ -668,6 +686,10 @@ def main() -> int:
         assert Path(inbox_import["evidenceIndexPath"]).exists(), inbox_import
         evidence_index = json.loads(Path(inbox_import["evidenceIndexPath"]).read_text(encoding="utf-8"))
         assert len(evidence_index["files"]) == 1, evidence_index
+        evidence_report_after_inbox = server.skyrim_case_evidence_report({"case_dir": case_packet["caseDir"]})
+        assert evidence_report_after_inbox["evidenceCount"] == 2, evidence_report_after_inbox
+        assert evidence_report_after_inbox["latestPopupText"] == "MCM warning file was not configured properly", evidence_report_after_inbox
+        assert any(call["tool"] == "skyrim_runtime_log_report" for call in evidence_report_after_inbox["recommendedCalls"]), evidence_report_after_inbox
         duplicate_inbox = server.skyrim_case_inbox_import({"case_dir": case_packet["caseDir"], "max_files": 10})
         assert duplicate_inbox["importedCount"] == 0, duplicate_inbox
         assert duplicate_inbox["skippedDuplicateCount"] == 1, duplicate_inbox

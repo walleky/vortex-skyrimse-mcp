@@ -205,6 +205,7 @@ skyrim_safe_experiment_plan with case_dir
 skyrim_issue_case_note with case_dir and note
 skyrim_case_evidence_import with case_dir and captured popup/FormID/cell evidence
 skyrim_case_inbox_import with case_dir when a helper wrote files to incoming
+skyrim_case_evidence_report with case_dir after evidence import
 skyrim_case_bundle with case_dir when the user wants to share the case
 ```
 
@@ -214,7 +215,9 @@ read-only helper before OpenClaw can truly see popups or clicked objects.
 When such a helper exists, have it write JSON/TXT/LOG files to the case
 `incoming` folder and call `skyrim_case_inbox_import`, or call
 `skyrim_case_evidence_import` directly for one evidence item. Never overwrite
-the original case report.
+the original case report. After importing, call `skyrim_case_evidence_report`
+or `skyrim_case_what_now`; use `latestPopupText`, `latestReferenceFormId`, and
+`latestCell` instead of asking the user to type the same evidence again.
 
 Tell the user to apply the generated script only to selected candidate plugins
 or records in xEdit/SSEEdit, then close xEdit without saving plugin changes.

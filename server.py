@@ -33,6 +33,7 @@ import urllib.parse
 import urllib.request
 import uuid
 import zipfile
+from collections import deque
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
@@ -43,7 +44,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.34"
+SERVER_VERSION = "0.2.35"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -3443,6 +3444,7 @@ def issue_case_status_markdown(status: Dict[str, Any]) -> str:
     case_summary = status.get("caseSummary", {}) if isinstance(status.get("caseSummary"), dict) else {}
     xedit = status.get("xeditCsv", {}) if isinstance(status.get("xeditCsv"), dict) else {}
     result = status.get("xeditResult") if isinstance(status.get("xeditResult"), dict) else {}
+    live = status.get("liveEvidence") if isinstance(status.get("liveEvidence"), dict) else {}
     lines = [
         "# Skyrim Issue Case Status",
         "",
@@ -3464,6 +3466,19 @@ def issue_case_status_markdown(status: Dict[str, Any]) -> str:
         f"- Exists: `{str(xedit.get('exists')).lower()}`",
         f"- Parsed: `{str(xedit.get('parsed')).lower()}`",
     ]
+    if live:
+        lines.extend(
+            [
+                "",
+                "## Live/Imported Evidence",
+                "",
+                f"- Entries: `{live.get('evidenceCount', 0)}`",
+                f"- Quality: `{live.get('diagnosticQuality')}`",
+                f"- Latest popup/OCR: `{live.get('latestPopupText') or '(none)'}`",
+                f"- Latest reference FormID: `{live.get('latestReferenceFormId') or '(none)'}`",
+                f"- Latest cell: `{live.get('latestCell') or '(none)'}`",
+            ]
+        )
     if xedit.get("error"):
         lines.append(f"- Error: {xedit.get('error')}")
     if result:
@@ -3520,6 +3535,7 @@ def skyrim_issue_case_status(args: Dict[str, Any]) -> Dict[str, Any]:
 
     xedit_result: Optional[Dict[str, Any]] = None
     csv_error = None
+    live_evidence = case_evidence_summary(case_dir, max_entries=max(1, min(int(args.get("max_evidence_entries", 200)), 2000)))
     if csv_path.exists() and csv_path.is_file():
         try:
             csv_allowed_roots = [str(case_dir)]
@@ -3554,6 +3570,10 @@ def skyrim_issue_case_status(args: Dict[str, Any]) -> Dict[str, Any]:
             "Return to this case folder and run skyrim_issue_case_status again after the CSV appears.",
             "Use the top triage candidate only as a hint until xEdit or cloned-profile testing confirms it.",
         ]
+        if live_evidence.get("latestReferenceFormId"):
+            next_steps.insert(0, "Use the latest captured reference FormID with xedit_diagnostics_report before rerunning or broadening xEdit.")
+        if live_evidence.get("latestPopupText"):
+            next_steps.insert(0, "Use the latest captured popup/OCR text with skyrim_runtime_log_report and in_game_issue_report.")
     elif state == "has_xedit_results":
         next_steps = [
             "Start with the top xEdit source plugin/signature rows because they are stronger evidence than natural-language matching.",
@@ -3599,6 +3619,7 @@ def skyrim_issue_case_status(args: Dict[str, Any]) -> Dict[str, Any]:
             "error": csv_error,
         },
         "xeditResult": xedit_result,
+        "liveEvidence": live_evidence,
         "candidatePlugins": xedit_result.get("candidatePlugins", []) if xedit_result else [],
         "nextSteps": next_steps,
     }
@@ -3684,6 +3705,285 @@ def skyrim_issue_case_note(args: Dict[str, Any]) -> Dict[str, Any]:
 
 def issue_case_evidence_paths(case_dir: Path) -> Tuple[Path, Path, Path]:
     return case_dir / "live-evidence.md", case_dir / "live-evidence.jsonl", case_dir / "live-evidence-latest.json"
+
+
+def issue_case_evidence_entries(case_dir: Path, max_entries: int = 200) -> List[Dict[str, Any]]:
+    _md_path, jsonl_path, _latest_path = issue_case_evidence_paths(case_dir)
+    if not jsonl_path.exists() or not jsonl_path.is_file():
+        return []
+    limit = max(1, min(int(max_entries), 2000))
+    entries: deque[Dict[str, Any]] = deque(maxlen=limit)
+    try:
+        with jsonl_path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(item, dict):
+                    entries.append(item)
+    except OSError:
+        return []
+    return list(entries)
+
+
+def evidence_value(entry: Dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = entry.get(key)
+        if value not in (None, ""):
+            return str(value).strip()
+    return ""
+
+
+def case_evidence_brief(entry: Dict[str, Any]) -> Dict[str, Any]:
+    summary = evidence_value(entry, "summary", "popupText", "ocrText", "text", "note")
+    if len(summary) > 220:
+        summary = summary[:217] + "..."
+    return {
+        "timestamp": evidence_value(entry, "timestamp"),
+        "type": evidence_value(entry, "type"),
+        "source": evidence_value(entry, "source"),
+        "summary": summary,
+        "popupText": evidence_value(entry, "popupText"),
+        "ocrText": evidence_value(entry, "ocrText"),
+        "referenceFormId": evidence_value(entry, "referenceFormId"),
+        "baseFormId": evidence_value(entry, "baseFormId"),
+        "cell": evidence_value(entry, "cell"),
+        "objectName": evidence_value(entry, "objectName"),
+        "screenshotPath": evidence_value(entry, "screenshotPath"),
+        "confidence": evidence_value(entry, "confidence"),
+    }
+
+
+def first_nonempty_from_entries(entries: List[Dict[str, Any]], *keys: str) -> str:
+    for entry in reversed(entries):
+        value = evidence_value(entry, *keys)
+        if value:
+            return value
+    return ""
+
+
+def unique_nonempty(values: Iterable[str], limit: int = 20) -> List[str]:
+    result: List[str] = []
+    seen = set()
+    for value in values:
+        normalized = str(value or "").strip()
+        if not normalized:
+            continue
+        key = normalized.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(normalized)
+        if len(result) >= limit:
+            break
+    return result
+
+
+def case_evidence_summary(case_dir: Path, max_entries: int = 200) -> Dict[str, Any]:
+    entries = issue_case_evidence_entries(case_dir, max_entries)
+    newest_first = list(reversed(entries))
+    type_counts: Dict[str, int] = {}
+    for entry in entries:
+        kind = evidence_value(entry, "type") or "manual"
+        type_counts[kind] = type_counts.get(kind, 0) + 1
+
+    latest_popup = first_nonempty_from_entries(entries, "popupText", "ocrText")
+    latest_text = first_nonempty_from_entries(entries, "text", "summary", "note")
+    latest_reference = first_nonempty_from_entries(entries, "referenceFormId")
+    latest_base = first_nonempty_from_entries(entries, "baseFormId")
+    latest_cell = first_nonempty_from_entries(entries, "cell")
+    latest_object = first_nonempty_from_entries(entries, "objectName")
+    latest_screenshot = first_nonempty_from_entries(entries, "screenshotPath")
+    form_ids = unique_nonempty((evidence_value(entry, "referenceFormId") for entry in newest_first))
+    base_ids = unique_nonempty((evidence_value(entry, "baseFormId") for entry in newest_first))
+    cells = unique_nonempty((evidence_value(entry, "cell") for entry in newest_first))
+    objects = unique_nonempty((evidence_value(entry, "objectName") for entry in newest_first))
+    screenshots = unique_nonempty((evidence_value(entry, "screenshotPath") for entry in newest_first), limit=10)
+
+    issue_args: Dict[str, Any] = {}
+    if latest_popup:
+        issue_args["description"] = f"captured popup/OCR: {latest_popup[:240]}"
+        issue_args["popup_text"] = latest_popup
+        issue_args["issue_kind"] = "popup"
+    elif latest_text:
+        issue_args["description"] = latest_text[:300]
+    if latest_reference:
+        issue_args["form_id"] = latest_reference
+    if latest_base:
+        issue_args["base_object"] = latest_base
+    if latest_cell:
+        issue_args["cell"] = latest_cell
+    if latest_object:
+        issue_args["object"] = latest_object
+
+    suggested_tool_args: Dict[str, Any] = {}
+    if issue_args:
+        suggested_tool_args["in_game_issue_report"] = issue_args
+        suggested_tool_args["skyrim_issue_case_packet"] = issue_args
+    if latest_popup:
+        suggested_tool_args["skyrim_runtime_log_report"] = {
+            "description": f"popup says {latest_popup[:240]}",
+            "popup_text": latest_popup,
+        }
+    if latest_reference:
+        suggested_tool_args["xedit_diagnostics_report"] = {"form_id": latest_reference}
+
+    recommended_calls = []
+    if latest_popup:
+        recommended_calls.append(
+            {
+                "tool": "skyrim_runtime_log_report",
+                "reason": "A captured popup/OCR string exists; logs may identify config files or SKSE/plugin errors.",
+                "args": suggested_tool_args.get("skyrim_runtime_log_report", {}),
+            }
+        )
+        recommended_calls.append(
+            {
+                "tool": "in_game_issue_report",
+                "reason": "Use the captured popup text instead of asking the user to retype it.",
+                "args": suggested_tool_args.get("in_game_issue_report", {}),
+            }
+        )
+    if latest_reference:
+        recommended_calls.append(
+            {
+                "tool": "xedit_diagnostics_report",
+                "reason": "A console/capture FormID exists; use it as the strongest read-only record target.",
+                "args": suggested_tool_args.get("xedit_diagnostics_report", {}),
+            }
+        )
+
+    quality = "none"
+    if latest_popup and latest_reference:
+        quality = "strong"
+    elif latest_popup or latest_reference or latest_cell:
+        quality = "medium"
+    elif entries:
+        quality = "weak"
+
+    return {
+        "caseDir": str(case_dir),
+        "evidenceCount": len(entries),
+        "typeCounts": type_counts,
+        "latest": case_evidence_brief(entries[-1]) if entries else None,
+        "latestPopupText": latest_popup,
+        "latestFreeText": latest_text,
+        "latestReferenceFormId": latest_reference,
+        "latestBaseFormId": latest_base,
+        "latestCell": latest_cell,
+        "latestObjectName": latest_object,
+        "latestScreenshotPath": latest_screenshot,
+        "referenceFormIds": form_ids,
+        "baseFormIds": base_ids,
+        "cells": cells,
+        "objects": objects,
+        "screenshotPaths": screenshots,
+        "recent": [case_evidence_brief(entry) for entry in newest_first[:10]],
+        "suggestedToolArgs": suggested_tool_args,
+        "recommendedCalls": recommended_calls,
+        "diagnosticQuality": quality,
+        "readOnly": True,
+        "notes": [
+            "This summarizes append-only case evidence. It does not inspect the live game by itself.",
+            "Use latestPopupText/FormID/cell to avoid asking the user to retype captured evidence.",
+        ],
+    }
+
+
+def case_evidence_report_markdown(report: Dict[str, Any]) -> str:
+    lines = [
+        "# Skyrim Case Evidence Summary",
+        "",
+        f"- Server: {SERVER_NAME} {SERVER_VERSION}",
+        f"- Updated: {report.get('updatedAt')}",
+        f"- Case folder: `{report.get('caseDir')}`",
+        f"- Evidence entries: `{report.get('evidenceCount', 0)}`",
+        f"- Diagnostic quality: `{report.get('diagnosticQuality')}`",
+        "",
+        "## Latest Evidence",
+        "",
+    ]
+    latest = report.get("latest") if isinstance(report.get("latest"), dict) else {}
+    if latest:
+        for key in ("timestamp", "type", "source", "summary", "popupText", "referenceFormId", "baseFormId", "cell", "objectName", "screenshotPath"):
+            if latest.get(key):
+                lines.append(f"- {key}: `{latest.get(key)}`")
+    else:
+        lines.append("- No live/case evidence has been imported yet.")
+    lines.extend(["", "## Captured Keys", ""])
+    for label, key in (
+        ("Popup/OCR", "latestPopupText"),
+        ("Reference FormID", "latestReferenceFormId"),
+        ("Base FormID", "latestBaseFormId"),
+        ("Cell", "latestCell"),
+        ("Object", "latestObjectName"),
+    ):
+        lines.append(f"- {label}: `{report.get(key) or '(none)'}`")
+    lines.extend(["", "## Recommended Calls", ""])
+    for call in report.get("recommendedCalls", []):
+        if isinstance(call, dict):
+            lines.append(f"- `{call.get('tool')}`: {call.get('reason')}")
+    if not report.get("recommendedCalls"):
+        lines.append("- Import popup/OCR, console FormID, cell, or screenshot-note evidence first.")
+    lines.extend(["", "## Recent Entries", ""])
+    for entry in report.get("recent", []):
+        if isinstance(entry, dict):
+            lines.append(f"- `{entry.get('timestamp')}` `{entry.get('type')}`: {entry.get('summary') or '(blank)'}")
+    lines.extend(
+        [
+            "",
+            "## Safety",
+            "",
+            "- This report reads case evidence and writes this summary only.",
+            "- It does not change Vortex, Skyrim, plugins, profiles, or mods.",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def skyrim_case_evidence_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    case_dir = expand_path(args.get("case_dir") or args.get("path"))
+    if not case_dir or not case_dir.exists() or not case_dir.is_dir():
+        raise ToolError("case_dir/path must point to an existing issue case folder.")
+    max_entries = max(1, min(int(args.get("max_entries", args.get("max_evidence_entries", 200))), 2000))
+    output_path = expand_path(args.get("output_path")) if args.get("output_path") else case_dir / "live-evidence-summary.md"
+    if not output_path:
+        raise ToolError("output_path resolved to an empty path.")
+    if not output_path.suffix:
+        output_path = output_path / "live-evidence-summary.md"
+    json_path = output_path.with_suffix(".json")
+    if json_path == output_path:
+        json_path = output_path.with_name(f"{output_path.name}.summary.json")
+    report = {
+        "server": SERVER_NAME,
+        "version": SERVER_VERSION,
+        "updatedAt": iso_now(),
+        "outputPath": str(output_path),
+        "jsonPath": str(json_path),
+        **case_evidence_summary(case_dir, max_entries=max_entries),
+    }
+    report_to_write = redact_paths_in_value(report) if bool(args.get("redact_user_paths", False)) else report
+    write_text(json_path, json.dumps(report_to_write, indent=2, ensure_ascii=False, default=str))
+    write_text(output_path, case_evidence_report_markdown(report_to_write))
+    log_event("support", "skyrim_case_evidence_report_written", {"case_dir": str(case_dir), "output_path": str(output_path), "evidence_count": report.get("evidenceCount")})
+    return {
+        "caseDir": str(case_dir),
+        "outputPath": str(output_path),
+        "jsonPath": str(json_path),
+        "evidenceCount": report["evidenceCount"],
+        "diagnosticQuality": report["diagnosticQuality"],
+        "latestPopupText": report["latestPopupText"],
+        "latestReferenceFormId": report["latestReferenceFormId"],
+        "latestCell": report["latestCell"],
+        "suggestedToolArgs": report["suggestedToolArgs"],
+        "recommendedCalls": report["recommendedCalls"],
+        "readOnly": True,
+        "writesOnlySummary": True,
+    }
 
 
 def issue_case_evidence_index_path(case_dir: Path) -> Path:
@@ -4273,6 +4573,7 @@ def skyrim_safe_experiment_plan(args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def case_what_now_markdown(answer: Dict[str, Any]) -> str:
+    live = answer.get("liveEvidence") if isinstance(answer.get("liveEvidence"), dict) else {}
     lines = [
         "# Skyrim Case What Now",
         "",
@@ -4287,6 +4588,18 @@ def case_what_now_markdown(answer: Dict[str, Any]) -> str:
     ]
     for reason in answer.get("reasons", []):
         lines.append(f"- {reason}")
+    if live:
+        lines.extend(
+            [
+                "",
+                "## Live Evidence",
+                "",
+                f"- Entries: `{live.get('evidenceCount', 0)}`",
+                f"- Latest popup/OCR: `{live.get('latestPopupText') or '(none)'}`",
+                f"- Latest reference FormID: `{live.get('latestReferenceFormId') or '(none)'}`",
+                f"- Latest cell: `{live.get('latestCell') or '(none)'}`",
+            ]
+        )
     lines.extend(["", "## Next Actions", ""])
     for action in answer.get("nextActions", []):
         lines.append(f"- {action}")
@@ -4301,6 +4614,7 @@ def skyrim_case_what_now(args: Dict[str, Any]) -> Dict[str, Any]:
     packet = issue_case_load(case_dir)
     status = issue_case_load_status(case_dir)
     evidence = issue_case_top_evidence(case_dir, packet, status)
+    live_evidence = case_evidence_summary(case_dir, max_entries=max(1, min(int(args.get("max_evidence_entries", 200)), 2000)))
     status_state = str(evidence.get("statusState") or "no_status")
     recommendation = "Run the generated xEdit inspection script, then update the case status."
     confidence = "medium"
@@ -4325,16 +4639,46 @@ def skyrim_case_what_now(args: Dict[str, Any]) -> Dict[str, Any]:
     elif status_state == "needs_xedit_run":
         reasons.append("The case exists, but the xEdit CSV has not been produced yet.")
         next_actions = ["Run the generated xEdit script in SSEEdit/xEdit.", "Run skyrim_issue_case_status after the CSV appears."]
+        if live_evidence.get("latestReferenceFormId"):
+            recommendation = "Use the captured FormID to target xEdit before broad scanning."
+            confidence = "high"
+            reasons.append(f"Live evidence captured reference FormID {live_evidence.get('latestReferenceFormId')}.")
+            next_actions = [
+                "Run xedit_diagnostics_report with the captured FormID.",
+                "Run or regenerate the xEdit inspection script with that FormID/cell context.",
+                "Run skyrim_issue_case_status after the CSV appears.",
+            ]
+        elif live_evidence.get("latestPopupText"):
+            recommendation = "Use the captured popup/OCR text for runtime-log and in-game issue triage."
+            confidence = "medium"
+            reasons.append("Live evidence includes popup/OCR text, so the user should not need to retype it.")
+            next_actions = [
+                "Run skyrim_runtime_log_report with the captured popup text.",
+                "Run in_game_issue_report with the captured popup text and any captured cell/object.",
+                "Only ask the user for more evidence if those results are weak or stale.",
+            ]
     elif evidence.get("topCandidateName"):
         recommendation = "Generate or run xEdit evidence before testing the top candidate."
         confidence = "medium"
         reasons.append(f"Top local triage candidate is {evidence.get('topCandidateName')}, but xEdit status is not complete.")
         next_actions = ["Run the generated xEdit script or recreate the case packet.", "Then run skyrim_issue_case_status."]
+    elif live_evidence.get("latestReferenceFormId"):
+        recommendation = "Create or update the case from the captured FormID."
+        confidence = "medium"
+        reasons.append(f"Live evidence captured reference FormID {live_evidence.get('latestReferenceFormId')}.")
+        next_actions = ["Run xedit_diagnostics_report with the captured FormID.", "Run skyrim_issue_case_packet with the suggested tool args from liveEvidence."]
+    elif live_evidence.get("latestPopupText"):
+        recommendation = "Create or update the case from the captured popup/OCR text."
+        confidence = "medium"
+        reasons.append("Live evidence includes popup/OCR text.")
+        next_actions = ["Run skyrim_runtime_log_report with the captured popup text.", "Run in_game_issue_report with the captured popup text."]
     else:
         recommendation = "Recreate the issue case with more clues."
         confidence = "low"
         reasons.append("No useful case candidate or xEdit status was found.")
         next_actions = ["Add description/location/object/FormID/popup text, then run skyrim_issue_case_packet again."]
+    if live_evidence.get("evidenceCount"):
+        reasons.append(f"Imported live/case evidence entries: {live_evidence.get('evidenceCount')}.")
     out_path = expand_path(args.get("output_path")) if args.get("output_path") else case_dir / "what-now.md"
     if not out_path:
         raise ToolError("output_path resolved to an empty path.")
@@ -4352,6 +4696,7 @@ def skyrim_case_what_now(args: Dict[str, Any]) -> Dict[str, Any]:
         "confidence": confidence,
         "reasons": reasons,
         "nextActions": next_actions,
+        "liveEvidence": live_evidence,
         "readOnly": True,
         "dryRunOnly": True,
     }
@@ -4383,7 +4728,12 @@ def skyrim_live_bridge_status(args: Dict[str, Any]) -> Dict[str, Any]:
         "caseFolderIntegration": {
             "implemented": True,
             "neededFor": ["storing captured evidence", "letting OpenClaw continue from the same folder"],
-            "requirements": ["skyrim_issue_case_packet", "skyrim_case_evidence_import", "skyrim_case_inbox_import", "skyrim_issue_case_note", "skyrim_issue_case_status"],
+            "requirements": ["skyrim_issue_case_packet", "skyrim_case_evidence_import", "skyrim_case_inbox_import", "skyrim_case_evidence_report", "skyrim_issue_case_note", "skyrim_issue_case_status"],
+        },
+        "evidenceSummaries": {
+            "implemented": True,
+            "neededFor": ["using captured popup/OCR/FormID evidence without asking the user to retype it", "routing next diagnostic calls from latest evidence"],
+            "requirements": ["skyrim_case_evidence_report", "skyrim_case_what_now", "skyrim_issue_case_status"],
         },
     }
     design_lines = [
@@ -4394,6 +4744,7 @@ def skyrim_live_bridge_status(args: Dict[str, Any]) -> Dict[str, Any]:
         "## Implemented Now",
         "",
         "- Case folders, live evidence import, inbox import, notes, xEdit CSV parsing, and safe experiment plans.",
+        "- Live evidence summaries that extract latest popup/OCR text, FormIDs, cells, and suggested tool calls.",
         "",
         "## Needed For True Live Diagnosis",
         "",
@@ -11599,6 +11950,7 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "report_path": {"type": "string"},
                 "max_rows": {"type": "integer", "default": 2000},
                 "max_preview_rows": {"type": "integer", "default": 50},
+                "max_evidence_entries": {"type": "integer", "default": 200},
                 "allow_any_path": {"type": "boolean", "default": False},
                 "redact_user_paths": {"type": "boolean", "default": False},
             },
@@ -11670,6 +12022,22 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         },
         skyrim_case_inbox_import,
     ),
+    "skyrim_case_evidence_report": (
+        "Summarize append-only live/case evidence in an issue case folder and write suggested next diagnostic calls.",
+        {
+            "type": "object",
+            "properties": {
+                "case_dir": {"type": "string"},
+                "path": {"type": "string"},
+                "output_path": {"type": "string"},
+                "max_entries": {"type": "integer", "default": 200},
+                "max_evidence_entries": {"type": "integer", "default": 200},
+                "redact_user_paths": {"type": "boolean", "default": False},
+            },
+            "additionalProperties": False,
+        },
+        skyrim_case_evidence_report,
+    ),
     "skyrim_case_bundle": (
         "Zip an issue case folder for OpenClaw review or bug reports. Does not modify mods, profiles, or plugins.",
         {
@@ -11712,6 +12080,7 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "case_dir": {"type": "string"},
                 "path": {"type": "string"},
                 "output_path": {"type": "string"},
+                "max_evidence_entries": {"type": "integer", "default": 200},
             },
             "additionalProperties": False,
         },
@@ -13045,6 +13414,8 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["max_runtime_findings"] = parsed.max_runtime_findings
     if parsed.max_runtime_index_files is not None:
         tool_args["max_runtime_index_files"] = parsed.max_runtime_index_files
+    if parsed.max_evidence_entries is not None:
+        tool_args["max_evidence_entries"] = parsed.max_evidence_entries
     if parsed.fresh_log_hours is not None:
         tool_args["fresh_log_hours"] = parsed.fresh_log_hours
     if parsed.balanced_text_files_per_mod is not None:
@@ -13205,6 +13576,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--live-bridge-status", action="store_true", help="Shortcut for --tool skyrim_live_bridge_status.")
     parser.add_argument("--case-evidence", action="store_true", help="Shortcut for --tool skyrim_case_evidence_import.")
     parser.add_argument("--case-inbox", action="store_true", help="Shortcut for --tool skyrim_case_inbox_import.")
+    parser.add_argument("--case-evidence-report", action="store_true", help="Shortcut for --tool skyrim_case_evidence_report.")
     parser.add_argument("--case-bundle", action="store_true", help="Shortcut for --tool skyrim_case_bundle.")
     parser.add_argument("--safe-profile-fix", action="store_true", help="Shortcut for --tool vortex_safe_profile_fix.")
     parser.add_argument("--args-json", help="JSON object with tool arguments.")
@@ -13296,6 +13668,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--max-log-bytes-per-file", type=int, help="Maximum tail bytes read from each Skyrim runtime log.")
     parser.add_argument("--max-runtime-findings", type=int, help="Maximum runtime log findings to return.")
     parser.add_argument("--max-runtime-index-files", type=int, help="Maximum staged files to index for runtime log reference matching.")
+    parser.add_argument("--max-evidence-entries", type=int, help="Maximum live/case evidence entries to summarize.")
     parser.add_argument("--fresh-log-hours", type=float, help="Runtime logs older than this many hours are marked stale.")
     parser.add_argument("--balanced-text-files-per-mod", type=int, help="For balanced issue scans, max config/text files to read per mod.")
     parser.add_argument("--hash-files", action="store_true", help="Hash files for stronger duplicate evidence. Slower.")
@@ -13378,6 +13751,8 @@ def cli_main(argv: List[str]) -> int:
         if parsed.case_evidence
         else "skyrim_case_inbox_import"
         if parsed.case_inbox
+        else "skyrim_case_evidence_report"
+        if parsed.case_evidence_report
         else "skyrim_case_bundle"
         if parsed.case_bundle
         else "vortex_safe_profile_fix"
@@ -13385,7 +13760,7 @@ def cli_main(argv: List[str]) -> int:
         else parsed.tool
     )
     if not tool_name:
-        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --deployment-doctor, --launch-doctor, --skse-doctor, --automation-plan, --report-viewer, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-bundle, or --safe-profile-fix")
+        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --deployment-doctor, --launch-doctor, --skse-doctor, --automation-plan, --report-viewer, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-evidence-report, --case-bundle, or --safe-profile-fix")
 
     try:
         tool_args = load_cli_tool_args(parsed)

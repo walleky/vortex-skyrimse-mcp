@@ -52,6 +52,9 @@ if (($MenuOutput -join "`n") -notmatch "SKSE Runtime Doctor") {
 if (($MenuOutput -join "`n") -notmatch "Report Viewer") {
   throw "Menu did not list the report viewer action."
 }
+if (($MenuOutput -join "`n") -notmatch "Live Evidence Summary") {
+  throw "Menu did not list the live evidence summary action."
+}
 if (($MenuOutput -join "`n") -notmatch "Config file validator") {
   throw "Menu did not list the config file validator action."
 }

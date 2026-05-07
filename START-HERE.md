@@ -227,6 +227,12 @@ If a helper writes evidence files instead, put JSON/TXT/LOG files in the case fo
 Use skyrim_case_inbox_import on the same case folder, then run skyrim_case_what_now.
 ```
 
+To summarize captured popup/FormID/cell evidence without retyping it:
+
+```text
+Use skyrim_case_evidence_report on the same case folder, then use skyrim_case_what_now.
+```
+
 For annoying popups, just say "popup", "notification", "warning", or similar in the description. The first scan is balanced and checks local file/path/config clues automatically. Exact popup text or a screenshot/OCR can help later, but it is not required for the first scan.
 
 If the popup says a file was not configured properly, reproduce it once and ask:
@@ -284,6 +290,8 @@ The bundle redacts normal user profile paths by default, but it may still includ
 - `skyrim_safe_experiment_plan` writes a dry-run plan only. It does not clone profiles or disable mods.
 - `skyrim_issue_case_note` appends notes in the case folder only.
 - `skyrim_case_evidence_import` appends captured evidence in the case folder only.
+- `skyrim_case_evidence_report` summarizes captured evidence and suggested
+  next diagnostic calls only.
 - `skyrim_case_inbox_import` imports new files from the case `incoming` folder and de-dupes them by hash.
 - `skyrim_case_bundle` zips a case folder for review; inspect it before posting publicly.
 - Collection diagnostics are read-only and do not install, update, remove, or deploy mods.

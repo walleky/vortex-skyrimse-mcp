@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.35
+
+- Adds `skyrim_case_evidence_report`, a read-only summary for append-only case evidence such as popup OCR, console FormIDs, cells, objects, and screenshot notes.
+- Wires live/case evidence summaries into `skyrim_issue_case_status` and `skyrim_case_what_now`, so OpenClaw can use captured popup/FormID evidence without asking the user to retype it.
+- Adds `--case-evidence-report` direct CLI shortcut and local menu action 37.
+- Adds regression coverage for evidence summary generation, latest popup/FormID extraction, and case-status integration.
+
 ## v0.2.34
 
 - Adds `report_viewer_index`, a read-only static HTML index for generated JSON, Markdown, CSV, log, script, and zip report files.

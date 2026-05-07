@@ -143,6 +143,7 @@ def main() -> int:
     assert "skyrim_live_bridge_status" in listed_names, listed_names
     assert "skyrim_case_evidence_import" in listed_names, listed_names
     assert "skyrim_case_inbox_import" in listed_names, listed_names
+    assert "skyrim_case_evidence_report" in listed_names, listed_names
     assert "skyrim_case_bundle" in listed_names, listed_names
     assert "vortex_collection_report" in listed_names, listed_names
     assert "collection_local_match_report" in listed_names, listed_names
@@ -182,6 +183,7 @@ def main() -> int:
     assert "include_mod_metadata" in listed_by_name["vortex_safe_profile_fix"]["inputSchema"]["properties"], listed_by_name
     assert "evidence_type" in listed_by_name["skyrim_case_evidence_import"]["inputSchema"]["properties"], listed_by_name
     assert "inbox_dir" in listed_by_name["skyrim_case_inbox_import"]["inputSchema"]["properties"], listed_by_name
+    assert "max_entries" in listed_by_name["skyrim_case_evidence_report"]["inputSchema"]["properties"], listed_by_name
     assert "max_file_bytes" in listed_by_name["skyrim_case_bundle"]["inputSchema"]["properties"], listed_by_name
     assert "include_collection_report" in listed_by_name["bug_report_bundle"]["inputSchema"]["properties"], listed_by_name
     assert "workflow_key" in listed_by_name["workflow_guide"]["inputSchema"]["properties"], listed_by_name
@@ -347,6 +349,7 @@ def main() -> int:
             assert "skyrim_live_bridge_status" in names, names
             assert "skyrim_case_evidence_import" in names, names
             assert "skyrim_case_inbox_import" in names, names
+            assert "skyrim_case_evidence_report" in names, names
             assert "skyrim_case_bundle" in names, names
             assert "vortex_collection_report" in names, names
             assert "collection_local_match_report" in names, names
