@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.37
+
+- Adds `known_mod_rule_report` and `--known-rules` for common Skyrim SE stack/dependency checks such as FNIS + Pandora, FNIS + Nemesis, FSMPM without JContainers, and SLAL/Leito without FNIS.
+- Runs known-rule checks automatically from `inventory_mods` and folds them into modded play diagnostics and mod knowledge reports.
+- Extends Deployment Doctor with a critical-file probe for SKSE DLLs, Papyrus scripts, and behavior/animation output files, reducing false confidence from random samples.
+- Stabilizes scan-cache keys so routine server version bumps do not force a full rescan unless the summary schema changes.
+- Adds docs and regression coverage for known-rule findings and critical deployment validation.
+
 ## v0.2.36
 
 - Adds WSL2 path bridging so OpenClaw running in WSL can resolve Windows Steam, Vortex, Skyrim SE, AppData, Documents/My Games, and Steam library paths through `/mnt/<drive>`.

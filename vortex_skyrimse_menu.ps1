@@ -270,6 +270,7 @@ function Show-Actions {
   Write-Host "35. SKSE Runtime Doctor"
   Write-Host "36. Report Viewer"
   Write-Host "37. Live Evidence Summary"
+  Write-Host "38. Known Mod Rules"
   Write-Host "Q. Quit"
 }
 
@@ -608,6 +609,13 @@ function Invoke-MenuAction {
       Invoke-Server (@("--case-evidence-report", "--args-file", $argsFile, "--output-json", $out) + $common)
       Write-Host "Wrote live evidence summary for: $caseDir" -ForegroundColor Green
       Write-Host "Open live-evidence-summary.md. This action does not change mods or profiles." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("38", "known-rules", "rules", "known-mod-rules") } {
+      $out = Join-Path $script:ReportDir "known-mod-rules-$stamp.json"
+      Invoke-Server (@("--known-rules", "--output-json", $out) + $common)
+      Write-Host "Wrote known mod rules report: $out" -ForegroundColor Green
+      Write-Host "This action is read-only and does not disable, install, deploy, or delete mods." -ForegroundColor Green
       return
     }
     { $_ -in @("13", "cache", "scan-cache") } {

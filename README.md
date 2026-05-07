@@ -21,6 +21,8 @@ an MCP client.
 - Validate the whole setup in one call for OpenClaw with `validate_setup`.
 - Recommend a safe next workflow from a plain-language problem with `workflow_guide`.
 - Inventory Vortex-staged Skyrim SE mods.
+- Run known-rule checks during inventory for common stack problems such as
+  FNIS + Pandora, FSMPM without JContainers, and SLAL/Leito without FNIS.
 - Read mod evidence: files, readmes, FOMOD XML, plugins, masters, BSA archives,
   SKSE DLL plugins, scripts, meshes, textures, UI files.
 - Triage in-game weirdness such as misplaced objects or annoying popups by
@@ -80,6 +82,8 @@ an MCP client.
   versions/source metadata.
 - Check whether plugins from the selected Vortex profile appear in Skyrim
   `Data` and are enabled in `plugins.txt`.
+- Verify critical deployed files such as SKSE DLLs, Papyrus scripts, and
+  behavior/animation output files instead of relying only on random samples.
 - Check whether the next launch should use SKSE, Steam/vanilla, or stop for
   deployment/SKSE fixes first.
 - Check whether Skyrim's runtime version matches the installed SKSE runtime DLL
@@ -126,6 +130,7 @@ an MCP client.
 - [docs/LOGGING.md](docs/LOGGING.md): log folder, channels, and inspection commands.
 - [docs/BUG-REPORTING.md](docs/BUG-REPORTING.md): support bundle and issue-reporting guide.
 - [docs/MOD-KNOWLEDGE.md](docs/MOD-KNOWLEDGE.md): collection knowledge reports and safe removal review.
+- [docs/KNOWN-MOD-RULES.md](docs/KNOWN-MOD-RULES.md): built-in common conflict/dependency rules.
 - [docs/SAMPLE-BUG-BUNDLE.md](docs/SAMPLE-BUG-BUNDLE.md): sanitized example support bundle shape.
 - [docs/ROADMAP.md](docs/ROADMAP.md): improvement notes and what not to automate yet.
 - [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and [SUPPORT.md](SUPPORT.md): maintainer, security, and support process.
@@ -258,6 +263,7 @@ py -3 .\server.py --runtime-logs --description "popup says file was not configur
 py -3 .\server.py --skyrim-diagnostics
 py -3 .\server.py --safe-session
 py -3 .\server.py --mod-knowledge
+py -3 .\server.py --known-rules
 ```
 
 For huge collections, keep the scan cache on. It is compact and self-pruning by

@@ -127,6 +127,7 @@ def main() -> int:
     assert "validate_setup" in listed_names, listed_names
     assert "workflow_guide" in listed_names, listed_names
     assert "mod_knowledge_report" in listed_names, listed_names
+    assert "known_mod_rule_report" in listed_names, listed_names
     assert "in_game_issue_report" in listed_names, listed_names
     assert "skyrim_runtime_log_report" in listed_names, listed_names
     assert "config_file_report" in listed_names, listed_names
@@ -170,6 +171,7 @@ def main() -> int:
     assert "scan_cache_max_entries" in listed_by_name["scan_cache_status"]["inputSchema"]["properties"], listed_by_name
     assert "scan_cache_max_entries" in listed_by_name["mod_knowledge_report"]["inputSchema"]["properties"], listed_by_name
     assert "deployment_probe_files_per_mod" in listed_by_name["deployment_doctor_report"]["inputSchema"]["properties"], listed_by_name
+    assert "critical_deployment_probe_files_per_mod" in listed_by_name["deployment_doctor_report"]["inputSchema"]["properties"], listed_by_name
     assert "output_path" in listed_by_name["deployment_doctor_report"]["inputSchema"]["properties"], listed_by_name
     assert "baseline_path" in listed_by_name["deployment_doctor_report"]["inputSchema"]["properties"], listed_by_name
     assert "output_path" in listed_by_name["skyrim_launch_doctor_report"]["inputSchema"]["properties"], listed_by_name
@@ -344,6 +346,7 @@ def main() -> int:
             assert "wsl_bridge_report" in names, names
             assert "validate_setup" in names, names
             assert "workflow_guide" in names, names
+            assert "known_mod_rule_report" in names, names
             assert "analyze_conflicts" in names, names
             assert "in_game_issue_report" in names, names
             assert "skyrim_runtime_log_report" in names, names

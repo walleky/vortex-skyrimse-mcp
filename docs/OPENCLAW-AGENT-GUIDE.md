@@ -179,6 +179,18 @@ For "what does this whole collection do?" or "what can I remove?":
 mod_knowledge_report
 ```
 
+For common known stack/dependency mistakes:
+
+```text
+known_mod_rule_report
+deployment_doctor_report
+```
+
+Read `known_mod_rule_report.findings` before treating inventory as raw file
+data. It currently catches FNIS/Pandora, FNIS/Nemesis, FSMPM/JContainers, and
+SLAL/Leito/FNIS-style problems. Do not apply changes from those findings alone;
+use a cloned profile and rerun Deployment Doctor after Vortex deploys.
+
 For Nexus source/update metadata:
 
 ```text

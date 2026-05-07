@@ -20,6 +20,9 @@ delete, edit plugins, or edit INI/config files.
 - Stale `plugins.txt` entries that do not match the selected profile.
 - Sampled deployable files for pluginless mods, including BSA archives, SKSE DLLs,
   scripts, meshes, textures, interface files, and config files.
+- Critical deployed files for enabled mods, with a separate pass for SKSE DLLs,
+  Papyrus scripts, and behavior/animation HKX output so random sampling does not
+  miss FNIS/Nemesis/Pandora-style output problems.
 - Missing plugin masters.
 - SKSE loader/runtime/script evidence.
 - Base game voice/sound archive evidence.
@@ -46,6 +49,12 @@ If Vortex has multiple Skyrim SE profiles:
 
 ```powershell
 py -3 .\server.py --deployment-doctor --profile-id "exact-vortex-profile-id"
+```
+
+For a deeper critical-file pass:
+
+```powershell
+py -3 .\server.py --deployment-doctor --critical-deployment-probe-files-per-mod 50
 ```
 
 ## Before And After Deploy

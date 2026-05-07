@@ -90,6 +90,11 @@ def main() -> int:
         write(staging / "Popup UI Mod" / "config" / "bad.json", '{"warning":')
         write(staging / "Popup UI Mod" / "SKSE" / "Plugins" / "PopupDll.dll", "dll")
         write(staging / "Popup UI Mod" / "readme.txt", "Shows a warning notification after loading a save. Configure the popup in MCM.")
+        write(staging / "FNIS Behavior" / "tools" / "GenerateFNIS_for_Users" / "GenerateFNISforUsers.exe", "tool")
+        write(staging / "Pandora Behavior Engine" / "Pandora Behaviour Engine.exe", "tool")
+        write(staging / "FSMPM" / "FSMPM.esp", plugin_bytes("Skyrim.esm"))
+        write(staging / "SLAL_AnimationsByLeito" / "meshes" / "actors" / "character" / "animations" / "leito.hkx", "anim")
+        write(staging / "FNIS Output" / "meshes" / "actors" / "character" / "behaviors" / "0_master.hkx", "behavior")
         write(plugins_dir / "plugins.txt", "# comment\r\n*Skyrim.esm\r\n*MYMOD.ESP\r\n*MissingOnDisk.esp\r\n")
         write(my_games / "Skyrim.ini", "[Archive]\nbInvalidateOlderFiles=1\n")
         write(my_games / "SkyrimPrefs.ini", "[Launcher]\nbEnableFileSelection=1\n")
@@ -292,7 +297,12 @@ def main() -> int:
             server.nexus_http_get = original_nexus_http_get
 
         inventory = server.inventory_mods({**base_args, "include_files": True})
-        assert inventory["modCount"] == 5, inventory
+        assert inventory["modCount"] == 10, inventory
+        assert inventory["knownRules"]["findingCount"] >= 2, inventory
+        assert any(item["code"] == "fnis_and_pandora_generators_present" for item in inventory["knownRules"]["findings"]), inventory
+        assert any(item["code"] == "fsmpm_requires_jcontainers" for item in inventory["knownRules"]["findings"]), inventory
+        known_rules = server.known_mod_rule_report(base_args)
+        assert known_rules["findingCount"] >= 2, known_rules
         cached_inventory = server.inventory_mods({**base_args, "include_files": True, "include_scan_cache_status": True})
         assert any(mod.get("_cache", {}).get("hit") for mod in cached_inventory["mods"]), cached_inventory
         assert cached_inventory["scanCache"]["entryCount"] >= inventory["modCount"], cached_inventory
@@ -322,6 +332,7 @@ def main() -> int:
                         "modState": {
                             "lighting": {"enabled": True},
                             "weather": {"enabled": True},
+                            "fnis-output": {"enabled": True},
                         },
                     }
                 },
@@ -329,6 +340,7 @@ def main() -> int:
                 "mods": {
                     "lighting": {"attributes": {"name": "Lighting Mod", "installationPath": "Lighting Mod"}},
                     "weather": {"attributes": {"name": "Weather Mod", "installationPath": "Weather Mod"}},
+                    "fnis-output": {"attributes": {"name": "FNIS Output", "installationPath": "FNIS Output"}},
                 },
                 "activeProfileId": "deploy-source",
                 "activeFromSettings": "deploy-source",
@@ -354,10 +366,14 @@ def main() -> int:
             assert doctor["summary"]["profileToSkyrimLinked"] is False, doctor
             assert doctor["summary"]["deploymentState"] in {"blocked_missing_masters", "needs_deploy"}, doctor
             assert doctor["summary"]["sampleMissingModCount"] >= 1, doctor
+            assert doctor["summary"]["criticalMissingModCount"] >= 1, doctor
             assert any(check["key"] == "profile_plugins_deployed" and check["status"] == "fail" for check in doctor["checks"]), doctor
+            assert any(check["key"] == "critical_files_deployed" and check["status"] == "fail" for check in doctor["checks"]), doctor
             assert any(finding["code"] == "sampled_enabled_mod_files_not_deployed" for finding in doctor["findings"]), doctor
+            assert any(finding["code"] == "critical_profile_files_not_deployed" for finding in doctor["findings"]), doctor
             assert any(finding["code"] == "missing_plugin_masters" for finding in doctor["findings"]), doctor
             assert doctor["sections"]["deployment"]["sampledEnabledModFilesMissingFromData"], doctor
+            assert doctor["sections"]["deployment"]["criticalEnabledModFilesMissingFromData"], doctor
             doctor_md = root / "Reports" / "deployment-doctor.md"
             baseline_path = root / "Reports" / "deployment-doctor-baseline.json"
             baseline = json.loads(json.dumps(doctor))
@@ -976,7 +992,8 @@ def main() -> int:
             check=True,
         )
         cli_payload = json.loads(cli_result.stdout)
-        assert cli_payload["modCount"] == 5, cli_payload
+        assert cli_payload["modCount"] == 10, cli_payload
+        assert cli_payload["knownRuleFindingCount"] >= 2, cli_payload
         assert cli_knowledge_path.exists(), cli_payload
 
         bundle_path = root / "bundle.json"

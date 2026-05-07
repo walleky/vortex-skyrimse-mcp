@@ -70,9 +70,10 @@ In MCP arguments, set:
 The cache is a speed hint. If the cache folder is locked or unwritable, the MCP
 logs the cache error and continues with a live scan.
 
-The cache key includes the MCP version, mod folder path, file-list mode, scan
-limits, and a lightweight folder signature. If a diagnostic result looks stale,
-rerun with `use_scan_cache=false` or `--no-scan-cache`.
+The cache key includes a summary schema version, mod folder path, file-list
+mode, scan limits, and a lightweight folder signature. Routine MCP version bumps
+do not force a full rescan unless the summary schema changes. If a diagnostic
+result looks stale, rerun with `use_scan_cache=false` or `--no-scan-cache`.
 
 Cache-hit-only runs do not rewrite the cache file. The MCP writes the file only
 after it stores a new or changed mod summary, which avoids unnecessary disk work

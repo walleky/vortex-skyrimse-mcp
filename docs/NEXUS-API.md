@@ -27,6 +27,11 @@ Preferred sources, in order:
 2. `nexus_api_key_file` tool argument or `--nexus-api-key-file`.
 3. `nexus_api_key` direct tool argument, only for private one-off testing.
 
+`detect_environment.nexus_api.vortexStoredKeyReuseSupported` is intentionally
+`false`. If OpenClaw asks why Nexus is "not configured" even though Vortex can
+download mods, the answer is that this MCP will not scrape Vortex's private
+application/session state. Add your own key with one of the methods above.
+
 ## Setup
 
 Environment variable:

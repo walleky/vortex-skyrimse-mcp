@@ -55,6 +55,9 @@ if (($MenuOutput -join "`n") -notmatch "Report Viewer") {
 if (($MenuOutput -join "`n") -notmatch "Live Evidence Summary") {
   throw "Menu did not list the live evidence summary action."
 }
+if (($MenuOutput -join "`n") -notmatch "Known Mod Rules") {
+  throw "Menu did not list the known mod rules action."
+}
 if (($MenuOutput -join "`n") -notmatch "Config file validator") {
   throw "Menu did not list the config file validator action."
 }

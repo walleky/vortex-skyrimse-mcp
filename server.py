@@ -17,6 +17,7 @@ import csv
 import ctypes
 import ctypes.wintypes
 import datetime as _dt
+import fnmatch
 import hashlib
 import html
 import json
@@ -44,7 +45,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.36"
+SERVER_VERSION = "0.2.37"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -1217,6 +1218,8 @@ def nexus_config_status(args: Dict[str, Any]) -> Dict[str, Any]:
         "gameDomain": nexus_game_domain(args),
         "cacheDir": str(nexus_default_cache_dir(args.get("nexus_cache_dir"))),
         "apiBase": NEXUS_API_BASE,
+        "vortexStoredKeyReuseSupported": False,
+        "recommendedSetup": f"Set {NEXUS_API_KEY_ENV_VAR} or pass nexus_api_key_file with your own Nexus API key.",
         "notes": [
             "Use this MCP's own Nexus API key or NEXUS_MODS_API_KEY; do not borrow Vortex's application key.",
             "Nexus API metadata is optional. Local Skyrim/Vortex diagnostics still work without it.",
@@ -1862,11 +1865,10 @@ def mod_summary_cache_key(mod_dir: Path, include_files: bool, max_files: int) ->
         root = str(mod_dir).lower()
     raw = json.dumps(
         {
-            "schema": "mod-summary-v2",
+            "schema": "mod-summary-v3",
             "root": root,
             "includeFiles": bool(include_files),
             "maxFiles": int(max_files),
-            "serverVersion": SERVER_VERSION,
         },
         sort_keys=True,
     )
@@ -2150,6 +2152,7 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "validate_setup",
             "workflow_guide",
             "inventory_mods",
+            "known_mod_rule_report",
             "analyze_conflicts",
             "redundant_mod_report",
             "plugin_report",
@@ -2265,6 +2268,17 @@ def workflow_catalog() -> List[Dict[str, Any]]:
             "menuAction": "32. Deployment Doctor",
         },
         {
+            "key": "known_mod_stack_rules",
+            "title": "Known Animation Or Dependency Stack Rules",
+            "matchTerms": ["fnis", "pandora", "nemesis", "jcontainers", "fsmpm", "slal", "leito", "animation", "behavior", "behaviour", "dependency"],
+            "userPrompt": "Use known_mod_rule_report, then deployment_doctor_report. Tell me whether common animation/dependency rules are triggered and whether critical files are deployed. Do not apply changes.",
+            "tools": ["known_mod_rule_report", "deployment_doctor_report", "skyrim_launch_doctor_report"],
+            "whatToRead": ["known_mod_rule_report.findings", "summary.deploymentState", "checks", "findings", "nextActions"],
+            "humanSteps": ["Do not mix behavior generators casually.", "Regenerate behavior output only according to the collection instructions.", "Deploy in Vortex and rerun Deployment Doctor before launching."],
+            "directCli": ["py -3 .\\server.py --known-rules", "py -3 .\\server.py --deployment-doctor --critical-deployment-probe-files-per-mod 50"],
+            "menuAction": "38. Known Mod Rules",
+        },
+        {
             "key": "launch_check",
             "title": "Launch Through The Right Route",
             "matchTerms": ["launch", "skse", "skse64_loader", "start game", "run game", "steam launch", "vortex launch", "wrong executable", "right executable"],
@@ -2324,8 +2338,8 @@ def workflow_catalog() -> List[Dict[str, Any]]:
             "title": "Large Collection Review Or Removal Candidates",
             "matchTerms": ["collection", "remove", "redundant", "cleanup", "what can i remove", "mod list", "huge", "knowledge"],
             "userPrompt": "Use mod_knowledge_report to write a Markdown report explaining what each mod appears to do, how it fits into the collection, and which mods are safe candidates to review for disabling. Do not apply changes.",
-            "tools": ["mod_knowledge_report", "scan_cache_status"],
-            "whatToRead": ["Removal Review Shortlist", "Sensitive Conflict Examples", "Plugin Master Problems", "Mod Index"],
+            "tools": ["mod_knowledge_report", "known_mod_rule_report", "scan_cache_status"],
+            "whatToRead": ["Removal Review Shortlist", "Known Conflict And Dependency Rules", "Sensitive Conflict Examples", "Plugin Master Problems", "Mod Index"],
             "humanSteps": ["Review candidates in a cloned profile.", "Disable, deploy, test, then decide whether to uninstall later."],
             "directCli": ["py -3 .\\server.py --mod-knowledge"],
             "menuAction": "5. Mod knowledge Markdown report",
@@ -2620,6 +2634,195 @@ def mod_summary(mod_dir: Path, include_files: bool = False, max_files: int = 500
     }
 
 
+def mod_rule_text(summary: Dict[str, Any]) -> str:
+    parts: List[str] = []
+    for key in ("name", "path"):
+        value = summary.get(key)
+        if value:
+            parts.append(str(value))
+    metadata = summary.get("metadata")
+    if isinstance(metadata, dict):
+        parts.extend(str(value) for value in metadata.values() if value)
+    for key in ("plugins", "archives", "sksePlugins", "readmes", "files"):
+        values = summary.get(key)
+        if isinstance(values, list):
+            parts.extend(str(value) for value in values if value)
+    return "\n".join(parts).lower()
+
+
+def mod_matches_any(summary: Dict[str, Any], terms: List[str]) -> bool:
+    blob = mod_rule_text(summary)
+    return any(term.lower() in blob for term in terms)
+
+
+def mod_rule_match_rows(summaries: List[Dict[str, Any]], terms: List[str], limit: int = 12) -> List[Dict[str, Any]]:
+    rows = []
+    for summary in summaries:
+        if not mod_matches_any(summary, terms):
+            continue
+        rows.append(
+            {
+                "name": summary.get("name"),
+                "path": summary.get("path"),
+                "plugins": summary.get("plugins", [])[:8],
+                "sksePlugins": summary.get("sksePlugins", [])[:8],
+            }
+        )
+        if len(rows) >= limit:
+            break
+    return rows
+
+
+KNOWN_MOD_RULES = [
+    {
+        "id": "fnis_and_pandora_generators_present",
+        "kind": "conflict",
+        "severity": "high",
+        "signals": [
+            {"label": "FNIS", "terms": ["fnis", "generatefnis"]},
+            {"label": "Pandora Behavior Engine", "terms": ["pandora", "pandora behavior", "pandora behaviour"]},
+        ],
+        "message": "FNIS and Pandora Behavior Engine both appear to be installed/staged.",
+        "nextAction": "Use one behavior generation route for the profile, regenerate behavior output, deploy, then rerun Deployment Doctor.",
+    },
+    {
+        "id": "fnis_and_nemesis_generators_present",
+        "kind": "conflict",
+        "severity": "medium",
+        "signals": [
+            {"label": "FNIS", "terms": ["fnis", "generatefnis"]},
+            {"label": "Nemesis", "terms": ["nemesis", "nemesis engine"]},
+        ],
+        "message": "FNIS and Nemesis both appear to be installed/staged.",
+        "nextAction": "Confirm the collection's animation-tool instructions before changing either generator or generated output.",
+    },
+    {
+        "id": "fsmpm_requires_jcontainers",
+        "kind": "dependency",
+        "severity": "high",
+        "subject": {"label": "FSMPM", "terms": ["fsmpm", "fsmpm.esp", "fsmp mcm"]},
+        "requiresAny": {"label": "JContainers", "terms": ["jcontainers", "jcontainers64.dll"]},
+        "message": "FSMPM appears present, but JContainers was not found in the staged mod summaries.",
+        "nextAction": "Install/enable JContainers for Skyrim SE, deploy, and rerun diagnostics before testing FSMPM/MCM features.",
+    },
+    {
+        "id": "slal_leito_requires_fnis",
+        "kind": "dependency",
+        "severity": "high",
+        "subject": {"label": "SLAL Animations by Leito", "terms": ["slal_animationsbyleito", "slal animations by leito", "leito", "slal"]},
+        "requiresAny": {"label": "FNIS", "terms": ["fnis", "generatefnis"]},
+        "message": "SLAL/Leito animation content appears present, but FNIS was not found in the staged mod summaries.",
+        "nextAction": "Install/enable the required FNIS route for this animation pack, regenerate behavior files, deploy, and test in a cloned profile.",
+    },
+]
+
+
+def evaluate_known_mod_rules(summaries: List[Dict[str, Any]]) -> Dict[str, Any]:
+    findings: List[Dict[str, Any]] = []
+    satisfied: List[Dict[str, Any]] = []
+    signals: List[Dict[str, Any]] = []
+    for rule in KNOWN_MOD_RULES:
+        kind = str(rule.get("kind"))
+        if kind == "conflict":
+            signal_rows = []
+            all_present = True
+            for signal in rule.get("signals", []):
+                rows = mod_rule_match_rows(summaries, list(signal.get("terms", [])))
+                signal_rows.append({"label": signal.get("label"), "matchCount": len(rows), "matches": rows})
+                if not rows:
+                    all_present = False
+            if any(row["matchCount"] for row in signal_rows):
+                signals.append({"ruleId": rule.get("id"), "signals": signal_rows})
+            if all_present:
+                add_finding(
+                    findings,
+                    str(rule.get("severity", "medium")),
+                    str(rule.get("id")),
+                    str(rule.get("message")),
+                    str(rule.get("nextAction")),
+                    signal_rows,
+                )
+        elif kind == "dependency":
+            subject = rule.get("subject", {}) if isinstance(rule.get("subject"), dict) else {}
+            requires = rule.get("requiresAny", {}) if isinstance(rule.get("requiresAny"), dict) else {}
+            subject_rows = mod_rule_match_rows(summaries, list(subject.get("terms", [])))
+            provider_rows = mod_rule_match_rows(summaries, list(requires.get("terms", [])))
+            if subject_rows and not provider_rows:
+                add_finding(
+                    findings,
+                    str(rule.get("severity", "medium")),
+                    str(rule.get("id")),
+                    str(rule.get("message")),
+                    str(rule.get("nextAction")),
+                    {
+                        "subject": subject.get("label"),
+                        "subjectMatches": subject_rows,
+                        "required": requires.get("label"),
+                        "providerMatches": provider_rows,
+                    },
+                )
+            elif subject_rows and provider_rows:
+                satisfied.append(
+                    {
+                        "ruleId": rule.get("id"),
+                        "subject": subject.get("label"),
+                        "required": requires.get("label"),
+                        "subjectMatches": subject_rows,
+                        "providerMatches": provider_rows,
+                    }
+                )
+    findings = sort_findings(findings)
+    return {
+        "schema": "known-mod-rules-v1",
+        "ruleCount": len(KNOWN_MOD_RULES),
+        "scannedModCount": len(summaries),
+        "findingCount": len(findings),
+        "highestSeverity": findings[0]["severity"] if findings else "none",
+        "findings": findings,
+        "satisfiedDependencies": satisfied,
+        "signals": signals,
+        "notes": [
+            "Known-rule checks are heuristic and local. They flag common Skyrim SE modding footguns but do not replace mod author instructions.",
+            "Findings are read-only. Use a cloned Vortex profile before disabling or changing animation/dependency stacks.",
+        ],
+    }
+
+
+def staged_mod_summaries(args: Dict[str, Any], include_files: bool = False) -> Dict[str, Any]:
+    vortex_appdata, _skyrim_dir, staging_dir, _my_games = get_context_paths(args)
+    if not staging_dir or not staging_dir.exists():
+        raise ToolError("Vortex staging folder was not found. Pass staging_dir explicitly.")
+    max_mods = int(args.get("max_mods", 1000))
+    max_files_per_mod = int(args.get("max_files_per_mod", 5000))
+    scan_cache = load_scan_cache(args) if scan_cache_enabled(args) else {}
+    mod_dirs = sorted([p for p in staging_dir.iterdir() if p.is_dir()], key=lambda p: p.name.lower())[:max_mods]
+    mods = [
+        mod_summary_cached(mod_dir, include_files=include_files, max_files=max_files_per_mod, args=args, cache=scan_cache)
+        for mod_dir in mod_dirs
+    ]
+    if scan_cache_enabled(args):
+        write_scan_cache(args, scan_cache)
+    return {
+        "vortex_appdata": vortex_appdata,
+        "staging_dir": staging_dir,
+        "mods": mods,
+        "scannedModCount": len(mods),
+        "scanCache": scan_cache,
+    }
+
+
+def known_mod_rule_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    include_files = bool(args.get("include_files", False))
+    staged = staged_mod_summaries(args, include_files=include_files)
+    report = evaluate_known_mod_rules(staged["mods"])
+    return {
+        **report,
+        "vortex_appdata": str(staged["vortex_appdata"]) if staged.get("vortex_appdata") else None,
+        "staging_dir": str(staged["staging_dir"]),
+        "includeFiles": include_files,
+    }
+
+
 def get_context_paths(args: Dict[str, Any]) -> Tuple[Optional[Path], Optional[Path], Optional[Path], Optional[Path]]:
     vortex_appdata = default_vortex_appdata(args.get("vortex_appdata"))
     skyrim_dir = find_skyrim_dir(args.get("skyrim_dir"))
@@ -2629,24 +2832,17 @@ def get_context_paths(args: Dict[str, Any]) -> Tuple[Optional[Path], Optional[Pa
 
 
 def inventory_mods(args: Dict[str, Any]) -> Dict[str, Any]:
-    vortex_appdata, _skyrim_dir, staging_dir, _my_games = get_context_paths(args)
-    if not staging_dir or not staging_dir.exists():
-        raise ToolError("Vortex staging folder was not found. Pass staging_dir explicitly.")
     include_files = bool(args.get("include_files", False))
-    max_mods = int(args.get("max_mods", 300))
-    max_files_per_mod = int(args.get("max_files_per_mod", 5000))
-    mods = []
-    scan_cache = load_scan_cache(args) if scan_cache_enabled(args) else {}
-    for mod_dir in sorted([p for p in staging_dir.iterdir() if p.is_dir()], key=lambda p: p.name.lower())[:max_mods]:
-        mods.append(mod_summary_cached(mod_dir, include_files=include_files, max_files=max_files_per_mod, args=args, cache=scan_cache))
-    if scan_cache_enabled(args):
-        write_scan_cache(args, scan_cache)
+    staged = staged_mod_summaries(args, include_files=include_files)
+    mods = staged["mods"]
+    known_rules = evaluate_known_mod_rules(mods) if bool(args.get("include_known_rules", True)) else None
     return {
-        "vortex_appdata": str(vortex_appdata) if vortex_appdata else None,
-        "staging_dir": str(staging_dir),
+        "vortex_appdata": str(staged["vortex_appdata"]) if staged.get("vortex_appdata") else None,
+        "staging_dir": str(staged["staging_dir"]),
         "modCount": len(mods),
         "mods": mods,
         "scanCache": scan_cache_status(args) if bool(args.get("include_scan_cache_status", False)) else None,
+        "knownRules": known_rules,
     }
 
 
@@ -6487,6 +6683,7 @@ def render_mod_knowledge_markdown(
     conflicts: Optional[Dict[str, Any]],
     redundancy: Optional[Dict[str, Any]],
     plugins: Optional[Dict[str, Any]],
+    known_rules: Optional[Dict[str, Any]],
     candidates: List[Dict[str, Any]],
 ) -> str:
     max_detail_mods = int(args.get("max_detail_mods", 120))
@@ -6540,6 +6737,7 @@ def render_mod_knowledge_markdown(
             "",
             f"- High removal-risk mods: {high_risk}",
             f"- Conflict rows: {conflicts.get('conflictCount') if conflicts else 'not scanned'}",
+            f"- Known rule findings: {known_rules.get('findingCount') if isinstance(known_rules, dict) else 'not scanned'}",
             f"- Redundancy candidates: {len(candidates)}",
             "",
             "| Category | Mods |",
@@ -6561,6 +6759,19 @@ def render_mod_knowledge_markdown(
             )
     else:
         lines.append("No strong removal candidates were found from local evidence. Use the mod index to choose unwanted cosmetic/content mods manually.")
+
+    lines.extend(["", "## Known Conflict And Dependency Rules", ""])
+    if isinstance(known_rules, dict) and known_rules.get("findings"):
+        for item in known_rules.get("findings", [])[:40]:
+            lines.append(
+                f"- [{md_cell(item.get('severity'))}] {md_cell(item.get('code'))}: {md_cell(item.get('message'))}"
+            )
+            if item.get("nextAction"):
+                lines.append(f"  Next: {md_cell(item.get('nextAction'))}")
+    elif isinstance(known_rules, dict):
+        lines.append("No built-in known-rule findings were triggered.")
+    else:
+        lines.append("Known-rule checks were not run.")
 
     lines.extend(["", "## Mod Index", ""])
     lines.extend(["| Mod | Role | Active | Plugins | Risk | Conflicts | Evidence |", "|---|---|---|---:|---|---:|---|"])
@@ -6790,6 +7001,7 @@ def mod_knowledge_report(args: Dict[str, Any]) -> Dict[str, Any]:
         write_scan_cache(args, scan_cache)
 
     candidates = knowledge_removal_candidates(rows, redundancy)
+    known_rules = evaluate_known_mod_rules([row["summary"] for row in rows])
     markdown = render_mod_knowledge_markdown(
         rows,
         args,
@@ -6799,6 +7011,7 @@ def mod_knowledge_report(args: Dict[str, Any]) -> Dict[str, Any]:
         conflicts,
         redundancy,
         plugins,
+        known_rules,
         candidates,
     )
     if redact_user_paths:
@@ -6811,6 +7024,9 @@ def mod_knowledge_report(args: Dict[str, Any]) -> Dict[str, Any]:
         "profileStateAvailable": bool(profile_lookup.get("available")),
         "profileStateError": profile_lookup.get("error"),
         "removalCandidateCount": len(candidates),
+        "knownRuleFindingCount": known_rules.get("findingCount"),
+        "knownRuleHighestSeverity": known_rules.get("highestSeverity"),
+        "knownRuleFindings": known_rules.get("findings", [])[:20],
         "conflictCount": conflicts.get("conflictCount") if isinstance(conflicts, dict) else None,
         "nexusMetadataIncluded": include_nexus_metadata,
         "nexusLookupCount": nexus_lookup_count,
@@ -8351,6 +8567,70 @@ def deployment_relevant_file(rel: str) -> bool:
     return kind in {"plugin", "archive", "skse_plugin", "script", "mesh", "texture", "interface", "config"}
 
 
+CRITICAL_DEPLOYMENT_PATTERNS = [
+    ("skse_plugin", "SKSE native plugin DLL", "skse/plugins/*.dll"),
+    ("papyrus_script", "Papyrus script", "scripts/*.pex"),
+    ("animation_behavior", "Animation behavior HKX", "meshes/actors/*/behaviors/*.hkx"),
+    ("animation_behavior", "Animation behavior HKX", "meshes/actors/*/*/behaviors/*.hkx"),
+    ("animation_graph", "Animation graph/output", "meshes/actors/*/animations/*.hkx"),
+    ("animation_metadata", "Animation generated metadata", "meshes/actors/*/*animation*.txt"),
+]
+
+
+def critical_deployment_kind(rel: str) -> Optional[Tuple[str, str]]:
+    lower = rel.lower().replace("\\", "/")
+    for code, label, pattern in CRITICAL_DEPLOYMENT_PATTERNS:
+        if fnmatch.fnmatch(lower, pattern):
+            return code, label
+    return None
+
+
+def critical_deployment_probe_for_mod(mod_path: Path, data_dir: Optional[Path], max_samples: int, max_files: int) -> Dict[str, Any]:
+    limit = max(0, int(max_samples))
+    result: Dict[str, Any] = {
+        "sampleLimit": limit,
+        "sampleCount": 0,
+        "deployedSampleCount": 0,
+        "missingSampleCount": 0,
+        "samples": [],
+        "patterns": [{"code": code, "label": label, "pattern": pattern} for code, label, pattern in CRITICAL_DEPLOYMENT_PATTERNS],
+    }
+    if limit <= 0:
+        result["skippedReason"] = "sample limit is 0"
+        return result
+    if not data_dir or not data_dir.exists():
+        result["skippedReason"] = "Skyrim Data folder not found"
+        return result
+
+    for file_path in safe_walk(mod_path, max_files):
+        rel = rel_to(file_path, mod_path)
+        critical = critical_deployment_kind(rel)
+        if not critical:
+            continue
+        target = data_dir / rel
+        exists = target.exists()
+        if exists:
+            result["deployedSampleCount"] += 1
+        else:
+            result["missingSampleCount"] += 1
+        result["samples"].append(
+            {
+                "relativePath": rel,
+                "criticalKind": critical[0],
+                "label": critical[1],
+                "deployedInData": exists,
+                "dataPath": str(target),
+            }
+        )
+        if len(result["samples"]) >= limit:
+            break
+
+    result["sampleCount"] = len(result["samples"])
+    if result["sampleCount"] == 0:
+        result["skippedReason"] = "no critical deployment files found"
+    return result
+
+
 def deployment_probe_for_mod(mod_path: Path, data_dir: Optional[Path], max_samples: int) -> Dict[str, Any]:
     limit = max(0, int(max_samples))
     result: Dict[str, Any] = {
@@ -8794,10 +9074,12 @@ def vortex_profile_deployment_report(args: Dict[str, Any]) -> Dict[str, Any]:
     max_mods = int(args.get("max_mods", 500))
     max_files_per_mod = int(args.get("max_files_per_mod", 3000))
     probe_files_per_mod = int(args.get("deployment_probe_files_per_mod", DEPLOYMENT_PROBE_DEFAULT_FILES_PER_MOD))
+    critical_probe_files_per_mod = int(args.get("critical_deployment_probe_files_per_mod", 24))
     checked_mods = []
     unresolved_mods = []
     plugin_rows = []
     missing_sampled_files = []
+    missing_critical_files = []
     profile_plugin_names: set[str] = set()
     scan_cache = load_scan_cache(args) if scan_cache_enabled(args) else {}
 
@@ -8809,6 +9091,7 @@ def vortex_profile_deployment_report(args: Dict[str, Any]) -> Dict[str, Any]:
             continue
         summary = mod_summary_cached(mod_path, include_files=False, max_files=max_files_per_mod, args=args, cache=scan_cache)
         deploy_probe = deployment_probe_for_mod(mod_path, data_dir, probe_files_per_mod)
+        critical_probe = critical_deployment_probe_for_mod(mod_path, data_dir, critical_probe_files_per_mod, max_files_per_mod)
         mod_info = summarize_vortex_mod(mod_id, snapshot["mods"])
         checked_mods.append(
             {
@@ -8818,6 +9101,7 @@ def vortex_profile_deployment_report(args: Dict[str, Any]) -> Dict[str, Any]:
                 "archiveCount": len(summary.get("archives", [])),
                 "sksePluginCount": len(summary.get("sksePlugins", [])),
                 "deployProbe": deploy_probe,
+                "criticalDeployProbe": critical_probe,
             }
         )
         if deploy_probe.get("missingSampleCount"):
@@ -8828,6 +9112,16 @@ def vortex_profile_deployment_report(args: Dict[str, Any]) -> Dict[str, Any]:
                     "stagingPath": str(mod_path),
                     "missingSampleCount": deploy_probe.get("missingSampleCount"),
                     "samples": [sample for sample in deploy_probe.get("samples", []) if not sample.get("deployedInData")],
+                }
+            )
+        if critical_probe.get("missingSampleCount"):
+            missing_critical_files.append(
+                {
+                    "modId": mod_id,
+                    "modName": mod_info.get("name"),
+                    "stagingPath": str(mod_path),
+                    "missingSampleCount": critical_probe.get("missingSampleCount"),
+                    "samples": [sample for sample in critical_probe.get("samples", []) if not sample.get("deployedInData")],
                 }
             )
         for rel in summary.get("plugins", []):
@@ -8867,6 +9161,8 @@ def vortex_profile_deployment_report(args: Dict[str, Any]) -> Dict[str, Any]:
         issues.append("Some plugins from enabled profile mods are not enabled in plugins.txt.")
     if missing_sampled_files:
         issues.append("Some sampled files from enabled profile mods were not found in Skyrim Data; deployment may be incomplete.")
+    if missing_critical_files:
+        issues.append("Some critical SKSE/script/behavior files from enabled profile mods were not found in Skyrim Data; deployment is incomplete.")
     if enabled_plugins_not_seen_in_profile and profile_plugin_names:
         issues.append("plugins.txt has enabled plugins not seen in the selected profile; this may indicate the wrong profile or stale deployment.")
 
@@ -8886,12 +9182,14 @@ def vortex_profile_deployment_report(args: Dict[str, Any]) -> Dict[str, Any]:
         "pluginsFromEnabledModsMissingFromData": missing_from_data,
         "pluginsFromEnabledModsNotEnabledInPluginsTxt": not_enabled,
         "sampledEnabledModFilesMissingFromData": missing_sampled_files,
+        "criticalEnabledModFilesMissingFromData": missing_critical_files,
         "enabledPluginsTxtNotSeenInProfile": enabled_plugins_not_seen_in_profile,
         "issues": issues,
         "notes": [
             "This is read-only. It compares the selected Vortex profile, staging folders, Skyrim Data, and plugins.txt.",
             "After switching profiles or changing enabled mods, use Vortex Deploy Mods before launching Skyrim.",
             "Texture/mesh/SKSE-only mods may have no ESP/ESM/ESL plugin and will not appear in profilePlugins.",
+            "Critical deployment probes separately check SKSE DLLs, Papyrus scripts, and generated behavior/animation files because random samples can miss them.",
         ],
     }
 
@@ -9266,6 +9564,18 @@ def skyrim_modded_play_report(args: Dict[str, Any]) -> Dict[str, Any]:
             "Launch Skyrim once so the INI folder exists, or pass my_games_dir.",
         )
 
+    try:
+        sections["knownModRules"] = known_mod_rule_report({**args, "include_files": bool(args.get("known_rules_include_files", False))})
+    except Exception as exc:
+        sections["knownModRules"] = {"error": str(exc)}
+        add_finding(
+            findings,
+            "medium",
+            "known_mod_rules_failed",
+            str(exc),
+            "Pass staging_dir explicitly, then rerun known_mod_rule_report.",
+        )
+
     env = sections.get("environment") if isinstance(sections.get("environment"), dict) else {}
     for issue in env.get("issues", []) if isinstance(env, dict) else []:
         severity = "high" if "SkyrimSE.exe" in issue or "SKSE64" in issue else "medium"
@@ -9301,6 +9611,7 @@ def skyrim_modded_play_report(args: Dict[str, Any]) -> Dict[str, Any]:
         missing_count = len(deployment.get("pluginsFromEnabledModsMissingFromData", []))
         disabled_count = len(deployment.get("pluginsFromEnabledModsNotEnabledInPluginsTxt", []))
         stale_count = len(deployment.get("enabledPluginsTxtNotSeenInProfile", []))
+        critical_count = len(deployment.get("criticalEnabledModFilesMissingFromData", []))
         if missing_count:
             add_finding(
                 findings,
@@ -9327,6 +9638,15 @@ def skyrim_modded_play_report(args: Dict[str, Any]) -> Dict[str, Any]:
                 f"{stale_count} enabled plugins.txt entrie(s) were not seen in the selected Vortex profile.",
                 "Confirm the active Vortex profile is the one you launch with, then deploy again.",
                 deployment.get("enabledPluginsTxtNotSeenInProfile", [])[:40],
+            )
+        if critical_count:
+            add_finding(
+                findings,
+                "high",
+                "critical_profile_files_not_deployed",
+                f"{critical_count} enabled mod(s) have SKSE/script/behavior critical files missing from Skyrim Data.",
+                "Deploy Mods in Vortex. If this stays red, rebuild FNIS/Nemesis/Pandora output if applicable and confirm Vortex is managing this Skyrim Data folder.",
+                deployment.get("criticalEnabledModFilesMissingFromData", [])[:20],
             )
 
     plugins = sections.get("plugins") if isinstance(sections.get("plugins"), dict) else {}
@@ -9364,6 +9684,12 @@ def skyrim_modded_play_report(args: Dict[str, Any]) -> Dict[str, Any]:
                 "Run apply_ini_fixes as a dry-run first, then with dry_run=false only if you approve.",
                 failed_ini,
             )
+
+    known_rules = sections.get("knownModRules") if isinstance(sections.get("knownModRules"), dict) else {}
+    if isinstance(known_rules, dict) and "error" not in known_rules:
+        for item in known_rules.get("findings", [])[:20]:
+            if isinstance(item, dict):
+                findings.append(item)
 
     if bool(args.get("include_nexus_metadata", False)):
         try:
@@ -9796,6 +10122,7 @@ def deployment_doctor_report(args: Dict[str, Any]) -> Dict[str, Any]:
         not_enabled = deployment.get("pluginsFromEnabledModsNotEnabledInPluginsTxt", []) or []
         stale_plugins = deployment.get("enabledPluginsTxtNotSeenInProfile", []) or []
         missing_samples = deployment.get("sampledEnabledModFilesMissingFromData", []) or []
+        missing_critical = deployment.get("criticalEnabledModFilesMissingFromData", []) or []
 
         profile_status = "pass"
         profile_message = f"Read selected Vortex profile with {enabled_mod_count} enabled mod(s)."
@@ -9889,6 +10216,29 @@ def deployment_doctor_report(args: Dict[str, Any]) -> Dict[str, Any]:
                 f"{len(missing_samples)} enabled mod(s) have sampled files missing from Skyrim Data.",
                 "Deploy Mods in Vortex and verify Vortex is managing the detected Skyrim Data folder.",
                 missing_samples[:20],
+            )
+
+        add_doctor_check(
+            checks,
+            "critical_files_deployed",
+            "Critical SKSE/Script/Behavior Files In Skyrim Data",
+            "fail" if missing_critical else "pass",
+            (
+                f"{len(missing_critical)} enabled mod(s) have critical SKSE/script/behavior files missing from Skyrim Data."
+                if missing_critical
+                else "Critical SKSE/script/behavior file probes were found in Skyrim Data, or no critical files were detected."
+            ),
+            "Deploy Mods in Vortex. If behavior files are missing, rebuild FNIS/Nemesis/Pandora output and deploy that output.",
+            missing_critical[:20],
+        )
+        if missing_critical:
+            add_finding(
+                findings,
+                "high",
+                "critical_profile_files_not_deployed",
+                f"{len(missing_critical)} enabled mod(s) have SKSE/script/behavior critical files missing from Skyrim Data.",
+                "Deploy Mods in Vortex. If this stays red, rebuild FNIS/Nemesis/Pandora output if applicable and confirm Vortex is managing this Skyrim Data folder.",
+                missing_critical[:20],
             )
 
         add_doctor_check(
@@ -10017,6 +10367,7 @@ def deployment_doctor_report(args: Dict[str, Any]) -> Dict[str, Any]:
     missing_data_count = len(deployment_section.get("pluginsFromEnabledModsMissingFromData", [])) if isinstance(deployment_section, dict) else 0
     disabled_count = len(deployment_section.get("pluginsFromEnabledModsNotEnabledInPluginsTxt", [])) if isinstance(deployment_section, dict) else 0
     sample_missing_count = len(deployment_section.get("sampledEnabledModFilesMissingFromData", [])) if isinstance(deployment_section, dict) else 0
+    critical_missing_count = len(deployment_section.get("criticalEnabledModFilesMissingFromData", [])) if isinstance(deployment_section, dict) else 0
     stale_count = len(deployment_section.get("enabledPluginsTxtNotSeenInProfile", [])) if isinstance(deployment_section, dict) else 0
     missing_master_count = len(filtered_missing_masters_for_summary)
 
@@ -10024,7 +10375,7 @@ def deployment_doctor_report(args: Dict[str, Any]) -> Dict[str, Any]:
         deployment_state = "blocked"
     elif missing_master_count:
         deployment_state = "blocked_missing_masters"
-    elif missing_data_count or sample_missing_count:
+    elif missing_data_count or sample_missing_count or critical_missing_count:
         deployment_state = "needs_deploy"
     elif disabled_count:
         deployment_state = "plugins_disabled"
@@ -10068,6 +10419,7 @@ def deployment_doctor_report(args: Dict[str, Any]) -> Dict[str, Any]:
             "missingDataPluginCount": missing_data_count,
             "disabledPluginCount": disabled_count,
             "sampleMissingModCount": sample_missing_count,
+            "criticalMissingModCount": critical_missing_count,
             "stalePluginsTxtCount": stale_count,
             "missingMasterCount": missing_master_count,
             "sectionStatus": {key: report_status(value) for key, value in sections.items()},
@@ -12104,8 +12456,9 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "vortex_appdata": {"type": "string"},
                 "staging_dir": {"type": "string"},
                 "include_files": {"type": "boolean", "default": False},
+                "include_known_rules": {"type": "boolean", "default": True},
                 "include_scan_cache_status": {"type": "boolean", "default": False},
-                "max_mods": {"type": "integer", "default": 300},
+                "max_mods": {"type": "integer", "default": 1000},
                 "max_files_per_mod": {"type": "integer", "default": 5000},
                 "scan_cache_dir": {"type": "string"},
                 "use_scan_cache": {"type": "boolean", "default": True},
@@ -12114,6 +12467,24 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
             "additionalProperties": False,
         },
         inventory_mods,
+    ),
+    "known_mod_rule_report": (
+        "Flag known Skyrim SE mod stack conflicts and dependencies such as FNIS/Pandora, FSMPM/JContainers, and SLAL/FNIS.",
+        {
+            "type": "object",
+            "properties": {
+                "vortex_appdata": {"type": "string"},
+                "staging_dir": {"type": "string"},
+                "include_files": {"type": "boolean", "default": False},
+                "max_mods": {"type": "integer", "default": 1000},
+                "max_files_per_mod": {"type": "integer", "default": 5000},
+                "scan_cache_dir": {"type": "string"},
+                "use_scan_cache": {"type": "boolean", "default": True},
+                "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
+            },
+            "additionalProperties": False,
+        },
+        known_mod_rule_report,
     ),
     "analyze_conflicts": (
         "Find file-level conflicts across staged mods and unmanaged overlaps in Skyrim Data.",
@@ -13084,6 +13455,7 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "max_mods": {"type": "integer", "default": 500},
                 "max_files_per_mod": {"type": "integer", "default": 3000},
                 "deployment_probe_files_per_mod": {"type": "integer", "default": DEPLOYMENT_PROBE_DEFAULT_FILES_PER_MOD},
+                "critical_deployment_probe_files_per_mod": {"type": "integer", "default": 24},
                 "scan_cache_dir": {"type": "string"},
                 "use_scan_cache": {"type": "boolean", "default": True},
                 "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
@@ -13111,6 +13483,7 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "max_mods": {"type": "integer", "default": 500},
                 "max_files_per_mod": {"type": "integer", "default": 3000},
                 "deployment_probe_files_per_mod": {"type": "integer", "default": DEPLOYMENT_PROBE_DEFAULT_FILES_PER_MOD},
+                "critical_deployment_probe_files_per_mod": {"type": "integer", "default": 24},
                 "scan_cache_dir": {"type": "string"},
                 "use_scan_cache": {"type": "boolean", "default": True},
                 "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
@@ -13302,6 +13675,7 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "max_mods": {"type": "integer", "default": 500},
                 "max_files_per_mod": {"type": "integer", "default": 3000},
                 "deployment_probe_files_per_mod": {"type": "integer", "default": DEPLOYMENT_PROBE_DEFAULT_FILES_PER_MOD},
+                "critical_deployment_probe_files_per_mod": {"type": "integer", "default": 24},
                 "scan_cache_dir": {"type": "string"},
                 "use_scan_cache": {"type": "boolean", "default": True},
                 "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
@@ -13745,6 +14119,8 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["max_files"] = parsed.max_files
     if parsed.deployment_probe_files_per_mod is not None:
         tool_args["deployment_probe_files_per_mod"] = parsed.deployment_probe_files_per_mod
+    if parsed.critical_deployment_probe_files_per_mod is not None:
+        tool_args["critical_deployment_probe_files_per_mod"] = parsed.critical_deployment_probe_files_per_mod
     if parsed.max_log_files is not None:
         tool_args["max_log_files"] = parsed.max_log_files
     if parsed.max_file_bytes is not None:
@@ -13902,6 +14278,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--list-tools", action="store_true", help="Print available tool schemas as JSON and exit.")
     parser.add_argument("--tool", help="Call one MCP tool directly without an MCP client.")
     parser.add_argument("--mod-knowledge", action="store_true", help="Shortcut for --tool mod_knowledge_report.")
+    parser.add_argument("--known-rules", action="store_true", help="Shortcut for --tool known_mod_rule_report.")
     parser.add_argument("--safe-session", action="store_true", help="Shortcut for --tool safe_session_report.")
     parser.add_argument("--skyrim-diagnostics", action="store_true", help="Shortcut for --tool skyrim_diagnostics_report.")
     parser.add_argument("--deployment-doctor", action="store_true", help="Shortcut for --tool deployment_doctor_report.")
@@ -14006,6 +14383,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--max-mods", type=int, help="Maximum mods to scan for supported tools.")
     parser.add_argument("--max-files", type=int, help="Maximum files for tools that scan or bundle a folder.")
     parser.add_argument("--deployment-probe-files-per-mod", type=int, help="Sample deployable files per enabled mod for deployment checks.")
+    parser.add_argument("--critical-deployment-probe-files-per-mod", type=int, help="Critical SKSE/script/behavior file samples per enabled mod for deployment checks.")
     parser.add_argument("--max-log-files", type=int, help="Maximum recent log files for support reports.")
     parser.add_argument("--max-file-bytes", type=int, help="Maximum bytes per file for case bundle output.")
     parser.add_argument("--max-runtime-log-files", type=int, help="Maximum recent Skyrim runtime log files to scan.")
@@ -14079,6 +14457,8 @@ def cli_main(argv: List[str]) -> int:
         if parsed.runtime_logs
         else "mod_knowledge_report"
         if parsed.mod_knowledge
+        else "known_mod_rule_report"
+        if parsed.known_rules
         else "workflow_guide"
         if parsed.workflow_guide
         else "skyrim_issue_case_packet"
@@ -14106,7 +14486,7 @@ def cli_main(argv: List[str]) -> int:
         else parsed.tool
     )
     if not tool_name:
-        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --deployment-doctor, --launch-doctor, --skse-doctor, --automation-plan, --report-viewer, --wsl-bridge, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-evidence-report, --case-bundle, or --safe-profile-fix")
+        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --known-rules, --safe-session, --skyrim-diagnostics, --deployment-doctor, --launch-doctor, --skse-doctor, --automation-plan, --report-viewer, --wsl-bridge, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-evidence-report, --case-bundle, or --safe-profile-fix")
 
     try:
         tool_args = load_cli_tool_args(parsed)

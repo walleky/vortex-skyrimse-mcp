@@ -102,6 +102,12 @@ Generate the collection knowledge report:
 py -3 .\server.py --mod-knowledge
 ```
 
+Run common stack/dependency rules:
+
+```powershell
+py -3 .\server.py --known-rules
+```
+
 Check the local scan cache:
 
 ```powershell

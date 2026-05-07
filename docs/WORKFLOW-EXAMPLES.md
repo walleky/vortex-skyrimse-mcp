@@ -69,6 +69,13 @@ Risky automation safety gate:
 py -3 .\server.py --automation-plan --request "delete redundant mods, sort load order, and make it undoable"
 ```
 
+Known stack/dependency rules:
+
+```powershell
+py -3 .\server.py --known-rules
+py -3 .\server.py --deployment-doctor --critical-deployment-probe-files-per-mod 50
+```
+
 SKSE/runtime compatibility check:
 
 ```powershell
@@ -119,6 +126,7 @@ What OpenClaw should call:
 
 ```text
 deployment_doctor_report
+known_mod_rule_report if animation/dependency tools are involved
 skyrim_launch_doctor_report after Deployment Doctor is linked or after the user asks how to launch
 ```
 

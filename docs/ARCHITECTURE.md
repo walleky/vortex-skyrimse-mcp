@@ -54,6 +54,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - `docs/SKYRIM-RUNTIME-LOGS.md`: explains runtime log scanning and safe config patching.
 - `docs/TESTING.md`: explains local and CI test commands.
 - `docs/MOD-KNOWLEDGE.md`: explains the collection knowledge report and safe removal-review flow.
+- `docs/KNOWN-MOD-RULES.md`: explains built-in conflict/dependency rules for common Skyrim SE stacks.
 - `docs/NEXUS-API.md`: explains optional read-only Nexus Mods API metadata support.
 - `docs/ADR-0001-NEXUS-API-KEYS.md`: records why this MCP uses its own explicit Nexus API key.
 - `docs/SCAN-CACHE.md`: explains the local derived mod-summary cache.
@@ -69,6 +70,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - WSL bridge: `is_wsl_environment`, `windows_path_to_wsl_path`, `windows_env_map`, `wsl_bridge_status`, `wsl_bridge_report`.
 - Vortex CLI helpers: `run_vortex_cli`, `vortex_state_get`, `vortex_state_set`.
 - filesystem and mod inspection: `safe_walk`, `mod_summary`, `inventory_mods`, `analyze_conflicts`, `redundant_mod_report`, `mod_knowledge_report`.
+- known mod rules: `known_mod_rule_report`, `evaluate_known_mod_rules`, and the built-in `KNOWN_MOD_RULES` catalog.
 - scan cache: `scan_cache_status`, `mod_summary_cached`, `load_scan_cache`, `write_scan_cache`, `prune_scan_cache`; cache files are compact, bounded, and rewritten only after dirty/missed summaries.
 - Nexus metadata: `nexus_validate_key`, `nexus_mod_lookup`, `nexus_mod_files`, `nexus_file_info`, `nexus_file_by_md5`, `nexus_parse_nxm_link`, `nexus_update_report`.
 - xEdit/SSEEdit read-only tooling: `xedit_diagnostics_report`, `xedit_inspection_script`, `xedit_inspection_result_report`, `xedit_candidates`, `form_id_load_order_hint`.
