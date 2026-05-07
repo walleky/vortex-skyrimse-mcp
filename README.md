@@ -89,6 +89,7 @@ an MCP client.
 - [docs/LOCAL-MENU.md](docs/LOCAL-MENU.md): local no-hassle menu for report generation.
 - [docs/SAFE-SESSION.md](docs/SAFE-SESSION.md): one safe first report for OpenClaw or local troubleshooting.
 - [docs/SKYRIM-DIAGNOSTICS.md](docs/SKYRIM-DIAGNOSTICS.md): broad one-button Skyrim SE diagnostics.
+- [docs/DEPLOYMENT-DOCTOR.md](docs/DEPLOYMENT-DOCTOR.md): quickest profile-to-Skyrim deployment verdict.
 - [docs/SKYRIM-RUNTIME-LOGS.md](docs/SKYRIM-RUNTIME-LOGS.md): Papyrus/SKSE/crash log scanning and safe config patch workflow.
 - [docs/PERFORMANCE.md](docs/PERFORMANCE.md): compact outputs and slow-model guidance.
 - [docs/NEXUS-API.md](docs/NEXUS-API.md): optional read-only Nexus Mods API setup and tools.
@@ -212,6 +213,7 @@ py -3 .\server.py --case-inbox --case-dir "C:\path\to\issue-case-folder"
 py -3 .\server.py --case-bundle --case-dir "C:\path\to\issue-case-folder"
 py -3 .\server.py --safe-profile-fix --new-profile-name "OpenClaw Fixed Test" --disable-mod-id "exact-vortex-mod-id"
 py -3 .\server.py --tool vortex_collection_report
+py -3 .\server.py --deployment-doctor
 py -3 .\server.py --runtime-logs --description "popup says file was not configured properly"
 py -3 .\server.py --skyrim-diagnostics
 py -3 .\server.py --safe-session
@@ -304,7 +306,7 @@ Use vortex_clone_profile to clone my active Skyrim SE profile as "OpenClaw Safe 
 For deployment/profile mismatch:
 
 ```text
-Use vortex_profile_deployment_report to check whether my active Skyrim SE Vortex profile is actually deployed and enabled in plugins.txt. Do not apply changes.
+Use deployment_doctor_report to check whether my active Skyrim SE Vortex profile is actually linked to Skyrim Data and plugins.txt. Do not apply changes.
 ```
 
 For a single no-hassle diagnosis:
@@ -385,6 +387,7 @@ Use apply_ini_fixes with dry_run=false and make_backup=true.
 - `vortex_profile_mods`
 - `vortex_compare_profiles`
 - `vortex_profile_deployment_report`
+- `deployment_doctor_report`
 - `vortex_profile_backup`
 - `vortex_profile_restore_plan`
 - `vortex_clone_profile`
@@ -430,7 +433,8 @@ If detection misses your setup, pass `skyrim_dir`, `staging_dir`,
   `ini_report`, `safe_session_report`, `skyrim_diagnostics_report`,
   `read_text_file`, `vortex_cli_get`, `vortex_profile_report`,
   `vortex_profile_mods`, `vortex_compare_profiles`,
-  `vortex_profile_deployment_report`, `skyrim_modded_play_report`,
+  `vortex_profile_deployment_report`, `deployment_doctor_report`,
+  `skyrim_modded_play_report`,
   `suggest_conflict_fixes`, `log_status`, `bug_report_bundle`, and
   `write_report` do not modify Vortex or Skyrim.
 - `apply_ini_fixes` can write INI files only when `dry_run=false`.
@@ -481,9 +485,9 @@ For exact mod toggles, run `vortex_profile_mods` first and copy the exact `id`
 values into `vortex_set_profile_mods`. Do not guess mod ids.
 
 If Skyrim launches but the mods do not show up, run
-`vortex_profile_deployment_report`. It checks the common mismatch: Vortex says a
-mod is enabled on a profile, but the plugin is not deployed into Skyrim `Data` or
-is not enabled in `%LOCALAPPDATA%\Skyrim Special Edition\plugins.txt`.
+`deployment_doctor_report`. It checks the common mismatch: Vortex says a mod is
+enabled on a profile, but plugin/sample files are not deployed into Skyrim
+`Data` or the plugin is not enabled in `%LOCALAPPDATA%\Skyrim Special Edition\plugins.txt`.
 
 For the broadest first pass, run `skyrim_modded_play_report`. It adds SKSE,
 missing audio archive, missing master, stale `plugins.txt`, and INI checks, then

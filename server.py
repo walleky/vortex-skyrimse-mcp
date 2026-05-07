@@ -40,7 +40,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.28"
+SERVER_VERSION = "0.2.29"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -58,6 +58,7 @@ NEXUS_DEFAULT_CACHE_TTL_SECONDS = 24 * 60 * 60
 SCAN_CACHE_ENV_VAR = "VORTEX_SKYRIMSE_MCP_SCAN_CACHE_DIR"
 SCAN_DEFAULT_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
 SCAN_CACHE_DEFAULT_MAX_ENTRIES = 10_000
+DEPLOYMENT_PROBE_DEFAULT_FILES_PER_MOD = 12
 XEDIT_EXE_NAMES = ("SSEEdit.exe", "xEdit.exe", "TES5Edit.exe")
 RUNTIME_LOG_SUFFIXES = {".log", ".txt"}
 CONFIG_PATCH_SUFFIXES = {".ini", ".json", ".toml", ".yaml", ".yml", ".xml", ".txt", ".cfg", ".conf", ".properties"}
@@ -1765,6 +1766,7 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "safe_session_report",
             "bug_report_bundle",
             "skyrim_diagnostics_report",
+            "deployment_doctor_report",
             "scan_cache_status",
             "xedit_diagnostics_report",
             "xedit_inspection_script",
@@ -1796,6 +1798,7 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "vortex_profile_mods",
             "vortex_compare_profiles",
             "vortex_profile_deployment_report",
+            "deployment_doctor_report",
             "vortex_collection_report",
             "vortex_profile_backup",
             "vortex_profile_restore_plan",
@@ -1854,12 +1857,12 @@ def workflow_catalog() -> List[Dict[str, Any]]:
             "key": "mods_not_working",
             "title": "Mods Downloaded But Not Working In Game",
             "matchTerms": ["mods not working", "not working", "downloaded", "vanilla", "deploy", "deployment", "profile", "skyrim launches", "not active", "not showing", "audio"],
-            "userPrompt": "Use skyrim_diagnostics_report with performance_mode=slow_model. Check whether my selected Vortex profile is deployed into Skyrim Data and enabled in plugins.txt. Do not apply changes.",
-            "tools": ["skyrim_diagnostics_report", "vortex_profile_deployment_report", "plugin_report"],
-            "whatToRead": ["findings", "sections.skyrimModdedPlay", "sections.setupValidation", "sections.logStatus"],
+            "userPrompt": "Use deployment_doctor_report first. Tell me whether my selected Vortex profile is linked to Skyrim Data and plugins.txt. Do not apply changes.",
+            "tools": ["deployment_doctor_report", "skyrim_diagnostics_report", "vortex_profile_deployment_report", "plugin_report"],
+            "whatToRead": ["summary.deploymentState", "checks", "findings", "nextActions"],
             "humanSteps": ["Select the intended Vortex profile.", "Click Deploy Mods in Vortex.", "Confirm plugins are enabled.", "Launch through SKSE when SKSE is part of the setup."],
-            "directCli": ["py -3 .\\server.py --skyrim-diagnostics --performance-mode slow_model"],
-            "menuAction": "12. Skyrim diagnostics report",
+            "directCli": ["py -3 .\\server.py --deployment-doctor", "py -3 .\\server.py --skyrim-diagnostics --performance-mode slow_model"],
+            "menuAction": "32. Deployment Doctor",
         },
         {
             "key": "weird_object",
@@ -7565,6 +7568,61 @@ def root_plugin_paths(data_dir: Optional[Path]) -> Dict[str, str]:
     return result
 
 
+def deployment_relevant_file(rel: str) -> bool:
+    lower = rel.lower().replace("\\", "/")
+    name = Path(lower).name
+    if lower.startswith("fomod/") or name in {"meta.ini", "info.json", "mod.json"}:
+        return False
+    kind = classify_file(rel)
+    if kind == "config" and "/" not in lower:
+        return False
+    return kind in {"plugin", "archive", "skse_plugin", "script", "mesh", "texture", "interface", "config"}
+
+
+def deployment_probe_for_mod(mod_path: Path, data_dir: Optional[Path], max_samples: int) -> Dict[str, Any]:
+    limit = max(0, int(max_samples))
+    result: Dict[str, Any] = {
+        "sampleLimit": limit,
+        "sampleCount": 0,
+        "deployedSampleCount": 0,
+        "missingSampleCount": 0,
+        "samples": [],
+    }
+    if limit <= 0:
+        result["skippedReason"] = "sample limit is 0"
+        return result
+    if not data_dir or not data_dir.exists():
+        result["skippedReason"] = "Skyrim Data folder not found"
+        return result
+
+    scan_limit = max(limit * 10, limit)
+    for file_path in safe_walk(mod_path, scan_limit):
+        rel = rel_to(file_path, mod_path)
+        if not deployment_relevant_file(rel):
+            continue
+        target = data_dir / rel
+        exists = target.exists()
+        if exists:
+            result["deployedSampleCount"] += 1
+        else:
+            result["missingSampleCount"] += 1
+        result["samples"].append(
+            {
+                "relativePath": rel,
+                "kind": classify_file(rel),
+                "deployedInData": exists,
+                "dataPath": str(target),
+            }
+        )
+        if len(result["samples"]) >= limit:
+            break
+
+    result["sampleCount"] = len(result["samples"])
+    if result["sampleCount"] == 0:
+        result["skippedReason"] = "no deployable sample files found"
+    return result
+
+
 def skyrim_file_health(args: Dict[str, Any]) -> Dict[str, Any]:
     skyrim_dir = find_skyrim_dir(args.get("skyrim_dir"))
     data_dir = skyrim_dir / "Data" if skyrim_dir else None
@@ -7630,9 +7688,11 @@ def vortex_profile_deployment_report(args: Dict[str, Any]) -> Dict[str, Any]:
     enabled_mod_ids = [str(mod_id) for mod_id, entry in mod_state.items() if profile_enabled(entry)]
     max_mods = int(args.get("max_mods", 500))
     max_files_per_mod = int(args.get("max_files_per_mod", 3000))
+    probe_files_per_mod = int(args.get("deployment_probe_files_per_mod", DEPLOYMENT_PROBE_DEFAULT_FILES_PER_MOD))
     checked_mods = []
     unresolved_mods = []
     plugin_rows = []
+    missing_sampled_files = []
     profile_plugin_names: set[str] = set()
     scan_cache = load_scan_cache(args) if scan_cache_enabled(args) else {}
 
@@ -7643,15 +7703,28 @@ def vortex_profile_deployment_report(args: Dict[str, Any]) -> Dict[str, Any]:
             unresolved_mods.append({**summarize_vortex_mod(mod_id, snapshot["mods"]), "reason": "staging folder not found"})
             continue
         summary = mod_summary_cached(mod_path, include_files=False, max_files=max_files_per_mod, args=args, cache=scan_cache)
+        deploy_probe = deployment_probe_for_mod(mod_path, data_dir, probe_files_per_mod)
+        mod_info = summarize_vortex_mod(mod_id, snapshot["mods"])
         checked_mods.append(
             {
-                **summarize_vortex_mod(mod_id, snapshot["mods"]),
+                **mod_info,
                 "stagingPath": str(mod_path),
                 "pluginCount": len(summary.get("plugins", [])),
                 "archiveCount": len(summary.get("archives", [])),
                 "sksePluginCount": len(summary.get("sksePlugins", [])),
+                "deployProbe": deploy_probe,
             }
         )
+        if deploy_probe.get("missingSampleCount"):
+            missing_sampled_files.append(
+                {
+                    "modId": mod_id,
+                    "modName": mod_info.get("name"),
+                    "stagingPath": str(mod_path),
+                    "missingSampleCount": deploy_probe.get("missingSampleCount"),
+                    "samples": [sample for sample in deploy_probe.get("samples", []) if not sample.get("deployedInData")],
+                }
+            )
         for rel in summary.get("plugins", []):
             plugin_name = Path(rel).name
             plugin_key = plugin_name.lower()
@@ -7687,6 +7760,8 @@ def vortex_profile_deployment_report(args: Dict[str, Any]) -> Dict[str, Any]:
         issues.append("Some plugins from enabled profile mods are not present in Skyrim Data; deploy mods in Vortex.")
     if not_enabled:
         issues.append("Some plugins from enabled profile mods are not enabled in plugins.txt.")
+    if missing_sampled_files:
+        issues.append("Some sampled files from enabled profile mods were not found in Skyrim Data; deployment may be incomplete.")
     if enabled_plugins_not_seen_in_profile and profile_plugin_names:
         issues.append("plugins.txt has enabled plugins not seen in the selected profile; this may indicate the wrong profile or stale deployment.")
 
@@ -7705,6 +7780,7 @@ def vortex_profile_deployment_report(args: Dict[str, Any]) -> Dict[str, Any]:
         "profilePlugins": plugin_rows,
         "pluginsFromEnabledModsMissingFromData": missing_from_data,
         "pluginsFromEnabledModsNotEnabledInPluginsTxt": not_enabled,
+        "sampledEnabledModFilesMissingFromData": missing_sampled_files,
         "enabledPluginsTxtNotSeenInProfile": enabled_plugins_not_seen_in_profile,
         "issues": issues,
         "notes": [
@@ -8277,6 +8353,400 @@ def skyrim_modded_play_report(args: Dict[str, Any]) -> Dict[str, Any]:
         "notes": [
             "This tool is read-only. It does not change Vortex, Skyrim, plugins.txt, or INI files.",
             "For modded Skyrim SE, launch through SKSE after Vortex deploys the intended active profile.",
+        ],
+    }
+
+
+def add_doctor_check(
+    checks: List[Dict[str, Any]],
+    key: str,
+    label: str,
+    status: str,
+    message: str,
+    next_action: str,
+    evidence: Any = None,
+) -> None:
+    item = {
+        "key": key,
+        "label": label,
+        "status": status,
+        "message": message,
+        "nextAction": next_action,
+    }
+    if evidence is not None:
+        item["evidence"] = evidence
+    checks.append(item)
+
+
+def deployment_doctor_report(args: Dict[str, Any]) -> Dict[str, Any]:
+    findings: List[Dict[str, Any]] = []
+    checks: List[Dict[str, Any]] = []
+    sections: Dict[str, Any] = {}
+
+    try:
+        sections["environment"] = detect_environment(args)
+    except Exception as exc:
+        sections["environment"] = {"error": str(exc)}
+        add_finding(findings, "critical", "environment_failed", str(exc), "Pass skyrim_dir, staging_dir, local_appdata, and vortex_exe explicitly.")
+
+    try:
+        sections["fileHealth"] = skyrim_file_health(args)
+    except Exception as exc:
+        sections["fileHealth"] = {"error": str(exc)}
+        add_finding(findings, "high", "file_health_failed", str(exc), "Pass skyrim_dir explicitly and rerun Deployment Doctor.")
+
+    try:
+        sections["deployment"] = vortex_profile_deployment_report(args)
+    except Exception as exc:
+        sections["deployment"] = {"error": str(exc)}
+        add_finding(
+            findings,
+            "high",
+            "deployment_report_failed",
+            str(exc),
+            "Pass vortex_exe, staging_dir, skyrim_dir, and profile_id if detection picked the wrong profile.",
+        )
+
+    try:
+        sections["plugins"] = plugin_report(args)
+    except Exception as exc:
+        sections["plugins"] = {"error": str(exc)}
+        add_finding(findings, "medium", "plugin_report_failed", str(exc), "Pass skyrim_dir and local_appdata explicitly, then rerun.")
+
+    env = sections.get("environment") if isinstance(sections.get("environment"), dict) else {}
+    if isinstance(env, dict) and "error" not in env:
+        skyrim_data = env.get("skyrim_data")
+        staging_dir = env.get("staging_dir")
+        vortex_exe = env.get("vortex_exe")
+        plugins_path = nested_get(env, ["plugin_state", "plugins_txt"])
+        add_doctor_check(
+            checks,
+            "skyrim_data",
+            "Skyrim Data Folder",
+            "pass" if skyrim_data and Path(str(skyrim_data)).exists() else "fail",
+            "Skyrim Data was found." if skyrim_data and Path(str(skyrim_data)).exists() else "Skyrim Data was not found.",
+            "Pass --skyrim-dir or install/run Skyrim SE once through Steam.",
+            skyrim_data,
+        )
+        add_doctor_check(
+            checks,
+            "vortex_staging",
+            "Vortex Staging Folder",
+            "pass" if staging_dir and Path(str(staging_dir)).exists() else "fail",
+            "Vortex Skyrim SE staging was found." if staging_dir and Path(str(staging_dir)).exists() else "Vortex staging was not found.",
+            "Pass --staging-dir or open Vortex Settings > Mods and confirm the Skyrim SE staging folder.",
+            staging_dir,
+        )
+        add_doctor_check(
+            checks,
+            "vortex_cli",
+            "Vortex CLI",
+            "pass" if vortex_exe else "fail",
+            "Vortex.exe was found." if vortex_exe else "Vortex.exe was not found.",
+            "Pass --vortex-exe if Vortex is installed in a custom location.",
+            vortex_exe,
+        )
+        add_doctor_check(
+            checks,
+            "plugins_txt",
+            "plugins.txt",
+            "pass" if plugins_path else "fail",
+            "plugins.txt was found." if plugins_path else "plugins.txt was not found.",
+            "Launch Skyrim once, then deploy and enable plugins in Vortex.",
+            plugins_path,
+        )
+
+    deployment = sections.get("deployment") if isinstance(sections.get("deployment"), dict) else {}
+    if isinstance(deployment, dict) and "error" not in deployment:
+        enabled_mod_count = int(deployment.get("enabledProfileModCount", 0) or 0)
+        checked_mod_count = int(deployment.get("checkedEnabledModCount", 0) or 0)
+        unchecked_mod_count = int(deployment.get("uncheckedEnabledModCount", 0) or 0)
+        unresolved_mods = deployment.get("unresolvedEnabledMods", []) or []
+        profile_plugins = deployment.get("profilePlugins", []) or []
+        missing_from_data = deployment.get("pluginsFromEnabledModsMissingFromData", []) or []
+        not_enabled = deployment.get("pluginsFromEnabledModsNotEnabledInPluginsTxt", []) or []
+        stale_plugins = deployment.get("enabledPluginsTxtNotSeenInProfile", []) or []
+        missing_samples = deployment.get("sampledEnabledModFilesMissingFromData", []) or []
+
+        profile_status = "pass"
+        profile_message = f"Read selected Vortex profile with {enabled_mod_count} enabled mod(s)."
+        if enabled_mod_count == 0:
+            profile_status = "warn"
+            profile_message = "The selected Vortex profile has no enabled mods."
+            add_finding(findings, "medium", "profile_has_no_enabled_mods", profile_message, "Select the intended Vortex profile or enable mods before deploying.")
+        elif unresolved_mods:
+            profile_status = "fail"
+            add_finding(
+                findings,
+                "high",
+                "enabled_mods_missing_staging",
+                f"{len(unresolved_mods)} enabled profile mod(s) could not be matched to staging folders.",
+                "Confirm the staging folder and repair/reinstall missing mods in Vortex.",
+                unresolved_mods[:20],
+            )
+        elif unchecked_mod_count:
+            profile_status = "warn"
+            profile_message = f"Checked {checked_mod_count} enabled mod(s); {unchecked_mod_count} were skipped by max_mods."
+        add_doctor_check(checks, "vortex_profile", "Selected Vortex Profile", profile_status, profile_message, "Use --profile-id if the selected profile is wrong.", deployment.get("profile"))
+
+        add_doctor_check(
+            checks,
+            "profile_plugins_deployed",
+            "Profile Plugins In Skyrim Data",
+            "fail" if missing_from_data else "pass" if profile_plugins else "warn",
+            (
+                f"{len(missing_from_data)} enabled-profile plugin(s) are missing from Skyrim Data."
+                if missing_from_data
+                else "All checked enabled-profile plugins were found in Skyrim Data."
+                if profile_plugins
+                else "No ESP/ESM/ESL plugins were found in checked enabled mods; pluginless mods need file sample evidence."
+            ),
+            "Click Deploy Mods in Vortex, confirm the game path, then rerun Deployment Doctor.",
+            missing_from_data[:20],
+        )
+        if missing_from_data:
+            add_finding(
+                findings,
+                "high",
+                "enabled_profile_plugins_not_deployed",
+                f"{len(missing_from_data)} enabled-profile plugin(s) are missing from Skyrim Data.",
+                "Click Deploy Mods in Vortex and rerun Deployment Doctor.",
+                missing_from_data[:20],
+            )
+
+        add_doctor_check(
+            checks,
+            "profile_plugins_enabled",
+            "Profile Plugins Enabled",
+            "fail" if not_enabled else "pass" if profile_plugins else "warn",
+            (
+                f"{len(not_enabled)} enabled-profile plugin(s) are not enabled in plugins.txt."
+                if not_enabled
+                else "All checked enabled-profile plugins are enabled in plugins.txt."
+                if profile_plugins
+                else "No profile plugins were available to compare against plugins.txt."
+            ),
+            "Open Vortex Plugins, enable the intended plugins, sort if needed, then deploy.",
+            not_enabled[:20],
+        )
+        if not_enabled:
+            add_finding(
+                findings,
+                "high",
+                "enabled_profile_plugins_disabled",
+                f"{len(not_enabled)} enabled-profile plugin(s) are not enabled in plugins.txt.",
+                "Enable the plugins in Vortex's Plugins tab, sort if needed, deploy, then rerun.",
+                not_enabled[:20],
+            )
+
+        add_doctor_check(
+            checks,
+            "sampled_files_deployed",
+            "Sampled Mod Files In Skyrim Data",
+            "fail" if missing_samples else "pass",
+            (
+                f"{len(missing_samples)} enabled mod(s) have sampled deployed files missing from Skyrim Data."
+                if missing_samples
+                else "Sampled deployable files from checked enabled mods were found in Skyrim Data, or no missing samples were detected."
+            ),
+            "Deploy Mods in Vortex. If this stays red, confirm staging and game folders are on writable locations supported by Vortex.",
+            missing_samples[:20],
+        )
+        if missing_samples:
+            add_finding(
+                findings,
+                "high",
+                "sampled_enabled_mod_files_not_deployed",
+                f"{len(missing_samples)} enabled mod(s) have sampled files missing from Skyrim Data.",
+                "Deploy Mods in Vortex and verify Vortex is managing the detected Skyrim Data folder.",
+                missing_samples[:20],
+            )
+
+        add_doctor_check(
+            checks,
+            "plugins_txt_stale",
+            "plugins.txt Profile Match",
+            "warn" if stale_plugins and profile_plugins else "pass",
+            (
+                f"{len(stale_plugins)} enabled plugins.txt entrie(s) were not seen in the selected profile."
+                if stale_plugins and profile_plugins
+                else "plugins.txt does not show obvious stale entries from another checked profile."
+            ),
+            "Confirm the active Vortex profile, deploy again, and make sure you launch the same game install.",
+            stale_plugins[:40],
+        )
+        if stale_plugins and profile_plugins:
+            add_finding(
+                findings,
+                "medium",
+                "plugins_txt_may_be_stale",
+                f"{len(stale_plugins)} enabled plugins.txt entrie(s) were not seen in the selected Vortex profile.",
+                "Select the intended profile in Vortex, deploy, then rerun Deployment Doctor.",
+                stale_plugins[:40],
+            )
+
+    filtered_missing_masters_for_summary: List[Dict[str, Any]] = []
+    plugins = sections.get("plugins") if isinstance(sections.get("plugins"), dict) else {}
+    if isinstance(plugins, dict) and "error" not in plugins:
+        deployment_for_filters = sections.get("deployment") if isinstance(sections.get("deployment"), dict) else {}
+        profile_plugin_keys = {
+            str(row.get("plugin", "")).lower()
+            for row in deployment_for_filters.get("profilePlugins", [])
+            if isinstance(row, dict) and row.get("plugin")
+        } if isinstance(deployment_for_filters, dict) and "error" not in deployment_for_filters else set()
+        plugins_txt_enabled_keys = {
+            str(entry.get("name", "")).lower()
+            for entry in plugins.get("pluginsTxt", {}).get("entries", [])
+            if isinstance(entry, dict) and entry.get("enabled") and entry.get("name")
+        }
+        missing_enabled = plugins.get("missingEnabledPlugins", []) or []
+        raw_missing_masters = plugins.get("missingMasters", []) or []
+        if profile_plugin_keys:
+            missing_masters = [
+                item
+                for item in raw_missing_masters
+                if str(item.get("plugin", "")).lower() in profile_plugin_keys
+                or str(item.get("plugin", "")).lower() in plugins_txt_enabled_keys
+            ]
+        else:
+            missing_masters = raw_missing_masters
+        filtered_missing_masters_for_summary = missing_masters
+        add_doctor_check(
+            checks,
+            "missing_enabled_plugins",
+            "Enabled Plugins Exist On Disk",
+            "fail" if missing_enabled else "pass",
+            f"{len(missing_enabled)} enabled plugins.txt plugin(s) are missing on disk." if missing_enabled else "Every enabled plugins.txt plugin found by the report exists on disk or in staging.",
+            "Deploy in Vortex or disable stale plugins from the active profile.",
+            missing_enabled[:40],
+        )
+        if missing_enabled:
+            add_finding(
+                findings,
+                "high",
+                "plugins_txt_points_to_missing_files",
+                f"{len(missing_enabled)} enabled plugins.txt plugin(s) are missing on disk.",
+                "Deploy in Vortex or disable stale plugins from the active profile.",
+                missing_enabled[:40],
+            )
+        add_doctor_check(
+            checks,
+            "missing_masters",
+            "Plugin Masters",
+            "fail" if missing_masters else "pass",
+            f"{len(missing_masters)} plugin master requirement(s) are missing." if missing_masters else "No missing plugin masters were found in scanned headers.",
+            "Install/enable the required masters or disable dependent plugins before loading the save.",
+            missing_masters[:40],
+        )
+        if missing_masters:
+            add_finding(
+                findings,
+                "critical",
+                "missing_plugin_masters",
+                f"{len(missing_masters)} plugin master requirement(s) are missing.",
+                "Install/enable the required master mods or disable dependent plugins before launching the save.",
+                missing_masters[:40],
+            )
+
+    file_health = sections.get("fileHealth") if isinstance(sections.get("fileHealth"), dict) else {}
+    if isinstance(file_health, dict) and "error" not in file_health:
+        skse = file_health.get("skse", {}) if isinstance(file_health.get("skse"), dict) else {}
+        audio = file_health.get("audioArchives", {}) if isinstance(file_health.get("audioArchives"), dict) else {}
+        file_issues = list(file_health.get("issues", []))
+        skyrim_missing = any("SkyrimSE.exe" in issue for issue in file_issues)
+        skse_issues = [issue for issue in file_issues if "SKSE" in issue or "skse64" in issue]
+        audio_issues = [issue for issue in file_issues if "voice archive" in issue or "Sounds.bsa" in issue]
+        add_doctor_check(
+            checks,
+            "skse_files",
+            "SKSE Files",
+            "unknown" if skyrim_missing else "fail" if skse_issues else "pass",
+            "Skipped because SkyrimSE.exe was not found." if skyrim_missing else "; ".join(skse_issues) if skse_issues else "SKSE loader, runtime DLL/script evidence looks present.",
+            "Install the SKSE build matching your Skyrim runtime; launch modded Skyrim through SKSE.",
+            skse,
+        )
+        for issue in skse_issues:
+            add_finding(findings, "high", "skse_incomplete", issue, "Install the SKSE build matching your Skyrim runtime, then deploy/test again.")
+        add_doctor_check(
+            checks,
+            "audio_archives",
+            "Base Game Audio Archives",
+            "unknown" if skyrim_missing else "fail" if audio_issues else "pass",
+            "Skipped because SkyrimSE.exe was not found." if skyrim_missing else "; ".join(audio_issues) if audio_issues else "Base game voice/sound archive evidence looks present.",
+            "Verify Skyrim SE game files in Steam; on Proton/Wine also check audio runtime workarounds if voices stay silent.",
+            audio,
+        )
+        for issue in audio_issues:
+            add_finding(findings, "high", "audio_archives_missing", issue, "Verify Skyrim SE files in Steam before chasing mod conflicts.")
+
+    findings = sort_findings(findings)
+    highest = findings[0].get("severity", "none") if findings else "none"
+    failed_checks = [check for check in checks if check.get("status") == "fail"]
+    warning_checks = [check for check in checks if check.get("status") == "warn"]
+
+    deployment_section = sections.get("deployment") if isinstance(sections.get("deployment"), dict) else {}
+    missing_data_count = len(deployment_section.get("pluginsFromEnabledModsMissingFromData", [])) if isinstance(deployment_section, dict) else 0
+    disabled_count = len(deployment_section.get("pluginsFromEnabledModsNotEnabledInPluginsTxt", [])) if isinstance(deployment_section, dict) else 0
+    sample_missing_count = len(deployment_section.get("sampledEnabledModFilesMissingFromData", [])) if isinstance(deployment_section, dict) else 0
+    stale_count = len(deployment_section.get("enabledPluginsTxtNotSeenInProfile", [])) if isinstance(deployment_section, dict) else 0
+    missing_master_count = len(filtered_missing_masters_for_summary)
+
+    if any(finding.get("code") == "deployment_report_failed" for finding in findings):
+        deployment_state = "blocked"
+    elif missing_master_count:
+        deployment_state = "blocked_missing_masters"
+    elif missing_data_count or sample_missing_count:
+        deployment_state = "needs_deploy"
+    elif disabled_count:
+        deployment_state = "plugins_disabled"
+    elif stale_count:
+        deployment_state = "profile_mismatch_or_stale_plugins"
+    elif failed_checks:
+        deployment_state = "blocked"
+    elif warning_checks:
+        deployment_state = "review"
+    else:
+        deployment_state = "linked"
+
+    next_actions = []
+    for finding in findings:
+        action = finding.get("nextAction")
+        if action and action not in next_actions:
+            next_actions.append(action)
+    if deployment_state == "linked":
+        next_actions.append("Launch modded Skyrim through SKSE after Vortex deploys the intended profile.")
+    elif deployment_state == "needs_deploy":
+        next_actions.insert(0, "In Vortex, select the intended Skyrim SE profile, click Deploy Mods, then rerun Deployment Doctor.")
+    if not next_actions:
+        next_actions.append("Keep this report as a clean deployment baseline.")
+
+    return {
+        "summary": {
+            "deploymentState": deployment_state,
+            "profileToSkyrimLinked": deployment_state == "linked",
+            "okToLaunchModded": highest not in {"critical", "high"} and deployment_state in {"linked", "review"},
+            "highestSeverity": highest,
+            "findingCount": len(findings),
+            "failedCheckCount": len(failed_checks),
+            "warningCheckCount": len(warning_checks),
+            "checkedEnabledModCount": deployment_section.get("checkedEnabledModCount") if isinstance(deployment_section, dict) else None,
+            "enabledProfileModCount": deployment_section.get("enabledProfileModCount") if isinstance(deployment_section, dict) else None,
+            "profilePluginCount": len(deployment_section.get("profilePlugins", [])) if isinstance(deployment_section, dict) else None,
+            "missingDataPluginCount": missing_data_count,
+            "disabledPluginCount": disabled_count,
+            "sampleMissingModCount": sample_missing_count,
+            "stalePluginsTxtCount": stale_count,
+            "missingMasterCount": missing_master_count,
+            "sectionStatus": {key: report_status(value) for key, value in sections.items()},
+        },
+        "checks": checks,
+        "findings": findings,
+        "nextActions": next_actions,
+        "sections": sections,
+        "notes": [
+            "Deployment Doctor is read-only. It does not deploy, sort, enable, disable, install, delete, or edit anything.",
+            "A green plugin check proves ESP/ESM/ESL files are in Data and enabled in plugins.txt. Pluginless mods are checked with sampled deployable files.",
+            "If you switch Vortex profiles, deploy in Vortex before launching Skyrim and before rerunning this report.",
         ],
     }
 
@@ -10112,6 +10582,31 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         },
         vortex_profile_deployment_report,
     ),
+    "deployment_doctor_report": (
+        "Read-only plain-English verdict for whether the selected Vortex profile is actually linked to Skyrim Data, plugins.txt, SKSE, and plugin masters.",
+        {
+            "type": "object",
+            "properties": {
+                "profile_id": {"type": "string"},
+                "game_id": {"type": "string", "default": GAME_ID},
+                "vortex_exe": {"type": "string"},
+                "vortex_appdata": {"type": "string"},
+                "skyrim_dir": {"type": "string"},
+                "staging_dir": {"type": "string"},
+                "local_appdata": {"type": "string"},
+                "my_games_dir": {"type": "string"},
+                "max_mods": {"type": "integer", "default": 500},
+                "max_files_per_mod": {"type": "integer", "default": 3000},
+                "deployment_probe_files_per_mod": {"type": "integer", "default": DEPLOYMENT_PROBE_DEFAULT_FILES_PER_MOD},
+                "scan_cache_dir": {"type": "string"},
+                "use_scan_cache": {"type": "boolean", "default": True},
+                "scan_cache_ttl_seconds": {"type": "integer", "default": SCAN_DEFAULT_CACHE_TTL_SECONDS},
+                "timeout_seconds": {"type": "integer", "default": 60},
+            },
+            "additionalProperties": False,
+        },
+        deployment_doctor_report,
+    ),
     "vortex_profile_backup": (
         "Write a JSON backup of the active or selected Vortex Skyrim SE profile for later restore previews.",
         {
@@ -10646,6 +11141,8 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["max_mods"] = parsed.max_mods
     if parsed.max_files is not None:
         tool_args["max_files"] = parsed.max_files
+    if parsed.deployment_probe_files_per_mod is not None:
+        tool_args["deployment_probe_files_per_mod"] = parsed.deployment_probe_files_per_mod
     if parsed.max_log_files is not None:
         tool_args["max_log_files"] = parsed.max_log_files
     if parsed.max_file_bytes is not None:
@@ -10803,6 +11300,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--mod-knowledge", action="store_true", help="Shortcut for --tool mod_knowledge_report.")
     parser.add_argument("--safe-session", action="store_true", help="Shortcut for --tool safe_session_report.")
     parser.add_argument("--skyrim-diagnostics", action="store_true", help="Shortcut for --tool skyrim_diagnostics_report.")
+    parser.add_argument("--deployment-doctor", action="store_true", help="Shortcut for --tool deployment_doctor_report.")
     parser.add_argument("--runtime-logs", action="store_true", help="Shortcut for --tool skyrim_runtime_log_report.")
     parser.add_argument("--workflow-guide", action="store_true", help="Shortcut for --tool workflow_guide.")
     parser.add_argument("--issue-case", action="store_true", help="Shortcut for --tool skyrim_issue_case_packet.")
@@ -10894,6 +11392,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--max-preview-rows", type=int, help="Maximum preview rows returned by xedit_inspection_result_report.")
     parser.add_argument("--max-mods", type=int, help="Maximum mods to scan for supported tools.")
     parser.add_argument("--max-files", type=int, help="Maximum files for tools that scan or bundle a folder.")
+    parser.add_argument("--deployment-probe-files-per-mod", type=int, help="Sample deployable files per enabled mod for deployment checks.")
     parser.add_argument("--max-log-files", type=int, help="Maximum recent log files for support reports.")
     parser.add_argument("--max-file-bytes", type=int, help="Maximum bytes per file for case bundle output.")
     parser.add_argument("--max-runtime-log-files", type=int, help="Maximum recent Skyrim runtime log files to scan.")
@@ -10950,6 +11449,8 @@ def cli_main(argv: List[str]) -> int:
         if parsed.skyrim_diagnostics
         else "safe_session_report"
         if parsed.safe_session
+        else "deployment_doctor_report"
+        if parsed.deployment_doctor
         else "skyrim_runtime_log_report"
         if parsed.runtime_logs
         else "mod_knowledge_report"
@@ -10979,7 +11480,7 @@ def cli_main(argv: List[str]) -> int:
         else parsed.tool
     )
     if not tool_name:
-        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-bundle, or --safe-profile-fix")
+        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --safe-session, --skyrim-diagnostics, --deployment-doctor, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-bundle, or --safe-profile-fix")
 
     try:
         tool_args = load_cli_tool_args(parsed)

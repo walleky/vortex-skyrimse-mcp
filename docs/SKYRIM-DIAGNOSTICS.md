@@ -5,6 +5,10 @@ safe wrapper around the existing setup, profile, deployment, play-health,
 in-game issue, Skyrim runtime log, local scan-cache, read-only xEdit target,
 collection, and optional Nexus metadata checks.
 
+If the only question is "are my enabled Vortex mods reaching Skyrim?", start
+with `deployment_doctor_report`. It returns a smaller profile-to-Skyrim verdict
+before you open the broader diagnostics report.
+
 It writes:
 
 - Markdown for humans.

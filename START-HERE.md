@@ -93,7 +93,7 @@ Use the vortex-skyrimse MCP to run validate_setup, then detect my Skyrim SE/Vort
 Then check whether Vortex's active profile is really deployed:
 
 ```text
-Use skyrim_modded_play_report to tell me why my modded Skyrim SE setup is not launching with the expected Vortex profile. Do not apply changes.
+Use deployment_doctor_report to tell me whether my selected Vortex profile is linked to Skyrim Data and plugins.txt. Do not apply changes.
 ```
 
 Optional Nexus metadata:
@@ -130,6 +130,12 @@ For a big collection knowledge map:
 
 ```text
 Use the vortex-skyrimse MCP to run mod_knowledge_report. Write the Markdown report, summarize the top removal-review candidates, and do not apply changes.
+```
+
+For mods downloaded but not working:
+
+```text
+Use deployment_doctor_report first. Tell me whether my selected Vortex profile is linked to Skyrim Data and plugins.txt. Do not apply changes.
 ```
 
 For something weird inside the game:

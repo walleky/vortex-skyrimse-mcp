@@ -47,6 +47,7 @@ Vortex-SkyrimSE-Menu.cmd
 29. Bundle issue case
 30. Import case inbox
 31. Clone profile and apply fixes
+32. Deployment Doctor
 
 Reports are written to:
 
@@ -93,6 +94,7 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action case-bundle -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
 .\vortex_skyrimse_menu.ps1 -Action case-inbox -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
 .\vortex_skyrimse_menu.ps1 -Action safe-profile-fix -SafeProfileName "OpenClaw Fixed Test" -DisableModIds "exact-vortex-mod-id"
+.\vortex_skyrimse_menu.ps1 -Action deployment-doctor
 ```
 
 Action 30 imports helper output from `<case folder>\incoming` by default. Use
@@ -101,6 +103,10 @@ Action 30 imports helper output from `<case folder>\incoming` by default. Use
 Action 31 previews cloning the selected/active profile and applying exact mod-id
 enable/disable fixes to the clone only. Add `-ApplyProfileFix` after reviewing
 the preview and closing Vortex.
+
+Action 32 is the fastest "are my Vortex mods reaching Skyrim?" verdict. It is
+read-only and checks the selected profile against Skyrim `Data`, `plugins.txt`,
+sampled deployed files, SKSE, audio archives, and missing masters.
 
 If Windows cannot find Python, pass the executable once:
 
@@ -174,6 +180,6 @@ enable/disable fixes to the clone only.
 
 ## Safety
 
-The menu runs read-only report actions plus profile backup, restore preview, and cloned-profile fix previews. It does not delete mods, sort load order, write INI fixes, edit plugins, install collections, or apply restore plans. Action 31 writes only when `-ApplyProfileFix` is passed, and it changes the cloned profile only.
+The menu runs read-only report actions plus profile backup, restore preview, and cloned-profile fix previews. It does not delete mods, sort load order, write INI fixes, edit plugins, install collections, or apply restore plans. Action 31 writes only when `-ApplyProfileFix` is passed, and it changes the cloned profile only. Action 32 is read-only.
 
 The safe session and diagnostics actions write Markdown and JSON reports and try to include a profile backup unless `-NoProfileBackup` is passed. They include Skyrim runtime log scanning by default unless `-NoRuntimeLogs` is passed. The backup action writes a JSON backup file. The restore action previews what would be restored; it does not change Vortex. The in-game issue action searches for likely mod candidates; it does not fix records automatically. The runtime log action is read-only and points OpenClaw at config candidates when logs reference them. The config validator is read-only and checks parse/health clues before any patch. The xEdit inspection and issue-case actions generate/read evidence only; do not save plugin edits from xEdit unless you intentionally made separate manual changes.

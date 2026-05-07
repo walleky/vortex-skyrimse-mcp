@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.29
+
+- Adds `deployment_doctor_report`, a read-only plain-English deployment verdict for Vortex profile, Skyrim `Data`, `plugins.txt`, SKSE files, audio archives, and missing plugin masters.
+- Adds `--deployment-doctor` direct CLI shortcut and local helper menu action 32.
+- Extends profile deployment checks with sampled deployable-file probes so pluginless, SKSE, archive, script, mesh, texture, interface, and config-only mods have better evidence.
+- Updates the mods-not-working workflow to start with Deployment Doctor, with fixture/smoke/Menu coverage.
+
 ## v0.2.28
 
 - Bounds the local scan cache with `scan_cache_max_entries` / `--scan-cache-max-entries`, pruning oldest entries during dirty writes.

@@ -263,6 +263,7 @@ function Show-Actions {
   Write-Host "29. Bundle issue case"
   Write-Host "30. Import case inbox"
   Write-Host "31. Clone profile and apply fixes"
+  Write-Host "32. Deployment Doctor"
   Write-Host "Q. Quit"
 }
 
@@ -522,6 +523,13 @@ function Invoke-MenuAction {
       Write-Host "Wrote Skyrim diagnostics JSON: $json" -ForegroundColor Green
       Write-Host "Wrote JSON result: $out" -ForegroundColor Green
       Write-Host "This action did not deploy, disable, delete, update, or edit mods." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("32", "deployment", "deployment-doctor", "doctor", "deploy-doctor") } {
+      $out = Join-Path $script:ReportDir "deployment-doctor-$stamp.json"
+      Invoke-Server (@("--deployment-doctor", "--output-json", $out) + $common)
+      Write-Host "Wrote Deployment Doctor report: $out" -ForegroundColor Green
+      Write-Host "This action did not deploy, enable, disable, sort, delete, or edit mods." -ForegroundColor Green
       return
     }
     { $_ -in @("13", "cache", "scan-cache") } {

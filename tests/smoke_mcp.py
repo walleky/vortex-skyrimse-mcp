@@ -127,6 +127,7 @@ def main() -> int:
     assert "config_file_report" in listed_names, listed_names
     assert "safe_session_report" in listed_names, listed_names
     assert "skyrim_diagnostics_report" in listed_names, listed_names
+    assert "deployment_doctor_report" in listed_names, listed_names
     assert "scan_cache_status" in listed_names, listed_names
     assert "xedit_diagnostics_report" in listed_names, listed_names
     assert "xedit_inspection_script" in listed_names, listed_names
@@ -158,6 +159,7 @@ def main() -> int:
     assert "scan_cache_dir" in listed_by_name["mod_knowledge_report"]["inputSchema"]["properties"], listed_by_name
     assert "scan_cache_max_entries" in listed_by_name["scan_cache_status"]["inputSchema"]["properties"], listed_by_name
     assert "scan_cache_max_entries" in listed_by_name["mod_knowledge_report"]["inputSchema"]["properties"], listed_by_name
+    assert "deployment_probe_files_per_mod" in listed_by_name["deployment_doctor_report"]["inputSchema"]["properties"], listed_by_name
     assert "include_xedit_report" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
     assert "report_path" in listed_by_name["xedit_inspection_script"]["inputSchema"]["properties"], listed_by_name
     assert "max_preview_rows" in listed_by_name["xedit_inspection_result_report"]["inputSchema"]["properties"], listed_by_name
@@ -190,6 +192,16 @@ def main() -> int:
     )
     workflow_json = json.loads(workflow_direct.stdout)
     assert workflow_json["workflows"][0]["key"] == "mods_not_working", workflow_json
+    assert "deployment_doctor_report" in workflow_json["workflows"][0]["tools"], workflow_json
+
+    doctor_direct = subprocess.run(
+        [sys.executable, str(server), "--deployment-doctor"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    doctor_json = json.loads(doctor_direct.stdout)
+    assert "summary" in doctor_json or "error" in doctor_json, doctor_json
 
     proc = subprocess.Popen(
         [sys.executable, str(server)],
@@ -241,6 +253,7 @@ def main() -> int:
             assert "config_file_report" in names, names
             assert "safe_session_report" in names, names
             assert "skyrim_diagnostics_report" in names, names
+            assert "deployment_doctor_report" in names, names
             assert "scan_cache_status" in names, names
             assert "xedit_diagnostics_report" in names, names
             assert "xedit_inspection_script" in names, names

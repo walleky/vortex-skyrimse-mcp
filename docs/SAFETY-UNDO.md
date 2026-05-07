@@ -120,6 +120,7 @@ For any profile-changing request, OpenClaw should use this order:
 4. `vortex_safe_profile_fix apply=false` for clone-only mod-id fixes, or another dry-run plan for the requested change
 5. user approval
 6. apply with Vortex closed
-7. `vortex_profile_deployment_report`
+7. reopen Vortex, select the cloned/intended profile, deploy mods
+8. `deployment_doctor_report`
 
 If anything fails, run `bug_report_bundle` with `zip_output=true` and `redact_user_paths=true`.

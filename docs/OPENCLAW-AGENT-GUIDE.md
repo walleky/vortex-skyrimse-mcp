@@ -88,6 +88,7 @@ skyrim_modded_play_report
 For "Vortex has two Skyrims" or "wrong profile":
 
 ```text
+deployment_doctor_report
 vortex_profile_report
 vortex_profile_deployment_report
 ```
@@ -95,8 +96,8 @@ vortex_profile_deployment_report
 For "mods downloaded but not active":
 
 ```text
-vortex_profile_deployment_report
-plugin_report
+deployment_doctor_report
+plugin_report only if Deployment Doctor points at plugin/master details
 ```
 
 For "crash or missing masters":

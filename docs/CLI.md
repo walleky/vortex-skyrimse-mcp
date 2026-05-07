@@ -35,6 +35,12 @@ Write the broadest one-button Skyrim diagnostics report:
 py -3 .\server.py --skyrim-diagnostics
 ```
 
+Check whether the selected Vortex profile is actually deployed:
+
+```powershell
+py -3 .\server.py --deployment-doctor
+```
+
 Write a smaller report for a slower OpenClaw model:
 
 ```powershell

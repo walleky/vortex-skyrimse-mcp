@@ -61,10 +61,15 @@ def main() -> int:
 
         write(skyrim / "SkyrimSE.exe")
         write(skyrim / "skse64_loader.exe")
+        write(skyrim / "skse64_1_5_97.dll")
+        write(skyrim / "skse64_steam_loader.dll")
         write(skyrim / "SSEEdit.exe")
         write(data / "Skyrim.esm", plugin_bytes())
         write(data / "Update.esm", plugin_bytes("Skyrim.esm"))
         write(data / "MyMod.esp", plugin_bytes("Skyrim.esm"))
+        write(data / "Scripts" / "skse.pex", "skse script")
+        write(data / "Skyrim - Voices_en0.bsa", "voices")
+        write(data / "Skyrim - Sounds.bsa", "sounds")
         write(staging / "Weather Mod" / "BrokenWeather.esp", plugin_bytes("MissingMaster.esm"))
         write(staging / "Weather Mod" / "scripts" / "shared.pex", "weather")
         write(staging / "Lighting Mod" / "scripts" / "shared.pex", "lighting")
@@ -278,6 +283,48 @@ def main() -> int:
         plugins = server.plugin_report(base_args)
         assert "MissingOnDisk.esp" in plugins["missingEnabledPlugins"], plugins
         assert any(item["missingMaster"] == "MissingMaster.esm" for item in plugins["missingMasters"]), plugins
+
+        original_load_profile_state_for_deployment = server.load_vortex_profile_state
+
+        def fake_deployment_profile_state(args, include_mods=False):
+            return {
+                "gameId": "skyrimse",
+                "vortex_exe": str(vortex_exe),
+                "profiles": {
+                    "deploy-source": {
+                        "id": "deploy-source",
+                        "name": "Deployment Source",
+                        "gameId": "skyrimse",
+                        "lastActivated": 10,
+                        "modState": {
+                            "lighting": {"enabled": True},
+                            "weather": {"enabled": True},
+                        },
+                    }
+                },
+                "allProfiles": {},
+                "mods": {
+                    "lighting": {"attributes": {"name": "Lighting Mod", "installationPath": "Lighting Mod"}},
+                    "weather": {"attributes": {"name": "Weather Mod", "installationPath": "Weather Mod"}},
+                },
+                "activeProfileId": "deploy-source",
+                "activeFromSettings": "deploy-source",
+                "activeFromLastActivated": "deploy-source",
+                "rawPaths": [],
+            }
+
+        server.load_vortex_profile_state = fake_deployment_profile_state
+        try:
+            doctor = server.deployment_doctor_report({**base_args, "deployment_probe_files_per_mod": 3})
+            assert doctor["summary"]["profileToSkyrimLinked"] is False, doctor
+            assert doctor["summary"]["deploymentState"] in {"blocked_missing_masters", "needs_deploy"}, doctor
+            assert doctor["summary"]["sampleMissingModCount"] >= 1, doctor
+            assert any(check["key"] == "profile_plugins_deployed" and check["status"] == "fail" for check in doctor["checks"]), doctor
+            assert any(finding["code"] == "sampled_enabled_mod_files_not_deployed" for finding in doctor["findings"]), doctor
+            assert any(finding["code"] == "missing_plugin_masters" for finding in doctor["findings"]), doctor
+            assert doctor["sections"]["deployment"]["sampledEnabledModFilesMissingFromData"], doctor
+        finally:
+            server.load_vortex_profile_state = original_load_profile_state_for_deployment
 
         collection_match = server.collection_local_match_report(
             {

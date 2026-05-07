@@ -92,10 +92,16 @@ some mods work.
 Ask OpenClaw:
 
 ```text
-Use skyrim_diagnostics_report with performance_mode=slow_model. Check whether my selected Vortex profile is deployed into Skyrim Data and enabled in plugins.txt. Do not apply changes.
+Use deployment_doctor_report. Check whether my selected Vortex profile is linked to Skyrim Data and plugins.txt. Do not apply changes.
 ```
 
 What OpenClaw should call:
+
+```text
+deployment_doctor_report
+```
+
+If Deployment Doctor is not enough:
 
 ```text
 skyrim_diagnostics_report
@@ -373,7 +379,7 @@ because it may contain mod names, plugin names, and unusual custom paths.
 | "Is this set up right?" | `validate_setup` |
 | "Mods are not showing in Skyrim" | `skyrim_diagnostics_report` |
 | "Wrong Vortex profile?" | `vortex_profile_report` |
-| "Downloaded but not deployed?" | `vortex_profile_deployment_report` |
+| "Downloaded but not deployed?" | `deployment_doctor_report` |
 | "Missing masters or crash?" | `plugin_report` |
 | "What mod added this thing?" | `in_game_issue_report` |
 | "I have a FormID" | `xedit_diagnostics_report` |
