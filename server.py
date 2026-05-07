@@ -40,7 +40,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.27"
+SERVER_VERSION = "0.2.28"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -57,6 +57,7 @@ NEXUS_CACHE_ENV_VAR = "VORTEX_SKYRIMSE_MCP_NEXUS_CACHE_DIR"
 NEXUS_DEFAULT_CACHE_TTL_SECONDS = 24 * 60 * 60
 SCAN_CACHE_ENV_VAR = "VORTEX_SKYRIMSE_MCP_SCAN_CACHE_DIR"
 SCAN_DEFAULT_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
+SCAN_CACHE_DEFAULT_MAX_ENTRIES = 10_000
 XEDIT_EXE_NAMES = ("SSEEdit.exe", "xEdit.exe", "TES5Edit.exe")
 RUNTIME_LOG_SUFFIXES = {".log", ".txt"}
 CONFIG_PATCH_SUFFIXES = {".ini", ".json", ".toml", ".yaml", ".yml", ".xml", ".txt", ".cfg", ".conf", ".properties"}
@@ -1447,6 +1448,14 @@ def scan_cache_enabled(args: Dict[str, Any]) -> bool:
     return bool(args.get("use_scan_cache", True))
 
 
+def scan_cache_max_entries(args: Dict[str, Any]) -> int:
+    try:
+        configured = int(args.get("scan_cache_max_entries", SCAN_CACHE_DEFAULT_MAX_ENTRIES))
+    except (TypeError, ValueError):
+        configured = SCAN_CACHE_DEFAULT_MAX_ENTRIES
+    return max(100, configured)
+
+
 def load_scan_cache(args: Dict[str, Any]) -> Dict[str, Any]:
     path = scan_cache_path(args)
     if not path.exists():
@@ -1458,14 +1467,40 @@ def load_scan_cache(args: Dict[str, Any]) -> Dict[str, Any]:
         return {}
 
 
+def scan_cache_entry_epoch(entry: Any) -> float:
+    if not isinstance(entry, dict):
+        return 0.0
+    try:
+        return float(entry.get("fetchedAtEpoch", 0) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def prune_scan_cache(cache: Dict[str, Any], args: Dict[str, Any]) -> int:
+    entries = cache.get("entries")
+    if not isinstance(entries, dict):
+        return 0
+    max_entries = scan_cache_max_entries(args)
+    if len(entries) <= max_entries:
+        return 0
+    sorted_entries = sorted(entries.items(), key=lambda item: scan_cache_entry_epoch(item[1]), reverse=True)
+    cache["entries"] = dict(sorted_entries[:max_entries])
+    cache["_dirty"] = True
+    return len(sorted_entries) - max_entries
+
+
 def write_scan_cache(args: Dict[str, Any], cache: Dict[str, Any]) -> None:
     if isinstance(cache, dict) and not cache.get("_dirty", False):
         return
     path = scan_cache_path(args)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
+        pruned = prune_scan_cache(cache, args)
+        if pruned:
+            cache["lastPrunedAt"] = iso_now()
+            cache["lastPrunedCount"] = pruned
         payload = {key: value for key, value in cache.items() if key != "_dirty"}
-        write_text(path, json.dumps(payload, indent=2, ensure_ascii=False, default=str))
+        write_text(path, json.dumps(payload, separators=(",", ":"), ensure_ascii=False, default=str))
         cache.pop("_dirty", None)
     except Exception as exc:
         log_event("scan-cache", "write_failed", {"path": str(path), "error": str(exc)})
@@ -1576,17 +1611,36 @@ def scan_cache_status(args: Dict[str, Any]) -> Dict[str, Any]:
     cache = load_scan_cache(args)
     entries = cache.get("entries") if isinstance(cache.get("entries"), dict) else {}
     path = scan_cache_path(args)
+    epochs = [scan_cache_entry_epoch(entry) for entry in entries.values()]
+    nonzero_epochs = [epoch for epoch in epochs if epoch > 0]
+    size_bytes = None
+    if path.exists():
+        try:
+            size_bytes = path.stat().st_size
+        except OSError:
+            size_bytes = None
+    max_entries = scan_cache_max_entries(args)
     return {
         "enabledByDefault": True,
         "enabledForThisCall": scan_cache_enabled(args),
         "path": str(path),
         "exists": path.exists(),
+        "sizeBytes": size_bytes,
+        "schema": cache.get("schema"),
+        "updatedAt": cache.get("updatedAt"),
+        "lastPrunedAt": cache.get("lastPrunedAt"),
+        "lastPrunedCount": cache.get("lastPrunedCount"),
         "entryCount": len(entries),
+        "maxEntries": max_entries,
+        "prunableEntryCount": max(0, len(entries) - max_entries),
+        "oldestFetchedAtEpoch": min(nonzero_epochs) if nonzero_epochs else None,
+        "newestFetchedAtEpoch": max(nonzero_epochs) if nonzero_epochs else None,
         "ttlSeconds": int(args.get("scan_cache_ttl_seconds", SCAN_DEFAULT_CACHE_TTL_SECONDS)),
         "envVar": SCAN_CACHE_ENV_VAR,
         "notes": [
             "The scan cache stores derived local mod summaries only; it does not store Nexus API keys.",
             "It is a speed hint for large collections. Use no_scan_cache=true or --no-scan-cache for a fresh scan.",
+            "Oldest entries are pruned during cache writes when the cache exceeds maxEntries.",
         ],
     }
 
@@ -10338,6 +10392,17 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
 }
 
 
+def schema_for_client(schema: Dict[str, Any]) -> Dict[str, Any]:
+    client_schema = json.loads(json.dumps(schema, default=str))
+    properties = client_schema.get("properties")
+    if isinstance(properties, dict) and "scan_cache_ttl_seconds" in properties:
+        properties.setdefault(
+            "scan_cache_max_entries",
+            {"type": "integer", "default": SCAN_CACHE_DEFAULT_MAX_ENTRIES},
+        )
+    return client_schema
+
+
 def tool_list() -> List[Dict[str, Any]]:
     tools = []
     for name, (description, schema, _func) in TOOLS.items():
@@ -10346,7 +10411,7 @@ def tool_list() -> List[Dict[str, Any]]:
                 "name": name,
                 "title": name.replace("_", " ").title(),
                 "description": description,
-                "inputSchema": schema,
+                "inputSchema": schema_for_client(schema),
             }
         )
     return tools
@@ -10605,6 +10670,8 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["nexus_max_lookup_mods"] = parsed.nexus_max_lookup_mods
     if parsed.scan_cache_ttl_seconds is not None:
         tool_args["scan_cache_ttl_seconds"] = parsed.scan_cache_ttl_seconds
+    if parsed.scan_cache_max_entries is not None:
+        tool_args["scan_cache_max_entries"] = parsed.scan_cache_max_entries
     if parsed.max_collection_items is not None:
         tool_args["max_collection_items"] = parsed.max_collection_items
     if parsed.max_workflows is not None:
@@ -10816,6 +10883,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--nexus-max-lookup-mods", type=int, help="Maximum local mods to enrich with Nexus metadata.")
     parser.add_argument("--scan-cache-dir", help="Override local mod-summary scan cache folder.")
     parser.add_argument("--scan-cache-ttl-seconds", type=int, help="Mod-summary scan cache TTL in seconds.")
+    parser.add_argument("--scan-cache-max-entries", type=int, help="Maximum mod-summary scan cache entries to keep when writing.")
     parser.add_argument("--xedit-exe", help="Path to SSEEdit.exe or xEdit.exe for xedit_diagnostics_report.")
     parser.add_argument("--plugin-name", help="Plugin filename for xedit_diagnostics_report.")
     parser.add_argument("--collection-manifest-path", help="JSON manifest-like file for collection_local_match_report.")

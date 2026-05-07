@@ -31,6 +31,14 @@ or one call at a time:
 py -3 .\server.py --tool scan_cache_status --scan-cache-dir "D:\vortex-skyrimse-mcp-cache"
 ```
 
+The cache keeps up to 10,000 entries by default. The lowest accepted cap is 100
+entries. For very large collections or long-running agent sessions, adjust the
+limit one call at a time:
+
+```powershell
+py -3 .\server.py --skyrim-diagnostics --scan-cache-max-entries 5000
+```
+
 ## When To Use It
 
 Use the cache by default. It helps when OpenClaw runs several reports in one
@@ -70,6 +78,10 @@ Cache-hit-only runs do not rewrite the cache file. The MCP writes the file only
 after it stores a new or changed mod summary, which avoids unnecessary disk work
 on repeated scans.
 
+When a write happens and the cache is over `scan_cache_max_entries`, the MCP
+keeps the newest entries and prunes the oldest ones. The on-disk cache is compact
+JSON because it is an internal speed file, not a user report.
+
 ## Agent Guidance
 
 For slower OpenClaw models:
@@ -79,3 +91,5 @@ For slower OpenClaw models:
 3. Read `scan_cache_status` only when performance is confusing.
 4. Use `--no-scan-cache` only when the user just installed, removed, or edited
    many files and the diagnosis looks inconsistent.
+5. Lower `scan_cache_max_entries` only if the cache path is getting large or
+   the machine has very slow storage.

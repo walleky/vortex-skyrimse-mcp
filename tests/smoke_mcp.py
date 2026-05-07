@@ -64,6 +64,27 @@ def main() -> int:
     mcp_server.write_scan_cache(cache_args, cache_payload)
     assert cache_path.exists(), cache_path
     assert "_dirty" not in cache_path.read_text(encoding="utf-8"), cache_path.read_text(encoding="utf-8")
+    pruned_payload = {
+        "entries": {
+            f"mod-{index}": {"fetchedAtEpoch": index, "summary": {"name": f"mod-{index}"}}
+            for index in range(101)
+        },
+        "_dirty": True,
+    }
+    pruned_args = {"scan_cache_dir": str(temp_root), "scan_cache_max_entries": 100}
+    mcp_server.write_scan_cache(pruned_args, pruned_payload)
+    pruned_text = cache_path.read_text(encoding="utf-8")
+    pruned_json = json.loads(pruned_text)
+    assert "\n" not in pruned_text, pruned_text
+    assert len(pruned_json["entries"]) == 100, pruned_json
+    assert "mod-0" not in pruned_json["entries"], pruned_json
+    assert "mod-100" in pruned_json["entries"], pruned_json
+    assert pruned_json["lastPrunedCount"] == 1, pruned_json
+    cache_status = mcp_server.scan_cache_status(pruned_args)
+    assert cache_status["entryCount"] == 100, cache_status
+    assert cache_status["maxEntries"] == 100, cache_status
+    assert cache_status["prunableEntryCount"] == 0, cache_status
+    assert cache_status["sizeBytes"] and cache_status["sizeBytes"] > 0, cache_status
     fixed_clone, fixed_changes, fix_preview = mcp_server.clone_profile_with_fix_changes(
         "clonefix",
         "Fixed Clone",
@@ -135,6 +156,8 @@ def main() -> int:
     assert "path" in listed_by_name["config_file_report"]["inputSchema"]["properties"], listed_by_name
     assert "include_nexus_metadata" in listed_by_name["skyrim_diagnostics_report"]["inputSchema"]["properties"], listed_by_name
     assert "scan_cache_dir" in listed_by_name["mod_knowledge_report"]["inputSchema"]["properties"], listed_by_name
+    assert "scan_cache_max_entries" in listed_by_name["scan_cache_status"]["inputSchema"]["properties"], listed_by_name
+    assert "scan_cache_max_entries" in listed_by_name["mod_knowledge_report"]["inputSchema"]["properties"], listed_by_name
     assert "include_xedit_report" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
     assert "report_path" in listed_by_name["xedit_inspection_script"]["inputSchema"]["properties"], listed_by_name
     assert "max_preview_rows" in listed_by_name["xedit_inspection_result_report"]["inputSchema"]["properties"], listed_by_name

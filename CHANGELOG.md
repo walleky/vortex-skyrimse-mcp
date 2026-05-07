@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.28
+
+- Bounds the local scan cache with `scan_cache_max_entries` / `--scan-cache-max-entries`, pruning oldest entries during dirty writes.
+- Writes the internal scan cache as compact JSON to reduce disk size and parse time on large repeated diagnostics.
+- Expands `scan_cache_status` with cache size, schema/update/prune fields, and max-entry/prunable-entry counts.
+- Adds regression coverage for cache pruning, compact writes, and client-visible cache options.
+
 ## v0.2.27
 
 - Avoids rewriting the local scan cache on pure cache-hit runs, reducing disk churn on repeated large-collection diagnostics.

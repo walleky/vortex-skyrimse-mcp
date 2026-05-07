@@ -124,6 +124,7 @@ Use scan_cache_status to show whether the local scan cache is enabled. Keep it e
 ```
 
 The scan cache is optimized for repeated runs: if everything is a cache hit, the cache file is not rewritten.
+It also prunes oldest entries on writes when the cache grows past its configured limit.
 
 For a big collection knowledge map:
 

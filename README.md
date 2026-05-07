@@ -218,6 +218,10 @@ py -3 .\server.py --safe-session
 py -3 .\server.py --mod-knowledge
 ```
 
+For huge collections, keep the scan cache on. It is compact and self-pruning by
+default; use `--scan-cache-max-entries 5000` only if `scan_cache_status` shows
+the cache growing too large for the machine.
+
 Or double-click:
 
 ```text

@@ -344,3 +344,6 @@ by long JSON. Use `--performance-mode fast` only for a rough first pass.
 
 The scan cache is enabled by default. Use `--no-scan-cache` for a fresh scan if
 you just changed many mod files or suspect stale diagnostics.
+
+Use `--scan-cache-max-entries 5000` only if `scan_cache_status` shows a cache
+that is too large for the machine. The default is 10,000 entries.

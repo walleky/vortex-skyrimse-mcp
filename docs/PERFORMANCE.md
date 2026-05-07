@@ -125,6 +125,13 @@ Use `scan_cache_status` if performance is confusing:
 py -3 .\server.py --tool scan_cache_status
 ```
 
+The cache is bounded and compact by default. If a huge collection is scanned for
+weeks and the cache still gets too large, lower the write-time entry cap:
+
+```powershell
+py -3 .\server.py --skyrim-diagnostics --scan-cache-max-entries 5000
+```
+
 Disable the cache only for a fresh scan:
 
 ```powershell
