@@ -323,6 +323,30 @@ def main() -> int:
             assert any(finding["code"] == "sampled_enabled_mod_files_not_deployed" for finding in doctor["findings"]), doctor
             assert any(finding["code"] == "missing_plugin_masters" for finding in doctor["findings"]), doctor
             assert doctor["sections"]["deployment"]["sampledEnabledModFilesMissingFromData"], doctor
+            doctor_md = root / "Reports" / "deployment-doctor.md"
+            baseline_path = root / "Reports" / "deployment-doctor-baseline.json"
+            baseline = json.loads(json.dumps(doctor))
+            baseline["summary"]["deploymentState"] = "linked"
+            for check in baseline["checks"]:
+                if check.get("key") == "profile_plugins_deployed":
+                    check["status"] = "pass"
+                    check["message"] = "Baseline thought plugins were deployed."
+            write(baseline_path, json.dumps(baseline))
+            doctor_with_baseline = server.deployment_doctor_report(
+                {
+                    **base_args,
+                    "deployment_probe_files_per_mod": 3,
+                    "baseline_path": str(baseline_path),
+                    "output_path": str(doctor_md),
+                }
+            )
+            assert doctor_with_baseline["output_path"] == str(doctor_md), doctor_with_baseline
+            assert doctor_md.exists(), doctor_with_baseline
+            doctor_md_text = doctor_md.read_text(encoding="utf-8")
+            assert "Baseline Comparison" in doctor_md_text, doctor_md_text
+            assert doctor_with_baseline["baselineComparison"]["available"] is True, doctor_with_baseline
+            assert doctor_with_baseline["baselineComparison"]["stateChanged"] is True, doctor_with_baseline
+            assert any(change["key"] == "profile_plugins_deployed" for change in doctor_with_baseline["baselineComparison"]["changedChecks"]), doctor_with_baseline
         finally:
             server.load_vortex_profile_state = original_load_profile_state_for_deployment
 

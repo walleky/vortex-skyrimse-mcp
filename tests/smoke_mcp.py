@@ -160,6 +160,8 @@ def main() -> int:
     assert "scan_cache_max_entries" in listed_by_name["scan_cache_status"]["inputSchema"]["properties"], listed_by_name
     assert "scan_cache_max_entries" in listed_by_name["mod_knowledge_report"]["inputSchema"]["properties"], listed_by_name
     assert "deployment_probe_files_per_mod" in listed_by_name["deployment_doctor_report"]["inputSchema"]["properties"], listed_by_name
+    assert "output_path" in listed_by_name["deployment_doctor_report"]["inputSchema"]["properties"], listed_by_name
+    assert "baseline_path" in listed_by_name["deployment_doctor_report"]["inputSchema"]["properties"], listed_by_name
     assert "include_xedit_report" in listed_by_name["safe_session_report"]["inputSchema"]["properties"], listed_by_name
     assert "report_path" in listed_by_name["xedit_inspection_script"]["inputSchema"]["properties"], listed_by_name
     assert "max_preview_rows" in listed_by_name["xedit_inspection_result_report"]["inputSchema"]["properties"], listed_by_name
@@ -194,14 +196,17 @@ def main() -> int:
     assert workflow_json["workflows"][0]["key"] == "mods_not_working", workflow_json
     assert "deployment_doctor_report" in workflow_json["workflows"][0]["tools"], workflow_json
 
+    doctor_md = temp_root / "deployment-doctor-smoke.md"
     doctor_direct = subprocess.run(
-        [sys.executable, str(server), "--deployment-doctor"],
+        [sys.executable, str(server), "--deployment-doctor", "--output-path", str(doctor_md)],
         text=True,
         capture_output=True,
         check=False,
     )
     doctor_json = json.loads(doctor_direct.stdout)
     assert "summary" in doctor_json or "error" in doctor_json, doctor_json
+    assert doctor_md.exists(), doctor_json
+    assert "Deployment Doctor" in doctor_md.read_text(encoding="utf-8"), doctor_md
 
     proc = subprocess.Popen(
         [sys.executable, str(server)],

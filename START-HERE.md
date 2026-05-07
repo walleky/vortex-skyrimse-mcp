@@ -96,6 +96,9 @@ Then check whether Vortex's active profile is really deployed:
 Use deployment_doctor_report to tell me whether my selected Vortex profile is linked to Skyrim Data and plugins.txt. Do not apply changes.
 ```
 
+After you deploy in Vortex, rerun Deployment Doctor with the previous JSON as a
+baseline so OpenClaw can explain what improved or regressed.
+
 Optional Nexus metadata:
 
 ```powershell

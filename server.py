@@ -40,7 +40,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.29"
+SERVER_VERSION = "0.2.30"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -8378,6 +8378,230 @@ def add_doctor_check(
     checks.append(item)
 
 
+def deployment_doctor_status_rank(status: Any) -> int:
+    return {"fail": 0, "warn": 1, "unknown": 1, "pass": 2}.get(str(status), 1)
+
+
+def deployment_doctor_check_map(report: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    checks = report.get("checks", []) if isinstance(report.get("checks"), list) else []
+    return {
+        str(check.get("key")): check
+        for check in checks
+        if isinstance(check, dict) and check.get("key")
+    }
+
+
+def load_deployment_doctor_baseline(path_value: Optional[str]) -> Dict[str, Any]:
+    path = expand_path(path_value)
+    if not path or not path.exists() or not path.is_file():
+        raise ToolError("baseline_path must point to an existing Deployment Doctor JSON result.")
+    data = json.loads(read_text(path, 10_000_000))
+    if not isinstance(data, dict) or not isinstance(data.get("summary"), dict) or not isinstance(data.get("checks"), list):
+        raise ToolError("baseline_path is not a Deployment Doctor JSON result with summary and checks.")
+    data["_baselinePath"] = str(path)
+    return data
+
+
+def deployment_doctor_baseline_compare(current: Dict[str, Any], baseline: Dict[str, Any]) -> Dict[str, Any]:
+    current_summary = current.get("summary", {}) if isinstance(current.get("summary"), dict) else {}
+    previous_summary = baseline.get("summary", {}) if isinstance(baseline.get("summary"), dict) else {}
+    current_checks = deployment_doctor_check_map(current)
+    previous_checks = deployment_doctor_check_map(baseline)
+    changed_checks = []
+    improved = 0
+    regressed = 0
+    for key in sorted(set(current_checks) | set(previous_checks)):
+        current_check = current_checks.get(key, {})
+        previous_check = previous_checks.get(key, {})
+        current_status = current_check.get("status")
+        previous_status = previous_check.get("status")
+        if current_status == previous_status and current_check.get("message") == previous_check.get("message"):
+            continue
+        current_rank = deployment_doctor_status_rank(current_status)
+        previous_rank = deployment_doctor_status_rank(previous_status)
+        if current_rank > previous_rank:
+            direction = "improved"
+            improved += 1
+        elif current_rank < previous_rank:
+            direction = "regressed"
+            regressed += 1
+        else:
+            direction = "changed"
+        changed_checks.append(
+            {
+                "key": key,
+                "label": current_check.get("label") or previous_check.get("label") or key,
+                "previousStatus": previous_status,
+                "currentStatus": current_status,
+                "direction": direction,
+                "previousMessage": previous_check.get("message"),
+                "currentMessage": current_check.get("message"),
+            }
+        )
+
+    summary_count_changes = []
+    for key in (
+        "missingDataPluginCount",
+        "disabledPluginCount",
+        "sampleMissingModCount",
+        "stalePluginsTxtCount",
+        "missingMasterCount",
+        "failedCheckCount",
+        "warningCheckCount",
+    ):
+        previous_value = previous_summary.get(key)
+        current_value = current_summary.get(key)
+        if previous_value != current_value:
+            summary_count_changes.append({"key": key, "previous": previous_value, "current": current_value})
+
+    return {
+        "available": True,
+        "baselinePath": baseline.get("_baselinePath"),
+        "baselineGeneratedAt": baseline.get("generatedAt"),
+        "previousDeploymentState": previous_summary.get("deploymentState"),
+        "currentDeploymentState": current_summary.get("deploymentState"),
+        "stateChanged": previous_summary.get("deploymentState") != current_summary.get("deploymentState"),
+        "previousProfileToSkyrimLinked": previous_summary.get("profileToSkyrimLinked"),
+        "currentProfileToSkyrimLinked": current_summary.get("profileToSkyrimLinked"),
+        "changedCheckCount": len(changed_checks),
+        "improvedCheckCount": improved,
+        "regressedCheckCount": regressed,
+        "changedChecks": changed_checks[:50],
+        "summaryCountChanges": summary_count_changes,
+        "notes": [
+            "Use this after deploying in Vortex to see whether checks improved or regressed.",
+            "A changed check is not always a problem; read direction, previousStatus, and currentStatus.",
+        ],
+    }
+
+
+def deployment_doctor_default_path(args: Dict[str, Any]) -> Optional[Path]:
+    output_path = expand_path(args.get("output_path"))
+    if not output_path:
+        return None
+    if output_path.suffix:
+        return output_path
+    return output_path / f"deployment-doctor-{now_stamp()}.md"
+
+
+def deployment_doctor_md_value(value: Any) -> str:
+    if value is None:
+        return "unknown"
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    return str(value)
+
+
+def deployment_doctor_markdown(report: Dict[str, Any]) -> str:
+    summary = report.get("summary", {}) if isinstance(report.get("summary"), dict) else {}
+    lines = [
+        "# Vortex Skyrim SE Deployment Doctor",
+        "",
+        f"- Generated: {deployment_doctor_md_value(report.get('generatedAt'))}",
+        f"- Server: {deployment_doctor_md_value(report.get('server'))} {deployment_doctor_md_value(report.get('version'))}",
+        f"- Read-only: {deployment_doctor_md_value(report.get('readOnly'))}",
+        "",
+        "## Verdict",
+        "",
+        f"- Deployment state: {deployment_doctor_md_value(summary.get('deploymentState'))}",
+        f"- Profile linked to Skyrim: {deployment_doctor_md_value(summary.get('profileToSkyrimLinked'))}",
+        f"- OK to launch modded: {deployment_doctor_md_value(summary.get('okToLaunchModded'))}",
+        f"- Highest severity: {deployment_doctor_md_value(summary.get('highestSeverity'))}",
+        f"- Findings: {deployment_doctor_md_value(summary.get('findingCount'))}",
+        f"- Failed checks: {deployment_doctor_md_value(summary.get('failedCheckCount'))}",
+        f"- Warning checks: {deployment_doctor_md_value(summary.get('warningCheckCount'))}",
+        "",
+        "## Counts",
+        "",
+    ]
+    for key in (
+        "enabledProfileModCount",
+        "checkedEnabledModCount",
+        "profilePluginCount",
+        "missingDataPluginCount",
+        "disabledPluginCount",
+        "sampleMissingModCount",
+        "stalePluginsTxtCount",
+        "missingMasterCount",
+    ):
+        if key in summary:
+            lines.append(f"- {key}: {deployment_doctor_md_value(summary.get(key))}")
+
+    comparison = report.get("baselineComparison") if isinstance(report.get("baselineComparison"), dict) else None
+    if comparison:
+        lines.extend(["", "## Baseline Comparison", ""])
+        if comparison.get("available"):
+            lines.append(f"- Baseline: {deployment_doctor_md_value(comparison.get('baselinePath'))}")
+            lines.append(f"- Previous deployment state: {deployment_doctor_md_value(comparison.get('previousDeploymentState'))}")
+            lines.append(f"- Current deployment state: {deployment_doctor_md_value(comparison.get('currentDeploymentState'))}")
+            lines.append(f"- State changed: {deployment_doctor_md_value(comparison.get('stateChanged'))}")
+            lines.append(f"- Improved checks: {deployment_doctor_md_value(comparison.get('improvedCheckCount'))}")
+            lines.append(f"- Regressed checks: {deployment_doctor_md_value(comparison.get('regressedCheckCount'))}")
+            changed_checks = comparison.get("changedChecks", []) if isinstance(comparison.get("changedChecks"), list) else []
+            if changed_checks:
+                lines.extend(["", "### Changed Checks", ""])
+                for check in changed_checks[:20]:
+                    lines.append(
+                        f"- {deployment_doctor_md_value(check.get('label'))}: "
+                        f"{deployment_doctor_md_value(check.get('previousStatus'))} -> "
+                        f"{deployment_doctor_md_value(check.get('currentStatus'))} "
+                        f"({deployment_doctor_md_value(check.get('direction'))})"
+                    )
+            count_changes = comparison.get("summaryCountChanges", []) if isinstance(comparison.get("summaryCountChanges"), list) else []
+            if count_changes:
+                lines.extend(["", "### Count Changes", ""])
+                for item in count_changes[:20]:
+                    lines.append(
+                        f"- {deployment_doctor_md_value(item.get('key'))}: "
+                        f"{deployment_doctor_md_value(item.get('previous'))} -> "
+                        f"{deployment_doctor_md_value(item.get('current'))}"
+                    )
+        else:
+            lines.append(f"- Baseline comparison unavailable: {deployment_doctor_md_value(comparison.get('error'))}")
+
+    checks = report.get("checks", []) if isinstance(report.get("checks"), list) else []
+    lines.extend(["", "## Checks", ""])
+    if checks:
+        for check in checks:
+            lines.append(
+                f"- [{deployment_doctor_md_value(check.get('status')).upper()}] "
+                f"{deployment_doctor_md_value(check.get('label'))}: {deployment_doctor_md_value(check.get('message'))}"
+            )
+            if check.get("nextAction"):
+                lines.append(f"  Next: {deployment_doctor_md_value(check.get('nextAction'))}")
+    else:
+        lines.append("- No checks were generated.")
+
+    findings = report.get("findings", []) if isinstance(report.get("findings"), list) else []
+    lines.extend(["", "## Findings", ""])
+    if findings:
+        for item in findings[:30]:
+            lines.append(
+                f"- [{deployment_doctor_md_value(item.get('severity'))}] "
+                f"{deployment_doctor_md_value(item.get('code'))}: {deployment_doctor_md_value(item.get('message'))}"
+            )
+            if item.get("nextAction"):
+                lines.append(f"  Next: {deployment_doctor_md_value(item.get('nextAction'))}")
+    else:
+        lines.append("- No findings were generated.")
+
+    next_actions = report.get("nextActions", []) if isinstance(report.get("nextActions"), list) else []
+    lines.extend(["", "## Next Actions", ""])
+    if next_actions:
+        for action in next_actions:
+            lines.append(f"- {deployment_doctor_md_value(action)}")
+    else:
+        lines.append("- Keep this report as a clean deployment baseline.")
+
+    notes = report.get("notes", []) if isinstance(report.get("notes"), list) else []
+    if notes:
+        lines.extend(["", "## Notes", ""])
+        for note in notes:
+            lines.append(f"- {deployment_doctor_md_value(note)}")
+
+    return "\n".join(lines) + "\n"
+
+
 def deployment_doctor_report(args: Dict[str, Any]) -> Dict[str, Any]:
     findings: List[Dict[str, Any]] = []
     checks: List[Dict[str, Any]] = []
@@ -8720,7 +8944,11 @@ def deployment_doctor_report(args: Dict[str, Any]) -> Dict[str, Any]:
     if not next_actions:
         next_actions.append("Keep this report as a clean deployment baseline.")
 
-    return {
+    report = {
+        "generatedAt": iso_now(),
+        "server": SERVER_NAME,
+        "version": SERVER_VERSION,
+        "readOnly": True,
         "summary": {
             "deploymentState": deployment_state,
             "profileToSkyrimLinked": deployment_state == "linked",
@@ -8749,6 +8977,36 @@ def deployment_doctor_report(args: Dict[str, Any]) -> Dict[str, Any]:
             "If you switch Vortex profiles, deploy in Vortex before launching Skyrim and before rerunning this report.",
         ],
     }
+    if args.get("baseline_path"):
+        try:
+            baseline = load_deployment_doctor_baseline(args.get("baseline_path"))
+            report["baselineComparison"] = deployment_doctor_baseline_compare(report, baseline)
+        except Exception as exc:
+            report["baselineComparison"] = {
+                "available": False,
+                "baselinePath": args.get("baseline_path"),
+                "error": str(exc),
+            }
+            report["findings"].append(
+                {
+                    "severity": "low",
+                    "code": "baseline_compare_failed",
+                    "message": str(exc),
+                    "nextAction": "Pass a previous Deployment Doctor JSON result as baseline_path.",
+                }
+            )
+            report["summary"]["findingCount"] = len(report["findings"])
+            report["summary"]["highestSeverity"] = sort_findings(report["findings"])[0].get("severity", "none") if report["findings"] else "none"
+
+    output_path = deployment_doctor_default_path(args)
+    if output_path:
+        report["output_path"] = str(output_path)
+        output_report = redact_paths_in_value(report) if bool(args.get("redact_user_paths", False)) else report
+        write_text(output_path, deployment_doctor_markdown(output_report))
+        log_event("support", "deployment_doctor_report_written", {"output_path": str(output_path), "deploymentState": deployment_state})
+        if bool(args.get("redact_user_paths", False)):
+            return output_report
+    return report
 
 
 def suggest_conflict_fixes(args: Dict[str, Any]) -> Dict[str, Any]:
@@ -10595,6 +10853,9 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
                 "staging_dir": {"type": "string"},
                 "local_appdata": {"type": "string"},
                 "my_games_dir": {"type": "string"},
+                "output_path": {"type": "string"},
+                "baseline_path": {"type": "string"},
+                "redact_user_paths": {"type": "boolean", "default": False},
                 "max_mods": {"type": "integer", "default": 500},
                 "max_files_per_mod": {"type": "integer", "default": 3000},
                 "deployment_probe_files_per_mod": {"type": "integer", "default": DEPLOYMENT_PROBE_DEFAULT_FILES_PER_MOD},
@@ -11084,6 +11345,7 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         "new_profile_name": parsed.new_profile_name,
         "new_name": parsed.new_profile_name,
         "backup_path": parsed.backup_path,
+        "baseline_path": parsed.baseline_path,
         "backup_dir": parsed.backup_dir,
         "session_json_path": parsed.session_json_path,
         "log_dir": parsed.log_dir,
@@ -11332,6 +11594,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--new-profile-id", help="New Vortex profile id for profile cloning/fix tools.")
     parser.add_argument("--new-profile-name", help="New Vortex profile name for profile cloning/fix tools.")
     parser.add_argument("--backup-path", help="Profile backup JSON path for restore tools, or explicit backup output path for write tools.")
+    parser.add_argument("--baseline-path", help="Previous Deployment Doctor JSON result for before/after comparison.")
     parser.add_argument("--backup-dir", help="Folder for automatic profile backups.")
     parser.add_argument("--session-json-path", help="JSON output path for --safe-session.")
     parser.add_argument("--log-dir", help="Override MCP log folder for log_status and support reports.")

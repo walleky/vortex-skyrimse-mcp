@@ -121,6 +121,8 @@ Human next step:
 
 In Vortex, select the intended Skyrim SE profile, click Deploy Mods, confirm the
 Plugins tab is enabled, then launch through SKSE if the setup uses SKSE.
+Rerun Deployment Doctor with `baseline_path` set to the first JSON result so
+OpenClaw can explain what changed.
 
 ## Workflow 3: Weird Object In Game
 

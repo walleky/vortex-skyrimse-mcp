@@ -95,6 +95,7 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action case-inbox -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
 .\vortex_skyrimse_menu.ps1 -Action safe-profile-fix -SafeProfileName "OpenClaw Fixed Test" -DisableModIds "exact-vortex-mod-id"
 .\vortex_skyrimse_menu.ps1 -Action deployment-doctor
+.\vortex_skyrimse_menu.ps1 -Action deployment-doctor -DeploymentBaselinePath "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\deployment-doctor-before.json"
 ```
 
 Action 30 imports helper output from `<case folder>\incoming` by default. Use
@@ -107,6 +108,8 @@ the preview and closing Vortex.
 Action 32 is the fastest "are my Vortex mods reaching Skyrim?" verdict. It is
 read-only and checks the selected profile against Skyrim `Data`, `plugins.txt`,
 sampled deployed files, SKSE, audio archives, and missing masters.
+Pass `-DeploymentBaselinePath` after deploying in Vortex to compare the new run
+against an older Deployment Doctor JSON report.
 
 If Windows cannot find Python, pass the executable once:
 

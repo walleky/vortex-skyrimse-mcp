@@ -214,6 +214,7 @@ py -3 .\server.py --case-bundle --case-dir "C:\path\to\issue-case-folder"
 py -3 .\server.py --safe-profile-fix --new-profile-name "OpenClaw Fixed Test" --disable-mod-id "exact-vortex-mod-id"
 py -3 .\server.py --tool vortex_collection_report
 py -3 .\server.py --deployment-doctor
+py -3 .\server.py --deployment-doctor --baseline-path ".\deployment-doctor-before.json" --output-path ".\deployment-doctor-after.md"
 py -3 .\server.py --runtime-logs --description "popup says file was not configured properly"
 py -3 .\server.py --skyrim-diagnostics
 py -3 .\server.py --safe-session

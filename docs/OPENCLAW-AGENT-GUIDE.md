@@ -100,6 +100,10 @@ deployment_doctor_report
 plugin_report only if Deployment Doctor points at plugin/master details
 ```
 
+When the user deploys in Vortex, rerun `deployment_doctor_report` with
+`baseline_path` pointing at the previous Deployment Doctor JSON. Read
+`baselineComparison` before suggesting deeper fixes.
+
 For "crash or missing masters":
 
 ```text

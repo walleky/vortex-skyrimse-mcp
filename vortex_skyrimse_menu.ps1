@@ -7,6 +7,7 @@ param(
   [string]$VortexExe = "",
   [string]$ProfileId = "",
   [string]$BackupPath = "",
+  [string]$DeploymentBaselinePath = "",
   [string]$IssueDescription = "",
   [string]$IssueLocation = "",
   [string]$IssueObject = "",
@@ -526,9 +527,18 @@ function Invoke-MenuAction {
       return
     }
     { $_ -in @("32", "deployment", "deployment-doctor", "doctor", "deploy-doctor") } {
-      $out = Join-Path $script:ReportDir "deployment-doctor-$stamp.json"
-      Invoke-Server (@("--deployment-doctor", "--output-json", $out) + $common)
-      Write-Host "Wrote Deployment Doctor report: $out" -ForegroundColor Green
+      $md = Join-Path $script:ReportDir "deployment-doctor-$stamp.md"
+      $json = Join-Path $script:ReportDir "deployment-doctor-$stamp.json"
+      $argsData = @{
+        output_path = $md
+      }
+      if ($DeploymentBaselinePath) {
+        $argsData.baseline_path = $DeploymentBaselinePath
+      }
+      $argsFile = Write-JsonArgs "deployment-doctor" $argsData
+      Invoke-Server (@("--deployment-doctor", "--args-file", $argsFile, "--output-json", $json) + $common)
+      Write-Host "Wrote Deployment Doctor Markdown: $md" -ForegroundColor Green
+      Write-Host "Wrote Deployment Doctor JSON: $json" -ForegroundColor Green
       Write-Host "This action did not deploy, enable, disable, sort, delete, or edit mods." -ForegroundColor Green
       return
     }

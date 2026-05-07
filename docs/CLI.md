@@ -41,6 +41,18 @@ Check whether the selected Vortex profile is actually deployed:
 py -3 .\server.py --deployment-doctor
 ```
 
+Keep a readable Deployment Doctor report:
+
+```powershell
+py -3 .\server.py --deployment-doctor --output-path ".\deployment-doctor.md" --output-json ".\deployment-doctor.json"
+```
+
+Compare after deploying in Vortex:
+
+```powershell
+py -3 .\server.py --deployment-doctor --baseline-path ".\deployment-doctor-before.json" --output-path ".\deployment-doctor-after.md" --output-json ".\deployment-doctor-after.json"
+```
+
 Write a smaller report for a slower OpenClaw model:
 
 ```powershell

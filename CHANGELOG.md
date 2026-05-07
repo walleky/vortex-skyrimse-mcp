@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.30
+
+- Adds optional Deployment Doctor Markdown output through `output_path` / `--output-path`.
+- Adds `baseline_path` / `--baseline-path` comparison for before/after deploy checks, including changed, improved, and regressed checks.
+- Updates the local menu Deployment Doctor action to write both Markdown and JSON reports, with optional baseline comparison.
+- Adds regression coverage for Deployment Doctor Markdown and baseline comparison.
+
 ## v0.2.29
 
 - Adds `deployment_doctor_report`, a read-only plain-English deployment verdict for Vortex profile, Skyrim `Data`, `plugins.txt`, SKSE files, audio archives, and missing plugin masters.

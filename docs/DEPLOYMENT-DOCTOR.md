@@ -30,6 +30,12 @@ delete, edit plugins, or edit INI/config files.
 py -3 .\server.py --deployment-doctor
 ```
 
+Write a readable Markdown report:
+
+```powershell
+py -3 .\server.py --deployment-doctor --output-path "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\deployment-doctor.md" --output-json "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\deployment-doctor.json"
+```
+
 If detection picks the wrong paths:
 
 ```powershell
@@ -40,6 +46,34 @@ If Vortex has multiple Skyrim SE profiles:
 
 ```powershell
 py -3 .\server.py --deployment-doctor --profile-id "exact-vortex-profile-id"
+```
+
+## Before And After Deploy
+
+Use this loop when Vortex looks confusing:
+
+1. Run Deployment Doctor and keep the JSON result.
+2. Open Vortex, select the intended Skyrim SE profile, and click Deploy Mods.
+3. Rerun Deployment Doctor with the first JSON as `baseline_path`.
+
+```powershell
+py -3 .\server.py --deployment-doctor --baseline-path "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\deployment-doctor-before.json" --output-path "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\deployment-doctor-after.md" --output-json "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\deployment-doctor-after.json"
+```
+
+The `baselineComparison` section reports changed checks, improved checks,
+regressed checks, and count changes such as missing deployed plugins or missing
+sampled files.
+
+## Local Menu
+
+```powershell
+.\vortex_skyrimse_menu.ps1 -Action deployment-doctor
+```
+
+After deploying in Vortex, compare against the previous JSON:
+
+```powershell
+.\vortex_skyrimse_menu.ps1 -Action deployment-doctor -DeploymentBaselinePath "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\deployment-doctor-before.json"
 ```
 
 ## OpenClaw Prompt
