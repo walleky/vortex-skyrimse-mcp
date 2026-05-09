@@ -85,6 +85,8 @@ For large collections:
 - Use `--no-profile-state` if Vortex CLI is slow or Vortex is open/locked.
 - Use `--no-logs` if logs are not relevant.
 - Use `--no-runtime-logs` if Skyrim/Papyrus/SKSE/crash logs are not relevant.
+- Use `skyrim_runtime_log_watch` for repeated playtest checks; it reads only
+  newly appended runtime log bytes after the cursor is saved.
 - Use `--max-mods 200` for rough triage on massive collections.
 - Keep `nexus_max_lookup_mods` modest for the first pass; increase it only when
   you need a fuller Nexus metadata review.

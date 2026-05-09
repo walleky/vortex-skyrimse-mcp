@@ -41,6 +41,9 @@ an MCP client.
 - Read recent Skyrim/Papyrus/SKSE/crash logs, detect config and popup-style
   errors such as "file was not configured properly", and map referenced files
   back to staged Vortex mods when possible.
+- Poll Skyrim/Papyrus/SKSE/crash logs with saved cursors using
+  `skyrim_runtime_log_watch`, so OpenClaw can catch newly appended errors while
+  you reproduce a problem without rescanning old log text every time.
 - Group repeated runtime log errors into issue patterns, warn when logs look
   stale, and validate candidate config files before proposing a patch.
 - Detect likely redundant mods:
@@ -125,6 +128,7 @@ an MCP client.
 - [docs/REVERSIBLE-AUTOMATION.md](docs/REVERSIBLE-AUTOMATION.md): safety gate for risky automation and undo-aware plans.
 - [docs/REPORT-VIEWER.md](docs/REPORT-VIEWER.md): static read-only HTML index for generated reports.
 - [docs/SKYRIM-RUNTIME-LOGS.md](docs/SKYRIM-RUNTIME-LOGS.md): Papyrus/SKSE/crash log scanning and safe config patch workflow.
+- [docs/RUNTIME-LOG-WATCH.md](docs/RUNTIME-LOG-WATCH.md): polling-style runtime log watching for OpenClaw and slower models.
 - [docs/PERFORMANCE.md](docs/PERFORMANCE.md): compact outputs and slow-model guidance.
 - [docs/NEXUS-API.md](docs/NEXUS-API.md): optional read-only Nexus Mods API setup and tools.
 - [docs/NEXUS-MODS-API-DESIGN.md](docs/NEXUS-MODS-API-DESIGN.md): Nexus API metadata design and roadmap.
@@ -139,6 +143,7 @@ an MCP client.
 - [docs/VORTEX-MCP-BRIDGE-COMPARISON.md](docs/VORTEX-MCP-BRIDGE-COMPARISON.md): what this project borrows from Vortex MCP Bridge and what stays out of scope.
 - [docs/LOGGING.md](docs/LOGGING.md): log folder, channels, and inspection commands.
 - [docs/BUG-REPORTING.md](docs/BUG-REPORTING.md): support bundle and issue-reporting guide.
+- [docs/VERCEL.md](docs/VERCEL.md): static public docs site deployment notes.
 - [docs/MOD-KNOWLEDGE.md](docs/MOD-KNOWLEDGE.md): collection knowledge reports and safe removal review.
 - [docs/KNOWN-MOD-RULES.md](docs/KNOWN-MOD-RULES.md): built-in common conflict/dependency rules.
 - [docs/SAMPLE-BUG-BUNDLE.md](docs/SAMPLE-BUG-BUNDLE.md): sanitized example support bundle shape.

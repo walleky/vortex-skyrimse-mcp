@@ -7,6 +7,12 @@ OpenClaw-friendly problem report. The main tool is:
 skyrim_runtime_log_report
 ```
 
+For repeated checks while you reproduce a problem, use:
+
+```text
+skyrim_runtime_log_watch
+```
+
 It is read-only. It does not edit mods, deploy Vortex, or change Skyrim.
 
 ## What It Reads
@@ -59,6 +65,41 @@ old/new text for a dry-run `apply_config_text_patch`.
 
 The report also includes `freshLogStatus`. If the newest log is older than the
 freshness window, reproduce the problem once and rerun the report.
+
+## Polling New Log Errors
+
+`skyrim_runtime_log_watch` is the low-hassle polling tool. It saves a small
+cursor file per watched log, then returns only newly appended evidence on later
+calls. This gives OpenClaw a practical "keep an eye on logs" workflow without a
+background daemon or SKSE plugin.
+
+Recommended OpenClaw flow:
+
+1. Call `skyrim_runtime_log_watch` with `reset=true` before reproducing the bug.
+2. Launch Skyrim and reproduce the popup, crash, missing-file message, or SKSE warning.
+3. Quit or alt-tab back.
+4. Call `skyrim_runtime_log_watch` again with the same `watch_id`.
+5. Read `newFindingCount`, `issueGroups`, `configCandidates`, and `hasNewCriticalOrHigh`.
+
+The first call without `reset=true` reads a recent tail by default so it can
+still find useful evidence on a fresh setup. Use `reset=true` when you want a
+clean before/after reproduction.
+
+Direct CLI:
+
+```powershell
+py -3 .\server.py --runtime-log-watch --reset-runtime-watch
+py -3 .\server.py --runtime-log-watch --description "popup after loading a save"
+```
+
+For slower OpenClaw models, keep the cursor stable and lower the limits:
+
+```text
+skyrim_runtime_log_watch with watch_id=playtest, performance_mode=slow_model, max_runtime_findings=20
+```
+
+State is stored under the local runtime-watch cache directory. It can be deleted
+safely if the cursor gets confusing.
 
 ## Safe Fix Flow
 

@@ -14,6 +14,7 @@ OpenClaw or MCP client
       -> inspect MO2 instance/profile files and approximate virtual Data views
       -> optionally recommend a safe workflow from a plain-language problem
       -> optionally inspect Skyrim/Papyrus/SKSE/crash runtime logs
+      -> optionally poll newly appended runtime log text with saved cursors
       -> optionally enrich reports with read-only Nexus Mods metadata
       -> optionally use local scan cache, xEdit target hints, and collection diagnostics
       -> optionally call Vortex.exe --get/--set for profile state
@@ -54,6 +55,8 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - `docs/MO2-SUPPORT.md`: explains MO2 instance/profile diagnostics and virtual Data behavior.
 - `docs/REVERSIBLE-AUTOMATION.md`: explains the safety gate for risky automation requests.
 - `docs/SKYRIM-RUNTIME-LOGS.md`: explains runtime log scanning and safe config patching.
+- `docs/RUNTIME-LOG-WATCH.md`: explains cursor-backed runtime log polling for OpenClaw.
+- `docs/VERCEL.md`: explains the static public docs site and local/privacy boundary.
 - `docs/TESTING.md`: explains local and CI test commands.
 - `docs/MOD-KNOWLEDGE.md`: explains the collection knowledge report and safe removal-review flow.
 - `docs/KNOWN-MOD-RULES.md`: explains built-in conflict/dependency rules for common Skyrim SE stacks.
@@ -80,7 +83,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - issue case packets: `skyrim_issue_case_packet`, `skyrim_issue_case_status`, `skyrim_issue_case_note`, `skyrim_case_evidence_import`, `skyrim_case_inbox_import`, `skyrim_case_evidence_report`, `skyrim_case_bundle`, `skyrim_safe_experiment_plan`, `skyrim_case_what_now`, `skyrim_live_bridge_status`, `issue_case_default_dir`, `issue_case_markdown`, `issue_case_status_markdown`, `case_evidence_summary`.
 - collection diagnostics: `vortex_collection_report`, `collection_local_match_report`, `extract_manifest_mod_refs`.
 - in-game issue triage: `in_game_issue_report`, `scan_mod_for_issue`, `extract_plugin_strings`.
-- runtime log diagnosis: `skyrim_runtime_log_report`, `collect_skyrim_runtime_log_files`, `runtime_issue_groups`, `match_runtime_references_to_staged_files`, `runtime_config_candidates`.
+- runtime log diagnosis: `skyrim_runtime_log_report`, `skyrim_runtime_log_watch`, `collect_skyrim_runtime_log_files`, `runtime_issue_groups`, `match_runtime_references_to_staged_files`, `runtime_config_candidates`, runtime watch cursor helpers.
 - performance shaping: `apply_performance_defaults`, `compact_issue_report`, `compact_play_report`.
 - plugin/load-order checks: `parse_plugin_list`, `plugin_report`, `plugin_masters`.
 - INI/config checks and writes: `ini_report`, `config_file_report`, `config_patch_suggestions`, `apply_ini_fixes`, `read_text_file`, `apply_config_text_patch`.

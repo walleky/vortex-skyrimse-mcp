@@ -55,6 +55,7 @@ Vortex-SkyrimSE-Menu.cmd
 37. Live Evidence Summary
 38. Known Mod Rules
 39. MO2 Diagnostics
+40. Runtime Log Watch
 
 Reports are written to:
 
@@ -88,6 +89,8 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action collection-match -CollectionManifestPath "C:\path\collection.json"
 .\vortex_skyrimse_menu.ps1 -Action workflow -Problem "mods downloaded but not working"
 .\vortex_skyrimse_menu.ps1 -Action runtime -IssueDescription "popup says file was not configured properly"
+.\vortex_skyrimse_menu.ps1 -Action runtime-watch -RuntimeWatchId playtest -ResetRuntimeWatch
+.\vortex_skyrimse_menu.ps1 -Action runtime-watch -RuntimeWatchId playtest -IssueDescription "popup says file was not configured properly"
 .\vortex_skyrimse_menu.ps1 -Action config -ConfigPath "C:\path\to\config\popup.json"
 .\vortex_skyrimse_menu.ps1 -Action xedit-script -IssueDescription "bed outside tavern room" -IssueLocation "Whiterun Bannered Mare" -IssueObject "bed" -FormId "0100ABCD"
 .\vortex_skyrimse_menu.ps1 -Action xedit-result -XeditReportPath "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\xedit-inspection-YYYYMMDD-HHMMSS.csv"
@@ -150,6 +153,10 @@ FSMPM without JContainers.
 Action 39 runs read-only Mod Organizer 2 diagnostics. For MO2, launch SKSE,
 Skyrim, and xEdit from MO2's Run dropdown so the selected profile's virtual
 files are visible.
+
+Action 40 watches runtime logs by cursor. Run it once with
+`-ResetRuntimeWatch`, reproduce the issue in Skyrim, then run it again with the
+same `-RuntimeWatchId` to read only newly appended Papyrus/SKSE/crash evidence.
 
 If Windows cannot find Python, pass the executable once:
 

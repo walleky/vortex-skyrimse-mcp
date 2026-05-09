@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.40
+
+- Adds `skyrim_runtime_log_watch`, a cursor-backed polling tool for newly appended Papyrus/SKSE/crash log evidence.
+- Adds `--runtime-log-watch`, `--watch-id`, and `--reset-runtime-watch` direct CLI support.
+- Documents runtime log watch workflows for OpenClaw, slower models, and clean reproduction sessions.
+- Adds a Vercel-ready static documentation site under `public/`.
+- Adds regression coverage for runtime log watch cursor behavior.
+
 ## v0.2.39
 
 - Tightens MO2 auto-detection so absent/non-existent candidate folders are not reported as the active `instanceDir`.

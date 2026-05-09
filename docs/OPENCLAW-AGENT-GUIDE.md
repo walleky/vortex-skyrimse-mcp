@@ -184,6 +184,20 @@ Read `summary.skyrimRuntime`, `summary.skseTargetRuntime`,
 If it reports `skse_runtime_mismatch`, fix the runtime/SKSE pair before chasing
 mod conflicts.
 
+For "watch the logs while I reproduce it", "popup just appeared", or repeated
+testing during a play session:
+
+```text
+skyrim_runtime_log_watch with watch_id=playtest and reset=true
+```
+
+After the user reproduces the issue, call the same tool without reset. Read
+`newFindingCount`, `hasNewCriticalOrHigh`, `issueGroups`, and
+`configCandidates`. This is polling, not live SKSE telemetry, but it is much
+cheaper than rerunning a full runtime log report every turn. If
+`configCandidates` appears, inspect with `config_file_report` and
+`read_text_file` before proposing `apply_config_text_patch` as a dry run.
+
 For "automate this but make it reversible", including delete/uninstall/sort/conflict/deploy/update/plugin-edit requests:
 
 ```text

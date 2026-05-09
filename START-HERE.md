@@ -175,6 +175,15 @@ Use scan_cache_status to show whether the local scan cache is enabled. Keep it e
 The scan cache is optimized for repeated runs: if everything is a cache hit, the cache file is not rewritten.
 It also prunes oldest entries on writes when the cache grows past its configured limit.
 
+For catching errors while testing in-game:
+
+```text
+Use skyrim_runtime_log_watch with reset=true. I will reproduce the problem in Skyrim, then call skyrim_runtime_log_watch again and summarize only new critical/high/config findings.
+```
+
+This is polling, not a live SKSE event stream, but it is much lighter than
+rereading every runtime log on every OpenClaw turn.
+
 For common stack mistakes like FNIS + Pandora or missing JContainers:
 
 ```text

@@ -46,7 +46,9 @@ param(
   [string]$SafeProfileName = "OpenClaw Fixed Test",
   [string]$EnableModIds = "",
   [string]$DisableModIds = "",
+  [string]$RuntimeWatchId = "playtest",
   [switch]$ApplyProfileFix,
+  [switch]$ResetRuntimeWatch,
   [int]$MaxMods = 500,
   [int]$XeditMaxRecords = 2000,
   [int]$XeditMaxPreviewRows = 50,
@@ -302,6 +304,7 @@ function Show-Actions {
   Write-Host "37. Live Evidence Summary"
   Write-Host "38. Known Mod Rules"
   Write-Host "39. MO2 Diagnostics"
+  Write-Host "40. Runtime Log Watch"
   Write-Host "Q. Quit"
 }
 
@@ -742,6 +745,49 @@ function Invoke-MenuAction {
       Invoke-Server (@("--runtime-logs", "--args-file", $argsFile, "--output-json", $out) + $common)
       Write-Host "Wrote Skyrim runtime log report: $out" -ForegroundColor Green
       Write-Host "This action did not edit logs, mods, configs, or Vortex." -ForegroundColor Green
+      return
+    }
+    { $_ -in @("40", "runtime-watch", "watch-logs", "log-watch", "playtest-watch") } {
+      $watchId = $RuntimeWatchId
+      $description = $IssueDescription
+      $popup = $PopupText
+      $reset = [bool]$ResetRuntimeWatch
+      if (!$watchId) {
+        $watchId = "playtest"
+      }
+      if (!$script:StartedWithAction) {
+        $enteredWatchId = Read-Host "Watch id (press Enter for '$watchId')"
+        if ($enteredWatchId) {
+          $watchId = $enteredWatchId
+        }
+        $resetAnswer = Read-Host "Reset cursor before reproducing? Type y for yes"
+        $reset = $resetAnswer.Trim().ToLowerInvariant() -in @("y", "yes")
+      }
+      if (!$description -and !$script:StartedWithAction) {
+        $description = Read-Host "Optional problem/popup description (press Enter to skip)"
+      }
+      if (!$popup -and !$script:StartedWithAction) {
+        $popup = Read-Host "Exact popup text, if any (press Enter to skip)"
+      }
+      $argsData = @{
+        watch_id = $watchId
+        reset = $reset
+      }
+      if ($description) {
+        $argsData.description = $description
+      }
+      if ($popup) {
+        $argsData.popup_text = $popup
+      }
+      $argsFile = Write-JsonArgs "runtime-log-watch" $argsData
+      $out = Join-Path $script:ReportDir "runtime-log-watch-$watchId-$stamp.json"
+      Invoke-Server (@("--runtime-log-watch", "--args-file", $argsFile, "--output-json", $out) + $common)
+      Write-Host "Wrote runtime log watch report: $out" -ForegroundColor Green
+      if ($reset) {
+        Write-Host "Cursor initialized. Reproduce the problem, then run action 40 again without reset." -ForegroundColor Green
+      } else {
+        Write-Host "This read only new log text since the saved cursor for watch id '$watchId'." -ForegroundColor Green
+      }
       return
     }
     { $_ -in @("19", "config", "config-file", "validate-config") } {

@@ -45,7 +45,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.39"
+SERVER_VERSION = "0.2.40"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -71,6 +71,7 @@ NEXUS_DEFAULT_CACHE_TTL_SECONDS = 24 * 60 * 60
 SCAN_CACHE_ENV_VAR = "VORTEX_SKYRIMSE_MCP_SCAN_CACHE_DIR"
 SCAN_DEFAULT_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
 SCAN_CACHE_DEFAULT_MAX_ENTRIES = 10_000
+RUNTIME_WATCH_ENV_VAR = "VORTEX_SKYRIMSE_MCP_RUNTIME_WATCH_DIR"
 DEPLOYMENT_PROBE_DEFAULT_FILES_PER_MOD = 12
 XEDIT_EXE_NAMES = ("SSEEdit.exe", "xEdit.exe", "TES5Edit.exe")
 MO2_EXE_NAMES = ("ModOrganizer.exe", "ModOrganizer2.exe")
@@ -1187,6 +1188,10 @@ def scan_default_cache_dir(override: Optional[str] = None) -> Path:
     return local_support_cache_dir(SCAN_CACHE_ENV_VAR, "scan-cache", override)
 
 
+def runtime_watch_default_dir(override: Optional[str] = None) -> Path:
+    return local_support_cache_dir(RUNTIME_WATCH_ENV_VAR, "runtime-watch", override)
+
+
 def nexus_game_domain(args: Dict[str, Any]) -> str:
     raw = str(args.get("nexus_game_domain") or args.get("game_domain_name") or NEXUS_GAME_DOMAIN).strip().lower()
     return raw or NEXUS_GAME_DOMAIN
@@ -2182,6 +2187,7 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "mod_knowledge_report",
             "in_game_issue_report",
             "skyrim_runtime_log_report",
+            "skyrim_runtime_log_watch",
             "config_file_report",
             "safe_session_report",
             "bug_report_bundle",
@@ -2364,22 +2370,22 @@ def workflow_catalog() -> List[Dict[str, Any]]:
             "key": "popup",
             "title": "Annoying Popup Or Notification",
             "matchTerms": ["popup", "pop-up", "notification", "warning", "alert", "prompt", "dialog", "mcm", "message", "not configured", "configured properly"],
-            "userPrompt": "Use skyrim_runtime_log_report and in_game_issue_report with my plain popup description. If a config candidate appears, validate/read it first and propose apply_config_text_patch as a dry run.",
-            "tools": ["skyrim_runtime_log_report", "in_game_issue_report", "skyrim_case_inbox_import", "config_file_report", "read_text_file", "apply_config_text_patch"],
-            "whatToRead": ["skyrim_runtime_log_report.issueGroups", "skyrim_runtime_log_report.configCandidates", "in_game_issue_report.candidates", "nextBestInputs"],
-            "humanSteps": ["Reproduce the popup once, then run the runtime log report.", "If a config file is identified, patch exact text only with backup.", "Test candidate disables in a cloned profile if no config fix is obvious."],
-            "directCli": ["py -3 .\\server.py --runtime-logs --description \"annoying popup says file was not configured properly\"", "py -3 .\\server.py --tool in_game_issue_report --description \"annoying popup after loading a save\""],
+            "userPrompt": "Use skyrim_runtime_log_watch if I am reproducing the popup now, otherwise use skyrim_runtime_log_report and in_game_issue_report with my plain popup description. If a config candidate appears, validate/read it first and propose apply_config_text_patch as a dry run.",
+            "tools": ["skyrim_runtime_log_watch", "skyrim_runtime_log_report", "in_game_issue_report", "skyrim_case_inbox_import", "config_file_report", "read_text_file", "apply_config_text_patch"],
+            "whatToRead": ["skyrim_runtime_log_watch.issueGroups", "skyrim_runtime_log_watch.configCandidates", "skyrim_runtime_log_report.issueGroups", "skyrim_runtime_log_report.configCandidates", "in_game_issue_report.candidates", "nextBestInputs"],
+            "humanSteps": ["Use skyrim_runtime_log_watch reset=true before a clean reproduction, then call it again after the popup.", "If a config file is identified, patch exact text only with backup.", "Test candidate disables in a cloned profile if no config fix is obvious."],
+            "directCli": ["py -3 .\\server.py --runtime-log-watch --watch-id popup --reset-runtime-watch", "py -3 .\\server.py --runtime-log-watch --watch-id popup --description \"annoying popup says file was not configured properly\"", "py -3 .\\server.py --tool in_game_issue_report --description \"annoying popup after loading a save\""],
             "menuAction": "10. In-game issue triage",
         },
         {
             "key": "runtime_logs",
             "title": "Skyrim Runtime Logs And Popups",
             "matchTerms": ["runtime log", "papyrus", "skse log", "crash log", "trainwreck", "crashlogger", "configured properly", "file was not configured", "log says"],
-            "userPrompt": "Use skyrim_runtime_log_report with my description. Summarize critical/high/config findings, then use read_text_file on any configCandidates. Only propose apply_config_text_patch as dry_run=true unless I approve.",
-            "tools": ["skyrim_runtime_log_report", "config_file_report", "read_text_file", "apply_config_text_patch", "safe_session_report"],
-            "whatToRead": ["findingCount", "severityCounts", "issueGroups", "configCandidates", "freshLogStatus", "recommendedActions"],
-            "humanSteps": ["Launch Skyrim once and reproduce the problem.", "Keep the generated backup if any config patch is applied.", "Deploy/test after changing a staged mod config."],
-            "directCli": ["py -3 .\\server.py --runtime-logs --description \"popup says file was not configured properly\""],
+            "userPrompt": "Use skyrim_runtime_log_watch for repeated playtest checks or skyrim_runtime_log_report for a full recent-tail report. Summarize critical/high/config findings, then use read_text_file on any configCandidates. Only propose apply_config_text_patch as dry_run=true unless I approve.",
+            "tools": ["skyrim_runtime_log_watch", "skyrim_runtime_log_report", "config_file_report", "read_text_file", "apply_config_text_patch", "safe_session_report"],
+            "whatToRead": ["newFindingCount", "hasNewCriticalOrHigh", "findingCount", "severityCounts", "issueGroups", "configCandidates", "freshLogStatus", "recommendedActions"],
+            "humanSteps": ["For a clean reproduction, call skyrim_runtime_log_watch reset=true first.", "Launch Skyrim once and reproduce the problem.", "Keep the generated backup if any config patch is applied.", "Deploy/test after changing a staged mod config."],
+            "directCli": ["py -3 .\\server.py --runtime-log-watch --watch-id playtest --reset-runtime-watch", "py -3 .\\server.py --runtime-log-watch --watch-id playtest --description \"popup says file was not configured properly\"", "py -3 .\\server.py --runtime-logs --description \"popup says file was not configured properly\""],
             "menuAction": "18. Skyrim runtime logs",
         },
         {
@@ -8800,6 +8806,227 @@ def annotate_config_candidates(candidates: List[Dict[str, Any]], args: Dict[str,
     return annotated
 
 
+def runtime_watch_id(args: Dict[str, Any]) -> str:
+    raw = str(args.get("watch_id") or args.get("runtime_watch_id") or "default").strip()
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", raw).strip(".-")
+    return (safe or "default")[:80]
+
+
+def runtime_watch_state_path(args: Dict[str, Any]) -> Path:
+    return runtime_watch_default_dir(args.get("runtime_watch_dir")) / f"{runtime_watch_id(args)}.json"
+
+
+def load_runtime_watch_state(args: Dict[str, Any]) -> Dict[str, Any]:
+    path = runtime_watch_state_path(args)
+    if not path.exists():
+        return {"schema": "vortex-skyrimse-mcp-runtime-watch-v1", "files": {}}
+    try:
+        data = json.loads(read_text(path, 2_000_000))
+    except Exception:
+        return {"schema": "vortex-skyrimse-mcp-runtime-watch-v1", "files": {}}
+    if not isinstance(data, dict):
+        return {"schema": "vortex-skyrimse-mcp-runtime-watch-v1", "files": {}}
+    if not isinstance(data.get("files"), dict):
+        data["files"] = {}
+    data["schema"] = "vortex-skyrimse-mcp-runtime-watch-v1"
+    return data
+
+
+def write_runtime_watch_state(args: Dict[str, Any], state: Dict[str, Any]) -> None:
+    path = runtime_watch_state_path(args)
+    state["schema"] = "vortex-skyrimse-mcp-runtime-watch-v1"
+    state["updatedAt"] = iso_now()
+    write_text(path, json.dumps(state, indent=2, ensure_ascii=False, default=str))
+
+
+def runtime_watch_file_key(path: Path) -> str:
+    try:
+        return str(path.resolve()).lower()
+    except OSError:
+        return str(path).lower()
+
+
+def read_runtime_log_delta(path: Path, start_offset: int, max_bytes: int) -> Tuple[str, int, int, bool]:
+    stat = path.stat()
+    size = stat.st_size
+    start = max(0, min(start_offset, size))
+    truncated = False
+    if size - start > max_bytes:
+        start = max(0, size - max_bytes)
+        truncated = True
+    with path.open("rb") as handle:
+        handle.seek(start)
+        data = handle.read(max(0, size - start))
+    return data.decode("utf-8", errors="replace"), start, size, truncated
+
+
+def skyrim_runtime_log_watch(args: Dict[str, Any]) -> Dict[str, Any]:
+    args = apply_performance_defaults(args)
+    collected = collect_skyrim_runtime_log_files(args)
+    files = collected["files"][: int(args.get("max_runtime_log_files", args.get("max_log_files", 12)))]
+    max_new_bytes = int(args.get("max_new_log_bytes_per_file", args.get("max_log_bytes_per_file", 128_000)))
+    initial_tail_bytes = int(args.get("initial_tail_bytes", min(max_new_bytes, LOG_TAIL_DEFAULT_BYTES)))
+    max_findings = int(args.get("max_runtime_findings", 80))
+    max_refs = int(args.get("max_runtime_references", 12))
+    reset = bool(args.get("reset", args.get("reset_runtime_watch", False)))
+    first_read_existing_tail = bool(args.get("first_read_existing_tail", True))
+    include_staged_matches = bool(args.get("include_staged_file_matches", True))
+    problem_terms = tokenize_issue_terms(
+        args.get("description"),
+        args.get("popup_text"),
+        args.get("extra_terms"),
+        args.get("problem"),
+    )
+    _vortex_appdata, skyrim_dir, staging_dir, my_games = get_context_paths(args)
+    state = load_runtime_watch_state(args)
+    file_state = state.setdefault("files", {})
+    findings: List[Dict[str, Any]] = []
+    file_reports: List[Dict[str, Any]] = []
+    total_new_bytes = 0
+
+    for path in files:
+        kind = runtime_log_kind(path, my_games, skyrim_dir)
+        key = runtime_watch_file_key(path)
+        previous = file_state.get(key) if isinstance(file_state.get(key), dict) else {}
+        stat = path.stat()
+        size = stat.st_size
+        previous_offset = int(previous.get("offset", 0) or 0)
+        rotated = size < previous_offset
+        initialized = not previous
+        if reset:
+            start_offset = size
+            text = ""
+            read_start = size
+            truncated = False
+        else:
+            if initialized or rotated:
+                start_offset = max(0, size - initial_tail_bytes) if first_read_existing_tail else size
+            else:
+                start_offset = previous_offset
+            text, read_start, _size_after_read, truncated = read_runtime_log_delta(path, start_offset, max_new_bytes)
+        new_bytes = max(0, size - read_start) if not reset else 0
+        total_new_bytes += new_bytes
+        file_findings = 0
+        for new_line, line in enumerate(text.splitlines(), start=1):
+            hits = runtime_line_terms(line, problem_terms)
+            refs = extract_runtime_references(line, max_refs)
+            if not hits and not refs:
+                continue
+            if refs and not hits and kind != "crash":
+                continue
+            findings.append(
+                {
+                    "severity": runtime_line_severity(line, kind),
+                    "kind": kind,
+                    "log": str(path),
+                    "logName": path.name,
+                    "newLine": new_line,
+                    "readStartOffset": read_start,
+                    "matchedTerms": hits,
+                    "references": refs,
+                    "stagedMatches": [],
+                    "line": compact_preview(line, 600),
+                }
+            )
+            file_findings += 1
+            if len(findings) >= max_findings:
+                break
+        file_state[key] = {
+            "path": str(path),
+            "name": path.name,
+            "kind": kind,
+            "offset": size,
+            "sizeBytes": size,
+            "modifiedAt": epoch_to_iso(stat.st_mtime),
+            "seenAt": iso_now(),
+        }
+        file_reports.append(
+            {
+                "path": str(path),
+                "name": path.name,
+                "kind": kind,
+                "previousOffset": previous_offset if previous else None,
+                "currentOffset": size,
+                "readStartOffset": read_start if not reset else size,
+                "newBytes": new_bytes,
+                "initialized": initialized,
+                "rotatedOrTruncated": rotated,
+                "readWasTruncated": truncated,
+                "findingCount": file_findings,
+                "modifiedAt": epoch_to_iso(stat.st_mtime),
+            }
+        )
+        if len(findings) >= max_findings:
+            break
+
+    staged_index = None
+    if include_staged_matches and staging_dir and staging_dir.exists() and any(item.get("references") for item in findings):
+        staged_index = build_staged_file_index(staging_dir, args)
+        for finding in findings:
+            refs = finding.get("references") if isinstance(finding.get("references"), list) else []
+            finding["stagedMatches"] = match_runtime_references_to_staged_files(refs, staged_index, max_matches=max_refs)
+
+    findings.sort(
+        key=lambda item: (
+            {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}.get(str(item.get("severity")), 5),
+            str(item.get("logName", "")).lower(),
+            int(item.get("newLine", 0)),
+        )
+    )
+    config_candidates = runtime_config_candidates(findings, staged_index, int(args.get("max_runtime_config_candidates", 20)))
+    config_candidates = annotate_config_candidates(config_candidates, args)
+    issue_groups = runtime_issue_groups(findings, int(args.get("max_issue_group_examples", 3)))
+    severity_counts: Dict[str, int] = {}
+    for finding in findings:
+        severity = str(finding.get("severity") or "info")
+        severity_counts[severity] = severity_counts.get(severity, 0) + 1
+    write_runtime_watch_state(args, state)
+    high_or_critical = any(str(item.get("severity")) in {"critical", "high"} for item in findings)
+    recommended_actions = [
+        "OpenClaw can call this tool repeatedly while you test; it returns only newly appended runtime log evidence after the cursor is saved.",
+        "Use reset=true before starting a clean reproduction if you want the next call to ignore old log text.",
+        "If new configCandidates appear, inspect them with config_file_report/read_text_file before any dry-run patch.",
+    ]
+    if reset:
+        recommended_actions.insert(0, "Runtime log watch cursors were initialized. Reproduce the problem in-game, then call this tool again.")
+    elif high_or_critical:
+        recommended_actions.insert(0, "New critical/high runtime log evidence appeared; check SKSE DLL/runtime/load failures before changing gameplay mods.")
+    elif not findings and total_new_bytes == 0:
+        recommended_actions.insert(0, "No new runtime log text since the last watch call.")
+
+    return {
+        "available": bool(files),
+        "watchId": runtime_watch_id(args),
+        "statePath": str(runtime_watch_state_path(args)),
+        "reset": reset,
+        "myGamesDir": str(my_games) if my_games else None,
+        "skyrimDir": str(skyrim_dir) if skyrim_dir else None,
+        "stagingDir": str(staging_dir) if staging_dir else None,
+        "fileCount": len(files),
+        "files": file_reports,
+        "newByteCount": total_new_bytes,
+        "newFindingCount": len(findings),
+        "severityCounts": severity_counts,
+        "hasNewCriticalOrHigh": high_or_critical,
+        "findings": findings,
+        "issueGroupCount": len(issue_groups),
+        "issueGroups": issue_groups,
+        "configCandidates": config_candidates,
+        "stagedFileIndex": {
+            "available": bool(staged_index),
+            "indexedModCount": staged_index.get("indexedModCount") if isinstance(staged_index, dict) else 0,
+            "indexedFileCount": staged_index.get("indexedFileCount") if isinstance(staged_index, dict) else 0,
+            "truncated": staged_index.get("truncated") if isinstance(staged_index, dict) else False,
+        },
+        "recommendedActions": recommended_actions,
+        "notes": [
+            "This is polling, not a live SKSE event stream. It is safe for slower models because it avoids rescanning unchanged log text.",
+            "The first call reads a recent tail by default; pass reset=true to start watching from the current end of each log.",
+            "State is stored locally under runtime-watch and can be deleted safely if a cursor gets confusing.",
+        ],
+    }
+
+
 def skyrim_runtime_log_report(args: Dict[str, Any]) -> Dict[str, Any]:
     args = apply_performance_defaults(args)
     collected = collect_skyrim_runtime_log_files(args)
@@ -14307,6 +14534,46 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         },
         skyrim_runtime_log_report,
     ),
+    "skyrim_runtime_log_watch": (
+        "Poll Skyrim/Papyrus/SKSE/crash logs using saved cursors, returning only newly appended high-signal runtime evidence.",
+        {
+            "type": "object",
+            "properties": {
+                "watch_id": {"type": "string", "default": "default"},
+                "runtime_watch_dir": {"type": "string"},
+                "reset": {"type": "boolean", "default": False},
+                "reset_runtime_watch": {"type": "boolean", "default": False},
+                "first_read_existing_tail": {"type": "boolean", "default": True},
+                "description": {"type": "string"},
+                "popup_text": {"type": "string"},
+                "extra_terms": {"type": "string"},
+                "problem": {"type": "string"},
+                "skyrim_dir": {"type": "string"},
+                "staging_dir": {"type": "string"},
+                "vortex_appdata": {"type": "string"},
+                "my_games_dir": {"type": "string"},
+                "performance_mode": {"type": "string", "enum": ["normal", "slow_model", "fast", "thorough"], "default": "normal"},
+                "response_mode": {"type": "string", "enum": ["standard", "compact"], "default": "standard"},
+                "include_staged_file_matches": {"type": "boolean", "default": True},
+                "max_runtime_log_files": {"type": "integer", "default": 12},
+                "max_log_files": {"type": "integer", "default": 12},
+                "max_new_log_bytes_per_file": {"type": "integer", "default": 128000},
+                "max_log_bytes_per_file": {"type": "integer", "default": 128000},
+                "initial_tail_bytes": {"type": "integer", "default": LOG_TAIL_DEFAULT_BYTES},
+                "max_runtime_findings": {"type": "integer", "default": 80},
+                "max_runtime_references": {"type": "integer", "default": 12},
+                "max_runtime_config_candidates": {"type": "integer", "default": 20},
+                "max_issue_group_examples": {"type": "integer", "default": 3},
+                "validate_config_candidates": {"type": "boolean", "default": True},
+                "max_config_validation_bytes": {"type": "integer", "default": 2000000},
+                "max_runtime_index_files": {"type": "integer", "default": 60000},
+                "max_mods": {"type": "integer", "default": 500},
+                "max_files_per_mod": {"type": "integer", "default": 3000},
+            },
+            "additionalProperties": False,
+        },
+        skyrim_runtime_log_watch,
+    ),
     "config_file_report": (
         "Read-only validation summary for JSON/XML/INI/TOML/YAML/plain config files under detected Vortex/Skyrim roots.",
         {
@@ -15154,6 +15421,10 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["max_runtime_log_files"] = parsed.max_runtime_log_files
     if parsed.max_log_bytes_per_file is not None:
         tool_args["max_log_bytes_per_file"] = parsed.max_log_bytes_per_file
+    if parsed.max_new_log_bytes_per_file is not None:
+        tool_args["max_new_log_bytes_per_file"] = parsed.max_new_log_bytes_per_file
+    if parsed.initial_tail_bytes is not None:
+        tool_args["initial_tail_bytes"] = parsed.initial_tail_bytes
     if parsed.max_runtime_findings is not None:
         tool_args["max_runtime_findings"] = parsed.max_runtime_findings
     if parsed.max_runtime_index_files is not None:
@@ -15174,6 +15445,10 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["scan_cache_ttl_seconds"] = parsed.scan_cache_ttl_seconds
     if parsed.scan_cache_max_entries is not None:
         tool_args["scan_cache_max_entries"] = parsed.scan_cache_max_entries
+    if parsed.runtime_watch_dir:
+        tool_args["runtime_watch_dir"] = parsed.runtime_watch_dir
+    if parsed.watch_id:
+        tool_args["watch_id"] = parsed.watch_id
     if parsed.max_collection_items is not None:
         tool_args["max_collection_items"] = parsed.max_collection_items
     if parsed.max_workflows is not None:
@@ -15238,6 +15513,10 @@ def load_cli_tool_args(parsed: argparse.Namespace) -> Dict[str, Any]:
         tool_args["include_logs"] = False
     if parsed.no_runtime_logs:
         tool_args["include_runtime_logs"] = False
+    if parsed.reset_runtime_watch:
+        tool_args["reset_runtime_watch"] = True
+    if parsed.no_first_read_existing_tail:
+        tool_args["first_read_existing_tail"] = False
     if parsed.no_xedit_script:
         tool_args["include_xedit_script"] = False
     if parsed.no_staged_file_matches:
@@ -15316,6 +15595,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--wsl-bridge", action="store_true", help="Shortcut for --tool wsl_bridge_report.")
     parser.add_argument("--mo2-diagnostics", action="store_true", help="Shortcut for --tool mo2_modded_play_report.")
     parser.add_argument("--runtime-logs", action="store_true", help="Shortcut for --tool skyrim_runtime_log_report.")
+    parser.add_argument("--runtime-log-watch", action="store_true", help="Shortcut for --tool skyrim_runtime_log_watch.")
     parser.add_argument("--workflow-guide", action="store_true", help="Shortcut for --tool workflow_guide.")
     parser.add_argument("--issue-case", action="store_true", help="Shortcut for --tool skyrim_issue_case_packet.")
     parser.add_argument("--issue-case-status", action="store_true", help="Shortcut for --tool skyrim_issue_case_status.")
@@ -15406,6 +15686,8 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--scan-cache-dir", help="Override local mod-summary scan cache folder.")
     parser.add_argument("--scan-cache-ttl-seconds", type=int, help="Mod-summary scan cache TTL in seconds.")
     parser.add_argument("--scan-cache-max-entries", type=int, help="Maximum mod-summary scan cache entries to keep when writing.")
+    parser.add_argument("--runtime-watch-dir", help="Override local runtime-log watch cursor folder.")
+    parser.add_argument("--watch-id", help="Runtime-log watch cursor id, default is 'default'.")
     parser.add_argument("--xedit-exe", help="Path to SSEEdit.exe or xEdit.exe for xedit_diagnostics_report.")
     parser.add_argument("--plugin-name", help="Plugin filename for xedit_diagnostics_report.")
     parser.add_argument("--collection-manifest-path", help="JSON manifest-like file for collection_local_match_report.")
@@ -15422,6 +15704,8 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--max-file-bytes", type=int, help="Maximum bytes per file for case bundle output.")
     parser.add_argument("--max-runtime-log-files", type=int, help="Maximum recent Skyrim runtime log files to scan.")
     parser.add_argument("--max-log-bytes-per-file", type=int, help="Maximum tail bytes read from each Skyrim runtime log.")
+    parser.add_argument("--max-new-log-bytes-per-file", type=int, help="Maximum newly appended bytes read from each runtime log watch file.")
+    parser.add_argument("--initial-tail-bytes", type=int, help="Initial tail bytes read by runtime log watch before a cursor exists.")
     parser.add_argument("--max-runtime-findings", type=int, help="Maximum runtime log findings to return.")
     parser.add_argument("--max-runtime-index-files", type=int, help="Maximum staged files to index for runtime log reference matching.")
     parser.add_argument("--max-evidence-entries", type=int, help="Maximum live/case evidence entries to summarize.")
@@ -15454,6 +15738,8 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--no-play-report", action="store_true", help="For --safe-session, skip the modded play health section.")
     parser.add_argument("--no-logs", action="store_true", help="For --safe-session or bug reports, skip log status.")
     parser.add_argument("--no-runtime-logs", action="store_true", help="Skip Skyrim runtime log scanning in safe-session, diagnostics, and bug bundles.")
+    parser.add_argument("--reset-runtime-watch", action="store_true", help="Initialize runtime log watch cursors at current file ends and return no old findings.")
+    parser.add_argument("--no-first-read-existing-tail", action="store_true", help="For runtime log watch, do not read an initial tail when no cursor exists.")
     parser.add_argument("--no-xedit-script", action="store_true", help="For skyrim_issue_case_packet, skip generating the xEdit inspection script.")
     parser.add_argument("--no-staged-file-matches", action="store_true", help="For skyrim_runtime_log_report, skip staged file indexing/matching.")
     parser.add_argument("--no-config-validation", action="store_true", help="For skyrim_runtime_log_report, skip validating config candidates.")
@@ -15492,6 +15778,8 @@ def cli_main(argv: List[str]) -> int:
         if parsed.mo2_diagnostics
         else "skyrim_runtime_log_report"
         if parsed.runtime_logs
+        else "skyrim_runtime_log_watch"
+        if parsed.runtime_log_watch
         else "mod_knowledge_report"
         if parsed.mod_knowledge
         else "known_mod_rule_report"
@@ -15523,7 +15811,7 @@ def cli_main(argv: List[str]) -> int:
         else parsed.tool
     )
     if not tool_name:
-        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --known-rules, --safe-session, --skyrim-diagnostics, --deployment-doctor, --launch-doctor, --skse-doctor, --automation-plan, --report-viewer, --wsl-bridge, --mo2-diagnostics, --runtime-logs, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-evidence-report, --case-bundle, or --safe-profile-fix")
+        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --known-rules, --safe-session, --skyrim-diagnostics, --deployment-doctor, --launch-doctor, --skse-doctor, --automation-plan, --report-viewer, --wsl-bridge, --mo2-diagnostics, --runtime-logs, --runtime-log-watch, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-evidence-report, --case-bundle, or --safe-profile-fix")
 
     try:
         tool_args = load_cli_tool_args(parsed)

@@ -113,6 +113,15 @@ skyrim_runtime_log_report
 That is separate from MCP logs. It scans recent Papyrus/SKSE/crash logs for
 game/mod errors and maps referenced files back to staged mods when possible.
 
+For repeated playtest checks, use:
+
+```text
+skyrim_runtime_log_watch
+```
+
+It stores local cursor JSON under the runtime-watch cache folder and reads only
+newly appended runtime log text after the cursor is saved.
+
 The bundle includes recent log tails by default. For one attachable file:
 
 ```json

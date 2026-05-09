@@ -162,6 +162,33 @@ def main() -> int:
         fresh_report = server.skyrim_runtime_log_report(runtime_args)
         assert fresh_report["freshLogStatus"]["fresh"] is True, fresh_report
 
+        watch_args = {
+            **runtime_args,
+            "runtime_watch_dir": str(root / "runtime-watch"),
+            "watch_id": "fixture",
+            "max_new_log_bytes_per_file": 20000,
+        }
+        first_watch = server.skyrim_runtime_log_watch(watch_args)
+        assert first_watch["newFindingCount"] >= 1, first_watch
+        assert first_watch["issueGroupCount"] >= 1, first_watch
+        assert first_watch["files"][0]["initialized"] is True, first_watch
+        assert Path(first_watch["statePath"]).exists(), first_watch
+
+        quiet_watch = server.skyrim_runtime_log_watch(watch_args)
+        assert quiet_watch["newFindingCount"] == 0, quiet_watch
+        assert quiet_watch["newByteCount"] == 0, quiet_watch
+
+        with log_path.open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write('Fatal error: failed to load plugin "ExampleBroken.dll"\n')
+        active_watch = server.skyrim_runtime_log_watch(watch_args)
+        assert active_watch["newFindingCount"] == 1, active_watch
+        assert active_watch["hasNewCriticalOrHigh"] is True, active_watch
+        assert active_watch["findings"][0]["references"] == ["ExampleBroken.dll"], active_watch
+
+        reset_watch = server.skyrim_runtime_log_watch({**watch_args, "reset": True})
+        assert reset_watch["reset"] is True, reset_watch
+        assert reset_watch["newFindingCount"] == 0, reset_watch
+
     print("Config/runtime regression tests passed")
     return 0
 

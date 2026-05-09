@@ -16,6 +16,12 @@ These are useful next steps, ordered by value and risk.
 - Live/case evidence summaries that extract latest popup/OCR text, FormIDs,
   cells, objects, screenshots, and suggested next tool calls from append-only
   issue-case evidence.
+- Cursor-backed `skyrim_runtime_log_watch` polling so OpenClaw can repeatedly
+  check for newly appended Papyrus/SKSE/crash evidence without rereading old log
+  tails.
+- Vercel-ready static documentation site under `public/` for friendlier install
+  and workflow handoff. The hosted site is documentation only; the MCP remains a
+  local tool because Skyrim, Vortex, and MO2 files live on the user's machine.
 - Static local HTML report viewer for generated JSON, Markdown, CSV, log,
   script, and zip report files.
 - SKSE Runtime Doctor for Skyrim runtime, SKSE target DLL, SKSE scripts, and

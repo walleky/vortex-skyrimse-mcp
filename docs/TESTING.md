@@ -50,6 +50,7 @@ This test covers:
   `configured=no` style settings
 - refusal to patch repeated text unless `allow_multiple=true`
 - runtime log `issueGroups`
+- runtime log watch cursor/no-new-text/new-error behavior
 - stale/fresh runtime log detection
 - automatic config candidate validation
 - `validate_config_candidates=false`

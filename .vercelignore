@@ -1,0 +1,9 @@
+.git
+.local
+.cache
+__pycache__
+*.pyc
+*.zip
+openclaw.mcp.generated.json
+doctor.generated.json
+vortex-skyrimse-mcp-bug-report-*.json
