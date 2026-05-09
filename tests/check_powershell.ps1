@@ -4,7 +4,8 @@ $Scripts = @(
   "install_windows.ps1",
   "mcp_doctor.ps1",
   "make_mod_knowledge.ps1",
-  "vortex_skyrimse_menu.ps1"
+  "vortex_skyrimse_menu.ps1",
+  "scripts\capture_popup_evidence.ps1"
 )
 
 foreach ($Script in $Scripts) {
@@ -60,6 +61,12 @@ if (($MenuOutput -join "`n") -notmatch "Known Mod Rules") {
 }
 if (($MenuOutput -join "`n") -notmatch "MO2 Diagnostics") {
   throw "Menu did not list the MO2 diagnostics action."
+}
+if (($MenuOutput -join "`n") -notmatch "Runtime Log Watch") {
+  throw "Menu did not list the runtime log watch action."
+}
+if (($MenuOutput -join "`n") -notmatch "Capture Popup Evidence") {
+  throw "Menu did not list the capture popup evidence action."
 }
 if (($MenuOutput -join "`n") -notmatch "Config file validator") {
   throw "Menu did not list the config file validator action."

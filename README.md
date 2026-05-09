@@ -38,6 +38,8 @@ an MCP client.
   searching staged mods for location, object, plugin, readme, popup wording,
   important file paths, limited config/text evidence, UI/script/MCM evidence,
   and optional exact popup text.
+- Capture popup evidence with an optional local Windows screenshot/OCR helper
+  that writes JSON into a case folder for OpenClaw to import.
 - Read recent Skyrim/Papyrus/SKSE/crash logs, detect config and popup-style
   errors such as "file was not configured properly", and map referenced files
   back to staged Vortex mods when possible.
@@ -139,6 +141,7 @@ an MCP client.
 - [docs/ADR-0001-NEXUS-API-KEYS.md](docs/ADR-0001-NEXUS-API-KEYS.md): why this MCP uses its own explicit Nexus key instead of Vortex's key.
 - [docs/SAFETY-UNDO.md](docs/SAFETY-UNDO.md): backup, restore-preview, and dry-run rules.
 - [docs/IN-GAME-DIAGNOSIS.md](docs/IN-GAME-DIAGNOSIS.md): how to ask OpenClaw about misplaced objects, popups, FormIDs, and future live Skyrim bridging.
+- [docs/POPUP-CAPTURE.md](docs/POPUP-CAPTURE.md): optional local screenshot/OCR helper for popup evidence.
 - [docs/OPENCLAW-AGENT-GUIDE.md](docs/OPENCLAW-AGENT-GUIDE.md): how an OpenClaw agent should use the tools safely.
 - [docs/VORTEX-MCP-BRIDGE-COMPARISON.md](docs/VORTEX-MCP-BRIDGE-COMPARISON.md): what this project borrows from Vortex MCP Bridge and what stays out of scope.
 - [docs/LOGGING.md](docs/LOGGING.md): log folder, channels, and inspection commands.

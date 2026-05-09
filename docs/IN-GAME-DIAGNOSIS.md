@@ -39,6 +39,17 @@ looks for UI/interface, script, SKSE, config, FOMOD, and MCM-style evidence.
 Exact text or screenshot/OCR is optional second-pass evidence when the first
 candidate list is weak.
 
+If you do not want to type the popup, create an issue case and use the local
+capture helper:
+
+```powershell
+.\vortex_skyrimse_menu.ps1 -Action capture-popup -IssueCaseDir "C:\path\issue-case"
+```
+
+That saves a screenshot and optional OCR JSON into the case `incoming` folder,
+imports it, and writes a live evidence summary. See
+[POPUP-CAPTURE.md](POPUP-CAPTURE.md).
+
 If the popup says a file was not configured properly, use the runtime log tool
 too:
 
@@ -135,9 +146,14 @@ Safer path:
 
 This MCP cannot see Skyrim's 3D scene by itself. It reads files and Vortex state.
 
-A future live bridge would need one or more of these:
+Current helper bridge:
 
-- screenshot/OCR capture for visible popups
+- `scripts/capture_popup_evidence.ps1` can capture the visible desktop and, if
+  Tesseract is installed, OCR popup text into a case folder.
+
+A fuller future live bridge would need one or more of these:
+
+- automatic screenshot/OCR trigger for visible popups
 - SKSE plugin reporting current cell, loaded area, crosshair reference FormID, base object, and active UI/message events
 - console-log bridge that can export clicked reference details
 - read-only xEdit/SSEEdit integration for cell and record lookup

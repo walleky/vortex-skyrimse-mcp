@@ -226,6 +226,15 @@ For something weird inside the game:
 Use skyrim_diagnostics_report with this issue: there is a bed outside the tavern room in the Whiterun Bannered Mare. Include in-game issue candidates and do not apply changes.
 ```
 
+For a popup you do not want to type:
+
+```powershell
+.\vortex_skyrimse_menu.ps1 -Action capture-popup -IssueCaseDir "C:\path\issue-case"
+```
+
+This captures the visible desktop into the case folder and imports OCR evidence
+when Tesseract is available. Review screenshots before sharing them.
+
 If you have a console FormID, add it and ask for the xEdit target:
 
 ```text

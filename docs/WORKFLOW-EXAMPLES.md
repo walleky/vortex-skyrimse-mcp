@@ -242,6 +242,19 @@ If popup OCR or console capture appears later:
 Use skyrim_case_evidence_import to append the captured popup text, current cell, and clicked FormID to the same case folder. Then run skyrim_case_evidence_report and skyrim_case_what_now.
 ```
 
+If the user does not want to type the popup, have them run the local capture
+helper while the popup is visible:
+
+```powershell
+.\vortex_skyrimse_menu.ps1 -Action capture-popup -IssueCaseDir "C:\path\issue-case"
+```
+
+Then:
+
+```text
+Use skyrim_case_evidence_report on the same case folder. Read latestPopupText and suggestedToolArgs before asking the user for more popup details.
+```
+
 If a helper wrote files into the case `incoming` folder:
 
 ```text

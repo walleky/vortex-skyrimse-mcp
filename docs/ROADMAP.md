@@ -4,7 +4,7 @@ These are useful next steps, ordered by value and risk.
 
 ## Best Next Improvements
 
-1. Add a live Skyrim evidence bridge: screenshot/OCR for popups, plus optional SKSE/console telemetry for current cell and clicked FormID.
+1. Add a fuller live Skyrim evidence bridge: automatic screenshot/OCR trigger for popups, plus optional SKSE/console telemetry for current cell and clicked FormID.
 2. Add Nexus GraphQL file-content search behind an explicit read-only flag for "which Nexus mod contains this plugin/script/mesh?" questions.
 3. Add more plugin metadata parsing for ESP/ESM headers beyond masters, such as plugin version and record counts.
 4. Add richer Vortex collection detection if Vortex exposes more stable CLI paths.
@@ -19,6 +19,9 @@ These are useful next steps, ordered by value and risk.
 - Cursor-backed `skyrim_runtime_log_watch` polling so OpenClaw can repeatedly
   check for newly appended Papyrus/SKSE/crash evidence without rereading old log
   tails.
+- Optional Windows screenshot/OCR helper, `scripts/capture_popup_evidence.ps1`,
+  that writes popup evidence JSON into a case `incoming` folder and can be run
+  from local menu action 41.
 - Vercel-ready static documentation site under `public/` for friendlier install
   and workflow handoff. The hosted site is documentation only; the MCP remains a
   local tool because Skyrim, Vortex, and MO2 files live on the user's machine.

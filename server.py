@@ -45,7 +45,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.40"
+SERVER_VERSION = "0.2.41"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -6133,11 +6133,15 @@ def skyrim_case_what_now(args: Dict[str, Any]) -> Dict[str, Any]:
 def skyrim_live_bridge_status(args: Dict[str, Any]) -> Dict[str, Any]:
     case_dir = expand_path(args.get("case_dir") or args.get("path"))
     output_path = expand_path(args.get("output_path")) if args.get("output_path") else (case_dir / "live-bridge-design.md" if case_dir else None)
+    helper_script = Path(__file__).resolve().parent / "scripts" / "capture_popup_evidence.ps1"
     capabilities = {
         "screenshotOcr": {
-            "implemented": False,
+            "implemented": helper_script.exists(),
+            "mode": "manual_helper",
+            "helperScript": str(helper_script),
             "neededFor": ["reading popup text without the user typing it", "capturing menu/dialog state"],
-            "requirements": ["local screenshot capture", "OCR engine", "privacy-aware image storage in case folder"],
+            "requirements": ["run scripts/capture_popup_evidence.ps1 locally", "optional Tesseract OCR on PATH", "case folder incoming import"],
+            "limitations": ["captures the visible desktop on demand", "OCR requires Tesseract or clipboard fallback", "does not stream live game events"],
         },
         "consoleFormIdCapture": {
             "implemented": False,
@@ -6169,10 +6173,11 @@ def skyrim_live_bridge_status(args: Dict[str, Any]) -> Dict[str, Any]:
         "",
         "- Case folders, live evidence import, inbox import, notes, xEdit CSV parsing, and safe experiment plans.",
         "- Live evidence summaries that extract latest popup/OCR text, FormIDs, cells, and suggested tool calls.",
+        "- Optional local screenshot/OCR helper: `scripts/capture_popup_evidence.ps1` writes JSON evidence into the case `incoming` folder.",
         "",
         "## Needed For True Live Diagnosis",
         "",
-        "- Screenshot/OCR capture for popup text.",
+        "- Automatic screenshot/OCR trigger for popup text.",
         "- Console/FormID capture for clicked objects.",
         "- Optional SKSE telemetry for current cell and active messages.",
         "- Strict read-only IPC/log output so OpenClaw can observe without changing the game.",
@@ -6186,10 +6191,11 @@ def skyrim_live_bridge_status(args: Dict[str, Any]) -> Dict[str, Any]:
         "caseDir": str(case_dir) if case_dir else None,
         "outputPath": str(output_path) if output_path else None,
         "canSeeRunningGameNow": False,
+        "canCapturePopupViaHelperNow": helper_script.exists(),
         "canUseCaseFolderEvidenceNow": True,
         "capabilities": capabilities,
         "recommendedNextBuild": [
-            "Add a small separate screenshot/OCR helper that writes popup text to the case folder.",
+            "Make the screenshot/OCR helper easier to launch from OpenClaw and the local menu.",
             "Add a user-assisted console FormID capture file before considering SKSE telemetry.",
             "Keep all live bridge output read-only and append-only.",
         ],

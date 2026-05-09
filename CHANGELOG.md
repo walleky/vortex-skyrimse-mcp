@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.41
+
+- Adds `scripts/capture_popup_evidence.ps1`, an optional Windows screenshot/OCR helper that writes popup evidence JSON into an issue case `incoming` folder.
+- Adds `Capture-Popup-Evidence.cmd` and local menu action 41 for no-hassle popup capture plus automatic case inbox import/evidence summary.
+- Updates `skyrim_live_bridge_status` to report the manual screenshot/OCR helper as available while keeping console/SKSE telemetry marked as future work.
+- Documents popup capture workflows, privacy boundaries, and OpenClaw handoff.
+- Expands PowerShell helper checks to parse the new capture script and verify the menu action.
+
 ## v0.2.40
 
 - Adds `skyrim_runtime_log_watch`, a cursor-backed polling tool for newly appended Papyrus/SKSE/crash log evidence.

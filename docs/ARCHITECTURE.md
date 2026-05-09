@@ -40,6 +40,8 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - `Make-Mod-Knowledge.cmd`: double-click wrapper around `make_mod_knowledge.ps1`.
 - `vortex_skyrimse_menu.ps1`: local helper menu for common diagnosis/report actions plus profile backup, restore preview, and read-only xEdit inspection script/result actions.
 - `Vortex-SkyrimSE-Menu.cmd`: double-click wrapper around `vortex_skyrimse_menu.ps1`.
+- `scripts/capture_popup_evidence.ps1`: optional Windows screenshot/OCR helper that writes evidence JSON into a case `incoming` folder.
+- `Capture-Popup-Evidence.cmd`: double-click wrapper around `scripts/capture_popup_evidence.ps1`.
 - `tests/smoke_mcp.py`: verifies JSON-RPC initialize, tools/list, and a basic tools/call.
 - `tests/fixture_mcp.py`: synthetic Skyrim/Vortex fixture for plugin, staging, conflict, logging, and bug-report behavior.
 - `tests/config_runtime_mcp.py`: focused config/runtime regression tests for parsing, patch suggestions, root restrictions, stale logs, and issue grouping.
@@ -56,6 +58,7 @@ The server must never write normal logs to stdout because stdout is the MCP prot
 - `docs/REVERSIBLE-AUTOMATION.md`: explains the safety gate for risky automation requests.
 - `docs/SKYRIM-RUNTIME-LOGS.md`: explains runtime log scanning and safe config patching.
 - `docs/RUNTIME-LOG-WATCH.md`: explains cursor-backed runtime log polling for OpenClaw.
+- `docs/POPUP-CAPTURE.md`: explains the optional screenshot/OCR evidence helper.
 - `docs/VERCEL.md`: explains the static public docs site and local/privacy boundary.
 - `docs/TESTING.md`: explains local and CI test commands.
 - `docs/MOD-KNOWLEDGE.md`: explains the collection knowledge report and safe removal-review flow.
@@ -109,6 +112,7 @@ Most tools are read-only. The write tools are narrow and opt-in:
 - `skyrim_issue_case_note` appends case notes only.
 - `skyrim_case_evidence_import` appends evidence files only.
 - `skyrim_case_inbox_import` imports helper files into case evidence only and de-dupes by SHA-256.
+- `scripts/capture_popup_evidence.ps1` writes screenshots and JSON evidence only under a case folder's `incoming` directory.
 - `skyrim_case_evidence_report` reads append-only case evidence and writes a
   Markdown/JSON summary only.
 - `skyrim_case_bundle` writes a zip copy of case files only.

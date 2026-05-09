@@ -36,6 +36,9 @@ console helper provides popup text, current cell, or clicked FormIDs.
 Use `skyrim_case_inbox_import` when a helper writes JSON/TXT/LOG files into a
 case `incoming` folder; it imports only new file hashes and appends to the same
 live evidence log.
+If the user does not want to type popup text, tell them to run menu action 41
+or `scripts/capture_popup_evidence.ps1` while the popup is visible. Then call
+`skyrim_case_inbox_import` and `skyrim_case_evidence_report`.
 Both are no-change Markdown/JSON reports with setup validation, optional profile
 backup, modded play health, optional in-game issue triage, and logs.
 
@@ -290,15 +293,16 @@ skyrim_case_evidence_report with case_dir after evidence import
 skyrim_case_bundle with case_dir when the user wants to share the case
 ```
 
-`skyrim_live_bridge_status` is not a live capture tool yet. Use it to explain
-that screenshot/OCR, console FormID capture, or SKSE telemetry need a separate
-read-only helper before OpenClaw can truly see popups or clicked objects.
-When such a helper exists, have it write JSON/TXT/LOG files to the case
-`incoming` folder and call `skyrim_case_inbox_import`, or call
-`skyrim_case_evidence_import` directly for one evidence item. Never overwrite
-the original case report. After importing, call `skyrim_case_evidence_report`
-or `skyrim_case_what_now`; use `latestPopupText`, `latestReferenceFormId`, and
-`latestCell` instead of asking the user to type the same evidence again.
+`skyrim_live_bridge_status` explains the current boundary. Screenshot/OCR now
+exists as a manual local helper, not an automatic stream. Console FormID capture
+and SKSE telemetry still need separate read-only helpers before OpenClaw can
+truly see clicked objects or live game state. For screenshot/OCR, have the
+helper write JSON/TXT/LOG files to the case `incoming` folder and call
+`skyrim_case_inbox_import`, or call `skyrim_case_evidence_import` directly for
+one evidence item. Never overwrite the original case report. After importing,
+call `skyrim_case_evidence_report` or `skyrim_case_what_now`; use
+`latestPopupText`, `latestReferenceFormId`, and `latestCell` instead of asking
+the user to type the same evidence again.
 
 Tell the user to apply the generated script only to selected candidate plugins
 or records in xEdit/SSEEdit, then close xEdit without saving plugin changes.

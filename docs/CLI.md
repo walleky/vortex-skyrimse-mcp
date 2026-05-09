@@ -186,6 +186,7 @@ Import live/captured evidence and bundle the case:
 ```powershell
 py -3 .\server.py --case-evidence --case-dir ".\reports\popup-case" --evidence-kind popup_ocr --ocr-text "file was not configured properly"
 py -3 .\server.py --case-evidence --case-dir ".\reports\bed-case" --evidence-kind console --reference-form-id "0100ABCD" --base-form-id "00001234" --cell "WhiterunBanneredMare"
+.\scripts\capture_popup_evidence.ps1 -CaseDir ".\reports\popup-case" -DelaySeconds 3
 py -3 .\server.py --case-inbox --case-dir ".\reports\popup-case"
 py -3 .\server.py --case-inbox --case-dir ".\reports\popup-case" --inbox-dir ".\reports\popup-case\incoming" --dry-run
 py -3 .\server.py --case-bundle --case-dir ".\reports\popup-case"

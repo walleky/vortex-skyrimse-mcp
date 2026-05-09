@@ -40,6 +40,7 @@ param(
   [string]$ScreenshotPath = "",
   [string]$EvidenceConfidence = "",
   [string]$InboxDir = "",
+  [string]$TesseractPath = "",
   [string]$ExperimentTargetMod = "",
   [string]$ExperimentTargetModId = "",
   [string]$TestProfileName = "OpenClaw Safe Test",
@@ -47,8 +48,11 @@ param(
   [string]$EnableModIds = "",
   [string]$DisableModIds = "",
   [string]$RuntimeWatchId = "playtest",
+  [int]$CaptureDelaySeconds = 2,
   [switch]$ApplyProfileFix,
   [switch]$ResetRuntimeWatch,
+  [switch]$NoOcr,
+  [switch]$IncludeClipboardText,
   [int]$MaxMods = 500,
   [int]$XeditMaxRecords = 2000,
   [int]$XeditMaxPreviewRows = 50,
@@ -305,6 +309,7 @@ function Show-Actions {
   Write-Host "38. Known Mod Rules"
   Write-Host "39. MO2 Diagnostics"
   Write-Host "40. Runtime Log Watch"
+  Write-Host "41. Capture Popup Evidence"
   Write-Host "Q. Quit"
 }
 
@@ -788,6 +793,45 @@ function Invoke-MenuAction {
       } else {
         Write-Host "This read only new log text since the saved cursor for watch id '$watchId'." -ForegroundColor Green
       }
+      return
+    }
+    { $_ -in @("41", "capture-popup", "popup-capture", "screenshot-ocr", "capture-evidence") } {
+      $caseDir = $IssueCaseDir
+      if (!$caseDir) {
+        if ($script:StartedWithAction) {
+          throw "Pass -IssueCaseDir with -Action capture-popup."
+        }
+        $caseDir = Read-Host "Paste the issue case folder path"
+      }
+      $helper = Join-Path $PSScriptRoot "scripts\capture_popup_evidence.ps1"
+      if (!(Test-Path -LiteralPath $helper)) {
+        throw "Missing helper script: $helper"
+      }
+      $note = $IssueDescription
+      if (!$note -and $PopupText) {
+        $note = "Popup text/context: $PopupText"
+      }
+      $captureArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $helper, "-CaseDir", $caseDir, "-DelaySeconds", ([string]$CaptureDelaySeconds))
+      if ($TesseractPath) {
+        $captureArgs += @("-TesseractPath", $TesseractPath)
+      }
+      if ($note) {
+        $captureArgs += @("-Note", $note)
+      }
+      if ($NoOcr) {
+        $captureArgs += "-NoOcr"
+      }
+      if ($IncludeClipboardText) {
+        $captureArgs += "-IncludeClipboardText"
+      }
+      Write-Host "Capturing popup evidence. Put the popup on screen if you used a delay." -ForegroundColor Cyan
+      & powershell.exe @captureArgs
+      $importOut = Join-Path $script:ReportDir "case-inbox-after-capture-$stamp.json"
+      Invoke-Server (@("--case-inbox", "--case-dir", $caseDir, "--output-json", $importOut) + $common)
+      $summaryOut = Join-Path $script:ReportDir "live-evidence-summary-after-capture-$stamp.json"
+      Invoke-Server (@("--case-evidence-report", "--case-dir", $caseDir, "--output-json", $summaryOut) + $common)
+      Write-Host "Imported captured evidence: $importOut" -ForegroundColor Green
+      Write-Host "Wrote live evidence summary result: $summaryOut" -ForegroundColor Green
       return
     }
     { $_ -in @("19", "config", "config-file", "validate-config") } {
