@@ -68,6 +68,9 @@ if (($MenuOutput -join "`n") -notmatch "Runtime Log Watch") {
 if (($MenuOutput -join "`n") -notmatch "Capture Popup Evidence") {
   throw "Menu did not list the capture popup evidence action."
 }
+if (($MenuOutput -join "`n") -notmatch "Vortex Open Status") {
+  throw "Menu did not list the Vortex-open status action."
+}
 if (($MenuOutput -join "`n") -notmatch "Config file validator") {
   throw "Menu did not list the config file validator action."
 }

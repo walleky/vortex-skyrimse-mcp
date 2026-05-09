@@ -45,7 +45,7 @@ except Exception:  # pragma: no cover - non-Windows test hosts
 
 
 SERVER_NAME = "vortex-skyrimse-mcp"
-SERVER_VERSION = "0.2.41"
+SERVER_VERSION = "0.2.42"
 PROTOCOL_VERSION = "2025-06-18"
 SKYRIM_APP_ID = "489830"
 GAME_ID = "skyrimse"
@@ -1018,6 +1018,102 @@ def is_vortex_process_running() -> bool:
         )
         output = stdout.lower()
     return "vortex.exe" in output and "no tasks" not in output
+
+
+def vortex_process_context(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    args = args or {}
+    running = is_vortex_process_running()
+    allow = bool(args.get("allow_running_vortex", False))
+    return {
+        "running": running,
+        "allowRunningVortex": allow,
+        "writeMode": "vortex_open_opt_in" if allow else "closed_by_default",
+        "canReadWhileOpen": True,
+        "canAttemptProfileWritesWhileOpen": allow,
+        "risk": "low" if not running or not allow else "medium",
+        "notes": [
+            "Read-only reports can run while Vortex is open.",
+            "Profile writes are blocked by default while Vortex.exe is open because Vortex may lock or overwrite state.",
+            "If the user explicitly wants Vortex left open, pass allow_running_vortex=true and read postApplyVerification afterward.",
+            "Vortex UI may need a profile switch, reload, or restart before newly written profile state is visible.",
+        ],
+        "afterApplyUiSteps": [
+            "Read postApplyVerification in the tool result.",
+            "In Vortex, switch to Profiles or switch away/back from the affected profile.",
+            "If the clone or toggles do not appear, close and reopen Vortex.",
+            "Click Deploy Mods before launching Skyrim.",
+            "Rerun deployment_doctor_report and skyrim_launch_doctor_report.",
+        ],
+    }
+
+
+def vortex_open_status(args: Dict[str, Any]) -> Dict[str, Any]:
+    context = vortex_process_context(args)
+    return {
+        "vortexProcess": context,
+        "readOnlyToolsWorkWhileOpen": True,
+        "profileWriteDefault": "blocked_when_vortex_open",
+        "profileWriteOptIn": {
+            "argument": "allow_running_vortex=true",
+            "cliFlag": "--allow-running-vortex",
+            "whenToUse": "Only after the user explicitly says they want to keep Vortex open and accepts that the UI may need refresh/restart.",
+            "recommendedTools": ["vortex_safe_profile_fix", "vortex_clone_profile", "vortex_set_profile_mods"],
+        },
+        "recommendedOpenClawFlow": [
+            "Run vortex_profile_backup first.",
+            "Run vortex_safe_profile_fix with apply=false and exact mod ids.",
+            "If the user approves and wants Vortex left open, rerun with apply=true and allow_running_vortex=true.",
+            "Read postApplyVerification to confirm the state landed.",
+            "Tell the user to refresh/switch profile in Vortex, then deploy mods.",
+        ],
+        "notes": [
+            "This does not force Vortex's visible UI to live-refresh. It makes the MCP attempt the Vortex CLI write and then verify state.",
+            "If Vortex reports a database lock or postApplyVerification fails, close Vortex and rerun the same apply command.",
+        ],
+        "readOnly": True,
+    }
+
+
+def verify_vortex_profile_state(
+    args: Dict[str, Any],
+    profile_id: str,
+    expected_enabled: Optional[List[str]] = None,
+    expected_disabled: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    expected_enabled = expected_enabled or []
+    expected_disabled = expected_disabled or []
+    try:
+        snapshot = load_vortex_profile_state(args, include_mods=False)
+    except Exception as exc:
+        return {
+            "verified": False,
+            "profileId": profile_id,
+            "error": str(exc),
+            "nextAction": "If Vortex is open and the state cannot be re-read, refresh/restart Vortex and rerun vortex_profile_report.",
+        }
+    profile = snapshot["profiles"].get(profile_id)
+    if not isinstance(profile, dict):
+        return {
+            "verified": False,
+            "profileId": profile_id,
+            "profileFound": False,
+            "activeProfileId": snapshot.get("activeProfileId"),
+            "nextAction": "If the write reported success, refresh/restart Vortex and rerun vortex_profile_report. If it still is missing, restore from backup.",
+        }
+    mod_state = profile.get("modState") if isinstance(profile.get("modState"), dict) else {}
+    enabled_mismatches = [mod_id for mod_id in expected_enabled if not profile_enabled(mod_state.get(mod_id))]
+    disabled_mismatches = [mod_id for mod_id in expected_disabled if profile_enabled(mod_state.get(mod_id))]
+    verified = not enabled_mismatches and not disabled_mismatches
+    return {
+        "verified": verified,
+        "profileFound": True,
+        "profileId": profile_id,
+        "activeProfileId": snapshot.get("activeProfileId"),
+        "profile": summarize_profile(profile_id, profile, snapshot.get("activeProfileId")),
+        "expectedEnabledMissing": enabled_mismatches,
+        "expectedDisabledStillEnabled": disabled_mismatches,
+        "nextAction": "Refresh Vortex UI and deploy mods." if verified else "Refresh/restart Vortex, rerun this report, and do not launch Skyrim until Deployment Doctor is clean.",
+    }
 
 
 def vortex_state_get(
@@ -2195,6 +2291,7 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
             "deployment_doctor_report",
             "skyrim_launch_doctor_report",
             "skse_runtime_doctor_report",
+            "vortex_open_status",
             "scan_cache_status",
             "xedit_diagnostics_report",
             "xedit_inspection_script",
@@ -2279,7 +2376,7 @@ def validate_setup(args: Dict[str, Any]) -> Dict[str, Any]:
         "toolGroups": tool_groups,
         "safetyDefaults": [
             "Profile writes are dry-run unless apply=true.",
-            "Profile writes refuse to run while Vortex.exe is open unless allow_running_vortex=true.",
+            "Profile writes refuse to run while Vortex.exe is open unless allow_running_vortex=true; use vortex_open_status for the exact Vortex-open workflow.",
             "vortex_set_profile_mods, vortex_clone_profile, and vortex_safe_profile_fix write a profile backup before apply=true by default.",
             "Use vortex_profile_restore_plan with apply=false first to preview undo/restore actions.",
             "MO2 tools added here are read-only and profile-aware; launch Skyrim/SKSE through MO2 for usvfs mods to appear.",
@@ -2349,9 +2446,9 @@ def workflow_catalog() -> List[Dict[str, Any]]:
             "title": "Reversible Automation Plan",
             "matchTerms": ["delete mods", "delete", "uninstall mods", "uninstall", "auto sort", "sort", "load order", "conflict rules", "disable unwanted", "remove unwanted", "automate", "revert", "reversible", "undo"],
             "userPrompt": "Use vortex_reversible_automation_plan with my request. Explain which parts can be tested in a cloned profile, which parts must stay in Vortex/xEdit, and how to undo. Do not apply changes.",
-            "tools": ["vortex_reversible_automation_plan", "vortex_profile_mods", "vortex_safe_profile_fix", "deployment_doctor_report", "skyrim_launch_doctor_report"],
+            "tools": ["vortex_reversible_automation_plan", "vortex_profile_mods", "vortex_open_status", "vortex_safe_profile_fix", "deployment_doctor_report", "skyrim_launch_doctor_report"],
             "whatToRead": ["summary", "actionPlans", "planSteps", "findings", "nextActions"],
-            "humanSteps": ["Use exact Vortex mod ids.", "Preview clone/profile changes first.", "Close Vortex before approved profile writes.", "Deploy manually in Vortex, then verify with Deployment Doctor."],
+            "humanSteps": ["Use exact Vortex mod ids.", "Preview clone/profile changes first.", "Prefer closing Vortex for approved profile writes, or use allow_running_vortex=true and read postApplyVerification.", "Deploy manually in Vortex, then verify with Deployment Doctor."],
             "directCli": ["py -3 .\\server.py --automation-plan --request \"disable these unwanted mods in a cloned profile\""],
             "menuAction": "34. Reversible Automation Plan",
         },
@@ -2415,9 +2512,9 @@ def workflow_catalog() -> List[Dict[str, Any]]:
             "title": "Safe Profile Experiment And Undo",
             "matchTerms": ["profile", "clone", "backup", "undo", "restore", "disable", "test profile", "safe test"],
             "userPrompt": "Use vortex_profile_backup with include_all_profiles=true. Then create a dry-run plan to clone my active profile as \"OpenClaw Safe Test\". Do not apply until I approve.",
-            "tools": ["vortex_profile_backup", "vortex_clone_profile", "vortex_safe_profile_fix", "vortex_profile_restore_plan"],
+            "tools": ["vortex_profile_backup", "vortex_open_status", "vortex_clone_profile", "vortex_safe_profile_fix", "vortex_profile_restore_plan"],
             "whatToRead": ["backupPath", "plannedChangeCount", "plannedChanges"],
-            "humanSteps": ["Close Vortex before profile writes.", "Reopen Vortex, pick the intended profile, deploy, and test.", "Keep the backup path."],
+            "humanSteps": ["Prefer closing Vortex before profile writes; if the user wants Vortex left open, use allow_running_vortex=true and check postApplyVerification.", "Refresh or reopen Vortex if the UI does not show the written profile immediately, then pick the intended profile, deploy, and test.", "Keep the backup path."],
             "directCli": ["py -3 .\\server.py --tool vortex_profile_backup --include-all-profiles", "py -3 .\\server.py --safe-profile-fix --new-profile-name \"OpenClaw Safe Test\" --disable-mod-id exact-mod-id"],
             "menuAction": "2. Create Vortex profile backup",
         },
@@ -9390,7 +9487,7 @@ def build_profile_backup(
         "notes": [
             "This file is for vortex_profile_restore_plan.",
             "Restore previews are dry-run by default; use apply=true only after reading the planned changes.",
-            "Close Vortex before applying a restore plan.",
+            "Close Vortex before applying a restore plan when possible, or use allow_running_vortex=true and verify afterward.",
         ],
     }
 
@@ -9524,6 +9621,7 @@ def vortex_profile_restore_plan(args: Dict[str, Any]) -> Dict[str, Any]:
             int(args.get("timeout_seconds", 60)),
             bool(args.get("allow_running_vortex", False)),
         )
+    post_apply_verification = verify_vortex_profile_state(restore_args, profile_id) if apply_result else None
     return {
         "dryRun": not apply_changes,
         "backup_path": backup["_backupPath"],
@@ -9535,13 +9633,15 @@ def vortex_profile_restore_plan(args: Dict[str, Any]) -> Dict[str, Any]:
         **change_plan_preview(changes, int(args.get("max_plan_preview", 100))),
         "applied": bool(apply_result),
         "applyBatches": apply_result.get("batchCount") if apply_result else None,
+        "vortexProcess": vortex_process_context(args),
+        "postApplyVerification": post_apply_verification,
         "vortex_exe": apply_result["vortex_exe"] if apply_result else snapshot["vortex_exe"],
         "notes": [
             "This restores backed-up profile fields and mod enabled-state records through Vortex's CLI.",
             "Dry-run is the default. Read plannedChanges before apply=true.",
-            "Close Vortex before apply=true so Vortex does not overwrite or lock profile state.",
+            "Close Vortex before apply=true when possible. If you explicitly keep Vortex open, pass allow_running_vortex=true and read postApplyVerification.",
             "Extra profiles that are not in the backup are reported but not removed automatically.",
-            "After applying a restore plan, open Vortex and deploy mods before launching Skyrim.",
+            "After applying a restore plan, refresh/reopen Vortex and deploy mods before launching Skyrim.",
         ],
     }
 
@@ -9567,7 +9667,7 @@ def vortex_profile_report(args: Dict[str, Any]) -> Dict[str, Any]:
         "profiles": summaries,
         "notes": [
             "Profile writes use Vortex.exe --set and default to dry-run in write-capable tools.",
-            "Close Vortex before apply=true profile writes so Vortex does not overwrite or lock the state database.",
+            "Profile writes are safest with Vortex closed, but tools support explicit allow_running_vortex=true with post-apply verification when the user wants Vortex left open.",
             "After changing profile mod enabled states, use Vortex to deploy mods before launching Skyrim.",
         ],
     }
@@ -10347,6 +10447,7 @@ def vortex_clone_profile(args: Dict[str, Any]) -> Dict[str, Any]:
             int(args.get("timeout_seconds", 60)),
             bool(args.get("allow_running_vortex", False)),
         )
+    post_apply_verification = verify_vortex_profile_state(args, new_id) if apply_result else None
     return {
         "dryRun": not apply_changes,
         "gameId": snapshot["gameId"],
@@ -10357,12 +10458,14 @@ def vortex_clone_profile(args: Dict[str, Any]) -> Dict[str, Any]:
         "backupPath": backup_path,
         "applied": bool(apply_result),
         "applyBatches": apply_result.get("batchCount") if apply_result else None,
+        "vortexProcess": vortex_process_context(args),
+        "postApplyVerification": post_apply_verification,
         "vortex_exe": apply_result["vortex_exe"] if apply_result else snapshot["vortex_exe"],
         "notes": [
-            "Use apply=true only with Vortex closed. By default this tool refuses writes while Vortex.exe is running.",
+            "Use apply=true with Vortex closed when possible. If you explicitly keep Vortex open, pass allow_running_vortex=true and read postApplyVerification.",
             "When apply=true, this writes a Vortex profile backup first unless backup_before_apply=false.",
             "The clone copies enabled/disabled mod state in chunked CLI writes so large collections avoid Windows command-length failures.",
-            "Deploy mods in Vortex after activating or changing a profile.",
+            "Refresh/reopen Vortex if the clone is not visible, then deploy mods before launching Skyrim.",
         ],
     }
 
@@ -10416,6 +10519,9 @@ def vortex_set_profile_mods(args: Dict[str, Any]) -> Dict[str, Any]:
             int(args.get("timeout_seconds", 60)),
             bool(args.get("allow_running_vortex", False)),
         )
+    post_apply_verification = (
+        verify_vortex_profile_state(args, profile_id, enable_ids, disable_ids) if apply_result else None
+    )
     return {
         "dryRun": not apply_changes,
         "gameId": snapshot["gameId"],
@@ -10429,12 +10535,14 @@ def vortex_set_profile_mods(args: Dict[str, Any]) -> Dict[str, Any]:
         "backupPath": backup_path,
         "applied": bool(apply_result),
         "applyBatches": apply_result.get("batchCount") if apply_result else None,
+        "vortexProcess": vortex_process_context(args),
+        "postApplyVerification": post_apply_verification,
         "vortex_exe": apply_result["vortex_exe"] if apply_result else snapshot["vortex_exe"],
         "notes": [
             "This only changes Vortex profile state. It does not delete mods.",
-            "Close Vortex before apply=true. By default this tool refuses writes while Vortex.exe is running.",
+            "Close Vortex before apply=true when possible. If you explicitly keep Vortex open, pass allow_running_vortex=true and read postApplyVerification.",
             "When apply=true, this writes a Vortex profile backup first unless backup_before_apply=false.",
-            "Open Vortex afterward, switch to the profile if needed, and deploy mods before launching Skyrim.",
+            "Refresh/reopen Vortex if the toggles are not visible, then deploy mods before launching Skyrim.",
         ],
     }
 
@@ -10570,6 +10678,9 @@ def vortex_safe_profile_fix(args: Dict[str, Any]) -> Dict[str, Any]:
             int(args.get("timeout_seconds", 60)),
             bool(args.get("allow_running_vortex", False)),
         )
+    post_apply_verification = (
+        verify_vortex_profile_state(args, new_id, enable_ids, disable_ids) if apply_result else None
+    )
     return {
         "dryRun": not apply_changes,
         "gameId": snapshot["gameId"],
@@ -10589,11 +10700,13 @@ def vortex_safe_profile_fix(args: Dict[str, Any]) -> Dict[str, Any]:
         "backupPath": backup_path,
         "applied": bool(apply_result),
         "applyBatches": apply_result.get("batchCount") if apply_result else None,
+        "vortexProcess": vortex_process_context(args),
+        "postApplyVerification": post_apply_verification,
         "vortex_exe": apply_result["vortex_exe"] if apply_result else snapshot["vortex_exe"],
         "nextSteps": [
             "Dry-run is the default. Review fixPreview and plannedChanges before apply=true.",
-            "For apply=true, close Vortex first. This tool refuses profile writes while Vortex.exe is running unless allow_running_vortex=true.",
-            "After apply=true, open Vortex, select the cloned profile, deploy mods, and launch Skyrim through your normal SKSE route.",
+            "For apply=true, close Vortex when possible. If you explicitly keep Vortex open, pass allow_running_vortex=true and read postApplyVerification.",
+            "After apply=true, refresh/reopen Vortex if needed, select the cloned profile, deploy mods, and launch Skyrim through your normal SKSE route.",
             "If the test is worse, switch back to the original profile or preview restore with vortex_profile_restore_plan using the backupPath.",
         ],
     }
@@ -12114,7 +12227,7 @@ def vortex_reversible_automation_plan(args: Dict[str, Any]) -> Dict[str, Any]:
             "name": "Apply only after explicit approval",
             "tool": "vortex_safe_profile_fix" if exact_mod_ids_available else "vortex_clone_profile",
             "apply": True,
-            "requires": ["User approval", "Vortex closed", "Dry-run reviewed"],
+            "requires": ["User approval", "Dry-run reviewed", "Prefer Vortex closed, or explicit allow_running_vortex=true plus postApplyVerification"],
             "why": "This creates or edits only the cloned profile when exact mod ids are supplied.",
         },
         {
@@ -14803,6 +14916,18 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         },
         skse_runtime_doctor_report,
     ),
+    "vortex_open_status": (
+        "Read-only status for whether Vortex is running and how OpenClaw should handle Vortex-open profile writes and UI refresh.",
+        {
+            "type": "object",
+            "properties": {
+                "allow_running_vortex": {"type": "boolean", "default": False},
+                "vortex_exe": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        vortex_open_status,
+    ),
     "vortex_profile_backup": (
         "Write a JSON backup of the active or selected Vortex Skyrim SE profile for later restore previews.",
         {
@@ -14843,7 +14968,7 @@ TOOLS: Dict[str, Tuple[str, Dict[str, Any], Callable[[Dict[str, Any]], Dict[str,
         vortex_profile_restore_plan,
     ),
     "vortex_clone_profile": (
-        "Clone a Vortex profile for safer experimentation. Dry-run by default; use apply=true with Vortex closed.",
+        "Clone a Vortex profile for safer experimentation. Dry-run by default; apply writes are safest with Vortex closed, or explicit allow_running_vortex=true plus post-apply verification.",
         {
             "type": "object",
             "properties": {
@@ -15613,6 +15738,7 @@ def cli_main(argv: List[str]) -> int:
     parser.add_argument("--case-inbox", action="store_true", help="Shortcut for --tool skyrim_case_inbox_import.")
     parser.add_argument("--case-evidence-report", action="store_true", help="Shortcut for --tool skyrim_case_evidence_report.")
     parser.add_argument("--case-bundle", action="store_true", help="Shortcut for --tool skyrim_case_bundle.")
+    parser.add_argument("--vortex-open-status", action="store_true", help="Shortcut for --tool vortex_open_status.")
     parser.add_argument("--safe-profile-fix", action="store_true", help="Shortcut for --tool vortex_safe_profile_fix.")
     parser.add_argument("--args-json", help="JSON object with tool arguments.")
     parser.add_argument("--args-file", help="Path to a JSON object file with tool arguments.")
@@ -15812,12 +15938,14 @@ def cli_main(argv: List[str]) -> int:
         if parsed.case_evidence_report
         else "skyrim_case_bundle"
         if parsed.case_bundle
+        else "vortex_open_status"
+        if parsed.vortex_open_status
         else "vortex_safe_profile_fix"
         if parsed.safe_profile_fix
         else parsed.tool
     )
     if not tool_name:
-        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --known-rules, --safe-session, --skyrim-diagnostics, --deployment-doctor, --launch-doctor, --skse-doctor, --automation-plan, --report-viewer, --wsl-bridge, --mo2-diagnostics, --runtime-logs, --runtime-log-watch, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-evidence-report, --case-bundle, or --safe-profile-fix")
+        parser.error("pass --stdio, --self-test, --list-tools, --tool NAME, --mod-knowledge, --known-rules, --safe-session, --skyrim-diagnostics, --deployment-doctor, --launch-doctor, --skse-doctor, --automation-plan, --report-viewer, --wsl-bridge, --mo2-diagnostics, --runtime-logs, --runtime-log-watch, --workflow-guide, --issue-case, --issue-case-status, --case-note, --safe-experiment-plan, --what-now, --live-bridge-status, --case-evidence, --case-inbox, --case-evidence-report, --case-bundle, --vortex-open-status, or --safe-profile-fix")
 
     try:
         tool_args = load_cli_tool_args(parsed)

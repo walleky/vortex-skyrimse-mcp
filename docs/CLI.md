@@ -102,6 +102,12 @@ Plan risky automation without applying changes:
 py -3 .\server.py --automation-plan --request "disable redundant mods, sort load order, and keep it revertable"
 ```
 
+Check what OpenClaw should do while Vortex is open:
+
+```powershell
+py -3 .\server.py --vortex-open-status
+```
+
 Write a smaller report for a slower OpenClaw model:
 
 ```powershell
@@ -350,7 +356,10 @@ Preview restoring from that backup:
 py -3 .\server.py --tool vortex_profile_restore_plan --backup-path .\profile-backup.json
 ```
 
-That preview does not change Vortex. Applying a restore requires `--apply`, and Vortex should be closed first.
+That preview does not change Vortex. Applying a restore requires `--apply`.
+Vortex should be closed when possible. If you want Vortex left open, run
+`--vortex-open-status` first, then pass `--allow-running-vortex` and read
+`postApplyVerification` in the JSON result.
 
 Clone the active profile and preview a fix on the clone only:
 
@@ -358,15 +367,25 @@ Clone the active profile and preview a fix on the clone only:
 py -3 .\server.py --safe-profile-fix --new-profile-name "OpenClaw Fixed Test" --disable-mod-id "exact-vortex-mod-id"
 ```
 
-After reviewing the preview and closing Vortex, apply the clone-only fix:
+After reviewing the preview, apply the clone-only fix:
 
 ```powershell
 py -3 .\server.py --safe-profile-fix --new-profile-name "OpenClaw Fixed Test" --disable-mod-id "exact-vortex-mod-id" --apply
 ```
 
+If Vortex must stay open while you watch the profile appear, make that explicit:
+
+```powershell
+py -3 .\server.py --safe-profile-fix --new-profile-name "OpenClaw Fixed Test" --disable-mod-id "exact-vortex-mod-id" --apply --allow-running-vortex --output-json .\safe-profile-fix-result.json
+```
+
 This creates a backup by default, writes a new profile, changes only that new
 profile's mod enabled state, and leaves the original profile alone. Open Vortex
 afterward, select the clone, deploy mods, and test.
+
+When `--allow-running-vortex` is used, the result includes
+`postApplyVerification`. If Vortex does not visibly update, switch profiles or
+restart Vortex, then deploy mods.
 
 ## JSON Arguments
 

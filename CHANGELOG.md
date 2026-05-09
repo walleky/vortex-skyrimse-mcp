@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.42
+
+- Adds `vortex_open_status`, a read-only tool and CLI/menu shortcut that tells OpenClaw whether Vortex is running and how to use explicit Vortex-open profile writes.
+- Adds `postApplyVerification` to Vortex profile apply tools so OpenClaw can re-read the affected profile after a write and report whether exact mod-id toggles landed.
+- Adds local menu `-AllowRunningVortex` support and action 42 for users who want to keep Vortex visible while testing cloned profile changes.
+- Updates workflow guidance, undo docs, CLI docs, architecture notes, tests, and the static docs site to explain the safer Vortex-open flow.
+
 ## v0.2.41
 
 - Adds `scripts/capture_popup_evidence.ps1`, an optional Windows screenshot/OCR helper that writes popup evidence JSON into an issue case `incoming` folder.

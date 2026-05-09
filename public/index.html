@@ -309,7 +309,7 @@
     <section class="hero" aria-labelledby="title">
       <div>
         <h1 id="title">Vortex Skyrim SE MCP</h1>
-        <p class="lead">A local diagnostics bridge for OpenClaw, Vortex, Mod Organizer 2, SKSE, Nexus metadata, deployment checks, runtime logs, and safer Skyrim SE profile experiments.</p>
+        <p class="lead">A local diagnostics bridge for OpenClaw, Vortex, Mod Organizer 2, SKSE, Nexus metadata, deployment checks, runtime logs, and safer Skyrim SE profile experiments while Vortex stays visible.</p>
         <div class="actions">
           <a class="button primary" href="https://github.com/walleky/vortex-skyrimse-mcp">Open GitHub</a>
           <a class="button" href="https://github.com/walleky/vortex-skyrimse-mcp/blob/main/START-HERE.md">Start Here</a>
@@ -346,6 +346,10 @@ python3 server.py --wsl-bridge
         <article class="card">
           <h3>Popups, Crashes, Logs</h3>
           <p>Reads Papyrus, SKSE, crash, and plugin logs. Runtime watch returns newly appended errors, and the optional popup capture helper can save screenshot/OCR evidence into a case folder.</p>
+        </article>
+        <article class="card">
+          <h3>Vortex Open Workflow</h3>
+          <p><code>vortex_open_status</code> explains when read-only tools can keep running while Vortex is open, and applied profile writes now return post-apply verification.</p>
         </article>
       </div>
     </section>

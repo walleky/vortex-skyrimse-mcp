@@ -88,9 +88,11 @@ vortex_profile_restore_plan with backup_path="C:\path\profile-backup.json" and a
 
 Rules:
 
-- Close Vortex first.
+- Prefer closing Vortex first. If the user explicitly wants Vortex left open,
+  call `vortex_open_status`, apply with `allow_running_vortex=true`, and read
+  `postApplyVerification`.
 - Keep `disable_extra_mods=false` unless you specifically want enabled mods that were not in the backup to be disabled.
-- Reopen Vortex afterward.
+- Refresh or reopen Vortex afterward if the UI does not show the restored state.
 - Select the intended profile.
 - Click Deploy Mods.
 - Launch Skyrim through the usual SKSE path for the profile.
@@ -119,8 +121,8 @@ For any profile-changing request, OpenClaw should use this order:
 3. `vortex_profile_backup`
 4. `vortex_safe_profile_fix apply=false` for clone-only mod-id fixes, or another dry-run plan for the requested change
 5. user approval
-6. apply with Vortex closed
-7. reopen Vortex, select the cloned/intended profile, deploy mods
+6. apply with Vortex closed, or explicit `allow_running_vortex=true` plus `postApplyVerification`
+7. refresh/reopen Vortex if needed, select the cloned/intended profile, deploy mods
 8. `deployment_doctor_report`
 
 If anything fails, run `bug_report_bundle` with `zip_output=true` and `redact_user_paths=true`.

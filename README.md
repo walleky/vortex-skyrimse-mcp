@@ -529,8 +529,11 @@ If detection misses your setup, pass `skyrim_dir`, `staging_dir`,
   before `apply=true` unless `backup_before_apply=false`.
 - `vortex_profile_restore_plan` previews restore actions by default and writes
   only when `apply=true`.
-- Close Vortex before profile writes. Reopen Vortex afterward, select the wanted
-  profile, then deploy mods before launching Skyrim.
+- Prefer closing Vortex before profile writes. If the user explicitly wants
+  Vortex left open, call `vortex_open_status`, pass
+  `allow_running_vortex=true`, and read `postApplyVerification`.
+- Refresh or reopen Vortex afterward if needed, select the wanted profile, then
+  deploy mods before launching Skyrim.
 - The write tools refuse `apply=true` while `Vortex.exe` is running unless
   `allow_running_vortex=true` is passed for advanced recovery work.
 - Profile writes use Vortex.exe `--set` instead of editing Vortex's database
@@ -558,9 +561,9 @@ If OpenClaw wants to experiment, the safer flow is:
 2. Run `vortex_profile_report`.
 3. Run `vortex_profile_backup` with `include_all_profiles=true`.
 4. Run `vortex_clone_profile` with `apply=false`.
-5. Close Vortex.
-6. Run `vortex_clone_profile` with `apply=true`.
-7. Reopen Vortex, enable the new profile, deploy mods, and test Skyrim.
+5. Close Vortex when possible, or run `vortex_open_status` if the user wants it left open.
+6. Run `vortex_clone_profile` with `apply=true`; use `allow_running_vortex=true` only after explicit approval.
+7. Read `postApplyVerification`, refresh/reopen Vortex if needed, enable the new profile, deploy mods, and test Skyrim.
 
 If the test goes wrong, run `vortex_profile_restore_plan` with the backup path
 and `apply=false` first. Only use `apply=true` after reading the plan.

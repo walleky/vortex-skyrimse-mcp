@@ -50,6 +50,7 @@ param(
   [string]$RuntimeWatchId = "playtest",
   [int]$CaptureDelaySeconds = 2,
   [switch]$ApplyProfileFix,
+  [switch]$AllowRunningVortex,
   [switch]$ResetRuntimeWatch,
   [switch]$NoOcr,
   [switch]$IncludeClipboardText,
@@ -137,6 +138,9 @@ function Get-CommonArgs {
   if ($VortexExe) {
     $args += "--vortex-exe"
     $args += $VortexExe
+  }
+  if ($AllowRunningVortex) {
+    $args += "--allow-running-vortex"
   }
   if ($Mo2InstanceDir) {
     $args += "--mo2-instance-dir"
@@ -310,6 +314,7 @@ function Show-Actions {
   Write-Host "39. MO2 Diagnostics"
   Write-Host "40. Runtime Log Watch"
   Write-Host "41. Capture Popup Evidence"
+  Write-Host "42. Vortex Open Status"
   Write-Host "Q. Quit"
 }
 
@@ -1249,11 +1254,21 @@ function Invoke-MenuAction {
       Invoke-Server (@("--safe-profile-fix", "--args-file", $argsFile, "--output-json", $out) + $common)
       if ($ApplyProfileFix) {
         Write-Host "Created a cloned profile and applied the requested mod-id fixes to the clone." -ForegroundColor Green
-        Write-Host "Open Vortex, select the cloned profile, deploy mods, and test. The original profile was not edited." -ForegroundColor Green
+        Write-Host "Select or refresh the cloned profile in Vortex, deploy mods, and test. The original profile was not edited." -ForegroundColor Green
+        if ($AllowRunningVortex) {
+          Write-Host "Because -AllowRunningVortex was used, read postApplyVerification in the JSON. If Vortex does not show the clone immediately, restart Vortex and rerun Vortex Open Status." -ForegroundColor Yellow
+        }
       } else {
         Write-Host "Wrote cloned-profile fix preview." -ForegroundColor Green
-        Write-Host "Preview only. Add -ApplyProfileFix after reviewing the result and closing Vortex." -ForegroundColor Green
+        Write-Host "Preview only. Add -ApplyProfileFix after reviewing the result. Close Vortex first when possible, or add -AllowRunningVortex and read postApplyVerification." -ForegroundColor Green
       }
+      return
+    }
+    { $_ -in @("42", "vortex-open", "open-status", "vortex-open-status") } {
+      $out = Join-Path $script:ReportDir "vortex-open-status-$stamp.json"
+      Invoke-Server (@("--vortex-open-status", "--output-json", $out) + $common)
+      Write-Host "Wrote Vortex-open status: $out" -ForegroundColor Green
+      Write-Host "Read-only tools can run while Vortex is open. Profile writes need -AllowRunningVortex and still require post-apply verification." -ForegroundColor Green
       return
     }
     { $_ -in @("39", "mo2", "mo2-diagnostics", "mod-organizer", "mod-organizer-2") } {

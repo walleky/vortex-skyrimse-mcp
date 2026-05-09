@@ -408,7 +408,7 @@ Ask for `vortex_exe`, or tell the user to run Vortex once and rerun MCP Doctor.
 
 `Vortex CLI timed out`
 
-Tell the user to close Vortex completely. Then rerun the same tool. Vortex profile state can be locked while the app is open.
+First call `vortex_open_status`. Read-only tools can keep working while Vortex is open. For profile writes, prefer asking the user to close Vortex. If the user explicitly wants Vortex left open, rerun the same apply tool with `allow_running_vortex=true`, then read `postApplyVerification`. If verification fails or the UI does not show the change, tell the user to restart Vortex and rerun the same apply command.
 
 `staging folder was not found`
 
@@ -518,7 +518,7 @@ Before `vortex_clone_profile apply=true`:
 
 - call `vortex_profile_backup` first, or confirm the dry-run result already shows a `backupPath`
 - show the dry-run plan
-- tell the user to close Vortex
+- prefer Vortex closed; if the user wants it open, call `vortex_open_status`, pass `allow_running_vortex=true`, and read `postApplyVerification`
 - give the new profile name/id
 
 Before `vortex_set_profile_mods apply=true`:
@@ -537,7 +537,7 @@ Before `vortex_safe_profile_fix apply=true`:
 - use exact mod ids
 - do not guess ids from display names
 - verify the dry-run says `cloneOnly=true` and `sourceProfileModified=false`
-- tell the user to close Vortex
+- prefer Vortex closed; if the user wants it open, call `vortex_open_status`, pass `allow_running_vortex=true`, and read `postApplyVerification`
 - tell the user to deploy mods afterward
 
 Before `vortex_profile_restore_plan apply=true`:
@@ -545,7 +545,7 @@ Before `vortex_profile_restore_plan apply=true`:
 - run the same tool with `apply=false`
 - explain the planned change count
 - keep `disable_extra_mods=false` unless the user clearly wants extra currently enabled mods disabled
-- tell the user to close Vortex
+- prefer Vortex closed; if the user wants it open, call `vortex_open_status`, pass `allow_running_vortex=true`, and read `postApplyVerification`
 
 Before fixing an in-game object or popup:
 
@@ -602,3 +602,8 @@ vortex_profile_restore_plan with backup_path=<backup file> and apply=false
 ```
 
 Read the preview. If it looks correct and the user approves, tell the user to close Vortex and rerun with `apply=true`. Reopen Vortex afterward and deploy mods.
+
+If the user explicitly wants Vortex left open, call `vortex_open_status`, rerun
+the restore with `apply=true` and `allow_running_vortex=true`, then read
+`postApplyVerification`. If Vortex does not visibly refresh, ask the user to
+switch profiles or restart Vortex before deploying.

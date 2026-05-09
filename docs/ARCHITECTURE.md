@@ -127,7 +127,7 @@ Most tools are read-only. The write tools are narrow and opt-in:
 - xEdit/SSEEdit tools are read-only helpers. They can write generated scripts/CSV summaries, but they do not launch xEdit, clean plugins, or save plugin edits.
 - Collection diagnostics are read-only. They do not install, update, remove, or deploy collection mods.
 - Scan-cache write failures are logged and do not fail diagnostics.
-- Vortex profile writes refuse to run while `Vortex.exe` is open unless `allow_running_vortex=true`.
+- Vortex profile writes refuse to run while `Vortex.exe` is open unless `allow_running_vortex=true`; `vortex_open_status` tells OpenClaw the exact Vortex-open workflow.
 - Profile writes use `Vortex.exe --set`, not direct database edits.
 
 ## Tool Lifecycle
@@ -159,9 +159,10 @@ vortex_clone_profile or vortex_set_profile_mods
   -> create exact state changes
   -> split into safe CLI batches
   -> Vortex.exe --set path=value
+  -> re-read the profile and return postApplyVerification
 ```
 
-Large collection profiles can have many mods, so writes are batched to avoid Windows command length failures.
+Large collection profiles can have many mods, so writes are batched to avoid Windows command length failures. When `allow_running_vortex=true` is used, the write still goes through Vortex's CLI and the MCP immediately verifies the affected profile, but the visible Vortex UI may need a profile switch or restart before it refreshes.
 
 Undo flow:
 

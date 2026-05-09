@@ -433,7 +433,9 @@ vortex_profile_restore_plan with apply=false
 
 Human next step:
 
-Close Vortex before profile writes. Reopen Vortex afterward, choose the intended
+Prefer closing Vortex before profile writes. If the user wants Vortex left open,
+call `vortex_open_status`, apply with `allow_running_vortex=true`, and read
+`postApplyVerification`. Refresh or reopen Vortex if needed, choose the intended
 profile, deploy, and test. Keep the backup path.
 
 ## Workflow 8: Bug Report For OpenClaw Or Maintainers

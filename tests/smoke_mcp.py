@@ -166,6 +166,7 @@ def main() -> int:
     assert "collection_local_match_report" in listed_names, listed_names
     assert "nexus_validate_key" in listed_names, listed_names
     assert "nexus_update_report" in listed_names, listed_names
+    assert "vortex_open_status" in listed_names, listed_names
     assert "vortex_profile_backup" in listed_names, listed_names
     assert "vortex_profile_restore_plan" in listed_names, listed_names
     assert "vortex_safe_profile_fix" in listed_names, listed_names
@@ -187,6 +188,7 @@ def main() -> int:
     assert "baseline_path" in listed_by_name["deployment_doctor_report"]["inputSchema"]["properties"], listed_by_name
     assert "output_path" in listed_by_name["skyrim_launch_doctor_report"]["inputSchema"]["properties"], listed_by_name
     assert "output_path" in listed_by_name["skse_runtime_doctor_report"]["inputSchema"]["properties"], listed_by_name
+    assert "allow_running_vortex" in listed_by_name["vortex_open_status"]["inputSchema"]["properties"], listed_by_name
     assert "request" in listed_by_name["vortex_reversible_automation_plan"]["inputSchema"]["properties"], listed_by_name
     assert "report_dir" in listed_by_name["report_viewer_index"]["inputSchema"]["properties"], listed_by_name
     assert "disable_mod_ids" in listed_by_name["vortex_reversible_automation_plan"]["inputSchema"]["properties"], listed_by_name

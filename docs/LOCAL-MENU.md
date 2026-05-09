@@ -57,6 +57,7 @@ Vortex-SkyrimSE-Menu.cmd
 39. MO2 Diagnostics
 40. Runtime Log Watch
 41. Capture Popup Evidence
+42. Vortex Open Status
 
 Reports are written to:
 
@@ -93,6 +94,7 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action runtime-watch -RuntimeWatchId playtest -ResetRuntimeWatch
 .\vortex_skyrimse_menu.ps1 -Action runtime-watch -RuntimeWatchId playtest -IssueDescription "popup says file was not configured properly"
 .\vortex_skyrimse_menu.ps1 -Action capture-popup -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
+.\vortex_skyrimse_menu.ps1 -Action vortex-open-status
 .\vortex_skyrimse_menu.ps1 -Action config -ConfigPath "C:\path\to\config\popup.json"
 .\vortex_skyrimse_menu.ps1 -Action xedit-script -IssueDescription "bed outside tavern room" -IssueLocation "Whiterun Bannered Mare" -IssueObject "bed" -FormId "0100ABCD"
 .\vortex_skyrimse_menu.ps1 -Action xedit-result -XeditReportPath "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\xedit-inspection-YYYYMMDD-HHMMSS.csv"
@@ -106,6 +108,7 @@ Run one action directly:
 .\vortex_skyrimse_menu.ps1 -Action case-bundle -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
 .\vortex_skyrimse_menu.ps1 -Action case-inbox -IssueCaseDir "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\issue-case-YYYYMMDD-HHMMSS"
 .\vortex_skyrimse_menu.ps1 -Action safe-profile-fix -SafeProfileName "OpenClaw Fixed Test" -DisableModIds "exact-vortex-mod-id"
+.\vortex_skyrimse_menu.ps1 -Action safe-profile-fix -SafeProfileName "OpenClaw Fixed Test" -DisableModIds "exact-vortex-mod-id" -ApplyProfileFix -AllowRunningVortex
 .\vortex_skyrimse_menu.ps1 -Action deployment-doctor
 .\vortex_skyrimse_menu.ps1 -Action deployment-doctor -DeploymentBaselinePath "$env:USERPROFILE\Documents\vortex-skyrimse-mcp-reports\deployment-doctor-before.json"
 .\vortex_skyrimse_menu.ps1 -Action launch-doctor
@@ -122,7 +125,10 @@ Action 30 imports helper output from `<case folder>\incoming` by default. Use
 
 Action 31 previews cloning the selected/active profile and applying exact mod-id
 enable/disable fixes to the clone only. Add `-ApplyProfileFix` after reviewing
-the preview and closing Vortex.
+the preview. Close Vortex first when possible. If you explicitly want Vortex to
+stay open, add `-AllowRunningVortex` and read `postApplyVerification` in the
+JSON result. If the Vortex UI does not show the cloned profile immediately,
+switch profiles or restart Vortex before deploying.
 
 Action 32 is the fastest "are my Vortex mods reaching Skyrim?" verdict. It is
 read-only and checks the selected profile against Skyrim `Data`, `plugins.txt`,
@@ -164,6 +170,10 @@ Action 41 captures visible desktop popup evidence into an issue case. It saves a
 PNG screenshot and, if Tesseract OCR is available, OCR text. The menu then runs
 case inbox import and writes a live evidence summary. Review screenshots before
 posting them publicly.
+
+Action 42 explains whether Vortex is currently running and what OpenClaw should
+do next. It is read-only. It does not edit profiles, deploy mods, or force the
+Vortex UI to refresh.
 
 If Windows cannot find Python, pass the executable once:
 
@@ -235,10 +245,11 @@ for review; inspect the zip before posting it.
 
 Action 31 is for safe profile experiments. It previews by default; with
 `-ApplyProfileFix`, it creates a cloned Vortex profile and applies exact mod-id
-enable/disable fixes to the clone only.
+enable/disable fixes to the clone only. Use `-AllowRunningVortex` only when the
+user explicitly wants Vortex left open, then read `postApplyVerification`.
 
 ## Safety
 
-The menu runs read-only report actions plus profile backup, restore preview, and cloned-profile fix previews. It does not delete mods, sort load order, write INI fixes, edit plugins, install collections, or apply restore plans. Action 31 writes only when `-ApplyProfileFix` is passed, and it changes the cloned profile only. Action 32 is read-only.
+The menu runs read-only report actions plus profile backup, restore preview, and cloned-profile fix previews. It does not delete mods, sort load order, write INI fixes, edit plugins, install collections, or apply restore plans. Action 31 writes only when `-ApplyProfileFix` is passed, and it changes the cloned profile only. Action 32 and action 42 are read-only.
 
 The safe session and diagnostics actions write Markdown and JSON reports and try to include a profile backup unless `-NoProfileBackup` is passed. They include Skyrim runtime log scanning by default unless `-NoRuntimeLogs` is passed. The backup action writes a JSON backup file. The restore action previews what would be restored; it does not change Vortex. The in-game issue action searches for likely mod candidates; it does not fix records automatically. The runtime log action is read-only and points OpenClaw at config candidates when logs reference them. The config validator is read-only and checks parse/health clues before any patch. The xEdit inspection and issue-case actions generate/read evidence only; do not save plugin edits from xEdit unless you intentionally made separate manual changes.

@@ -351,8 +351,8 @@ The bundle redacts normal user profile paths by default, but it may still includ
 - `skyrim_case_inbox_import` imports new files from the case `incoming` folder and de-dupes them by hash.
 - `skyrim_case_bundle` zips a case folder for review; inspect it before posting publicly.
 - Collection diagnostics are read-only and do not install, update, remove, or deploy mods.
-- Close Vortex before profile writes.
-- Reopen Vortex afterward, pick the intended profile, then deploy mods before launching Skyrim.
+- Prefer closing Vortex before profile writes. If you explicitly want Vortex left open, use `vortex_open_status`, pass `allow_running_vortex=true`, and read `postApplyVerification`.
+- Refresh or reopen Vortex afterward if needed, pick the intended profile, then deploy mods before launching Skyrim.
 
 ## Quick Test
 
